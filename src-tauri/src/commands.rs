@@ -190,7 +190,8 @@ pub fn log_reveal(app: AppHandle) -> CmdResult<()> {
 
 // ---------- AI ----------
 
-use crate::ai::Gemini;
+use crate::ai::{Gemini, OpenRouter, Provider};
+use crate::settings::{ModelSet, ProviderKind};
 use crate::jobs::JobEvent;
 use crate::pipeline::{self, Archive, Engine, Models, Options, Outputs};
 
@@ -198,27 +199,42 @@ use crate::pipeline::{self, Archive, Engine, Models, Options, Outputs};
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsView {
     has_key: bool,
+    has_openrouter_key: bool,
+    provider: ProviderKind,
     models: Models,
+    openrouter: ModelSet,
     whisper_ready: bool,
 }
 
 #[tauri::command(async)]
 pub fn ai_settings_get(state: State<'_, AppState>) -> CmdResult<AiSettingsView> {
-    let has_key = crate::secrets::gemini_key()?.is_some();
-    Ok(AiSettingsView { has_key, models: state.settings.lock().unwrap().models.clone(), whisper_ready: state.whisper.downloaded() })
+    let s = state.settings.lock().unwrap().clone();
+    Ok(AiSettingsView {
+        has_key: crate::secrets::gemini_key()?.is_some(),
+        has_openrouter_key: crate::secrets::openrouter_key()?.is_some(),
+        provider: s.provider,
+        models: s.models,
+        openrouter: s.openrouter,
+        whisper_ready: state.whisper.downloaded(),
+    })
 }
 
-/// `key`: None = keep, "" = remove, otherwise the new key.
+/// Keys: None = keep, "" = remove, otherwise the new key.
 #[tauri::command(async)]
-pub fn ai_settings_set(state: State<'_, AppState>, key: Option<String>, models: Models) -> CmdResult<()> {
+pub fn ai_settings_set(state: State<'_, AppState>, key: Option<String>, openrouter_key: Option<String>, provider: ProviderKind, models: Models, openrouter: ModelSet) -> CmdResult<()> {
+    let some = |k: &str| if k.trim().is_empty() { None } else { Some(k.trim().to_string()) };
     if let Some(k) = key {
-        let k = k.trim();
-        crate::secrets::set_gemini_key(if k.is_empty() { None } else { Some(k) })?;
+        crate::secrets::set_gemini_key(some(&k).as_deref())?;
+    }
+    if let Some(k) = openrouter_key {
+        crate::secrets::set_openrouter_key(some(&k).as_deref())?;
     }
     let clean = |m: String, d: String| if m.trim().is_empty() { d } else { m.trim().to_string() };
-    let def = Models::default();
+    let (def, or_def) = (Models::default(), ModelSet::default());
     let mut s = state.settings.lock().unwrap();
+    s.provider = provider;
     s.models = Models { engine: models.engine, transcribe: clean(models.transcribe, def.transcribe), generate: clean(models.generate, def.generate), fallback: models.fallback.trim().to_string() };
+    s.openrouter = ModelSet { transcribe: clean(openrouter.transcribe, or_def.transcribe), generate: clean(openrouter.generate, or_def.generate), fallback: openrouter.fallback.trim().to_string() };
     s.save(&state.settings_path)?;
     Ok(())
 }
@@ -230,13 +246,39 @@ fn gemini() -> CmdResult<Gemini> {
     }
 }
 
-#[tauri::command]
-pub async fn ai_check(key: Option<String>) -> CmdResult<()> {
-    let g = match key.filter(|k| !k.trim().is_empty()) {
-        Some(k) => Gemini::new(k.trim()),
-        None => gemini()?,
+fn openrouter() -> CmdResult<OpenRouter> {
+    match crate::secrets::openrouter_key()? {
+        Some(k) => Ok(OpenRouter::new(k)),
+        None => Err(AppError::other("Manca la chiave di OpenRouter: aggiungila in Impostazioni")),
+    }
+}
+
+/// The provider chosen in Settings, with its fallback model.
+fn provider(s: &Settings) -> CmdResult<Provider> {
+    let p = match s.provider {
+        ProviderKind::Gemini => Provider::Gemini(gemini()?),
+        ProviderKind::OpenRouter => Provider::OpenRouter(openrouter()?),
     };
-    Ok(g.check().await?)
+    Ok(p.with_fallback(&s.effective_models().fallback))
+}
+
+/// Checks a key (the one given, or the saved one); returns a line for Settings.
+#[tauri::command]
+pub async fn ai_check(provider: ProviderKind, key: Option<String>) -> CmdResult<String> {
+    let key = key.filter(|k| !k.trim().is_empty()).map(|k| k.trim().to_string());
+    Ok(match provider {
+        ProviderKind::Gemini => {
+            key.map(Gemini::new).map_or_else(gemini, Ok)?.check().await?;
+            "Funziona".into()
+        }
+        ProviderKind::OpenRouter => key.map(OpenRouter::new).map_or_else(openrouter, Ok)?.check().await?,
+    })
+}
+
+/// OpenRouter's price list (public, no key needed).
+#[tauri::command]
+pub async fn openrouter_models() -> CmdResult<Vec<crate::ai::openrouter::ModelInfo>> {
+    Ok(OpenRouter::new("").models().await?.as_ref().clone())
 }
 
 /// Starts downloading the Whisper model in the background (from Settings).
@@ -264,9 +306,10 @@ pub fn whisper_delete(state: State<'_, AppState>) -> CmdResult<()> {
 #[tauri::command]
 pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_id: String, options: Options, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
     let dir = state.settings.lock().unwrap().library_dir.clone().ok_or_else(|| AppError::NoLibrary { message: "Scegli la cartella dell'archivio".into() })?;
-    let models = state.settings.lock().unwrap().models.clone();
+    let settings = state.settings.lock().unwrap().clone();
+    let models = settings.effective_models();
     let ch = channel.clone();
-    let ai = gemini()?.with_fallback(&models.fallback).with_notify(Arc::new(move |message| {
+    let ai = provider(&settings)?.with_notify(Arc::new(move |message| {
         let _ = ch.send(JobEvent::Detail { message });
     }));
     let archive = Archive { dir, lock: state.write.clone() };
@@ -415,11 +458,9 @@ pub struct ChatAnswer {
 
 #[tauri::command]
 pub async fn chat_ask(state: State<'_, AppState>, lesson_id: String, scope: Scope, question: String) -> CmdResult<ChatAnswer> {
-    let (model, fallback) = {
-        let m = &state.settings.lock().unwrap().models;
-        (m.generate.clone(), m.fallback.clone())
-    };
-    let ai = gemini()?.with_fallback(&fallback);
+    let settings = state.settings.lock().unwrap().clone();
+    let model = settings.effective_models().generate;
+    let ai = provider(&settings)?;
     let lib = state.library()?;
     let (messages, usage) = chat::ask(&ai, &model, &lib, &lesson_id, scope, &question, &tokio_util::sync::CancellationToken::new()).await?;
     Ok(ChatAnswer { messages, usage })

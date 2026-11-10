@@ -16,7 +16,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::ai::gemini::{INLINE_MAX, mime_for};
+use crate::ai::gemini::mime_for;
 use crate::ai::{Ai, Part, Request, Usage, prompts};
 use crate::asr::{self, Asr};
 use crate::audio;
@@ -57,7 +57,8 @@ fn default_fallback() -> String {
 
 impl Default for Models {
     fn default() -> Self {
-        Self { engine: Engine::Local, transcribe: "gemini-3.8-flash".into(), generate: "gemini-3.8-flash".into(), fallback: default_fallback() }
+        // Cleanup and PDFs with the light model (fast, and available when Flash is overloaded).
+        Self { engine: Engine::Local, transcribe: "gemini-3.5-flash-lite".into(), generate: "gemini-3.8-flash".into(), fallback: default_fallback() }
     }
 }
 
@@ -294,6 +295,13 @@ fn times(text: &str) -> Vec<u64> {
     RE.captures_iter(text).map(|c| c[1].parse::<u64>().unwrap_or(0) * 3600 + c[2].parse::<u64>().unwrap_or(0) * 60 + c[3].parse::<u64>().unwrap_or(0)).collect()
 }
 
+/// Some models write the heading after the time ("[00:20:41] ### Titolo"): put it on its own
+/// line before the paragraph, where Markdown sees it.
+fn fix_headings(text: &str) -> String {
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^(\[\d{2}:\d{2}:\d{2}\]) *(#{1,6} [^\n]+)\n+").unwrap());
+    RE.replace_all(text, "$2\n\n$1 ").into_owned()
+}
+
 /// A cleaned transcript must keep the content and the times of the raw one: at least half of
 /// the words and of the times, all times inside the part (a few seconds of slack).
 fn plausible_cleanup(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
@@ -334,7 +342,7 @@ impl<A: Ai> Ctx<'_, A> {
     /// to delete afterwards.
     async fn file_part(&self, path: &Path, mime: &str) -> Result<(Part, Option<String>)> {
         let size = fs::metadata(path)?.len();
-        if size <= INLINE_MAX {
+        if size <= self.ai.inline_max() {
             return Ok((Part::Inline { mime: mime.into(), data: fs::read(path)? }, None));
         }
         let f = self.ai.upload(path, mime, self.cancel).await?;
@@ -446,7 +454,7 @@ impl<A: Ai> Ctx<'_, A> {
             Err(e) => Ok(Cleaned { text: raw, usage: Usage::default(), warning: Some(not_clean(format!("{e:#}"))), unreachable: true }),
             Ok(a) => {
                 self.note_fallback(&a);
-                let t = a.text.trim().to_string();
+                let t = fix_headings(a.text.trim());
                 if a.finish == "MAX_TOKENS" {
                     Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("risposta troncata".into())), unreachable: false })
                 } else if !plausible_cleanup(&raw, &t, start, end) {
@@ -814,7 +822,7 @@ mod tests {
             }
             let prompt = req.parts.iter().find_map(|p| if let Part::Text(t) = p { Some(t.clone()) } else { None }).unwrap();
             self.prompts.lock().unwrap().push(prompt.clone());
-            let usage = Usage { prompt_token_count: 100, candidates_token_count: 10, thoughts_token_count: 0 };
+            let usage = Usage { prompt_token_count: 100, candidates_token_count: 10, thoughts_token_count: 0, cost: None };
             let mut finish = "STOP";
             let text = if let Some(raw) = prompt.split("Trascrizione:\n").nth(1).filter(|_| prompt.contains("Ripuliscila")) {
                 if self.fail_cleanup.load(Ordering::SeqCst) {
@@ -951,6 +959,12 @@ mod tests {
         let before = count(&ai, "Ripuliscila");
         run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
         assert_eq!(count(&ai, "Ripuliscila"), before);
+    }
+
+    #[test]
+    fn headings_after_the_time() {
+        assert_eq!(fix_headings("[00:20:00] ### Forma standard\nQuindi abbiamo\n\n[00:20:41] testo"), "### Forma standard\n\n[00:20:00] Quindi abbiamo\n\n[00:20:41] testo");
+        assert_eq!(fix_headings("### Titolo\n\n[00:20:00] ok"), "### Titolo\n\n[00:20:00] ok");
     }
 
     #[test]

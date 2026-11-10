@@ -111,10 +111,46 @@ export interface Models {
   fallback: string;
 }
 
+export type ProviderKind = "gemini" | "openrouter";
+
+/** Models on OpenRouter. */
+export interface ModelSet {
+  transcribe: string;
+  generate: string;
+  fallback: string;
+}
+
+export interface AiSettings {
+  hasKey: boolean;
+  hasOpenrouterKey: boolean;
+  provider: ProviderKind;
+  models: Models;
+  openrouter: ModelSet;
+  whisperReady: boolean;
+}
+
+/** A model of OpenRouter's price list (USD per million tokens). */
+export interface ModelInfo {
+  id: string;
+  name: string;
+  input: number;
+  output: number;
+  images: boolean;
+  files: boolean;
+}
+
+/** Rough cost of a 1 h 30 lesson with one model for everything (cleanup, PDF, summary):
+ *  about 75k tokens in and 46k out, measured with tests/openrouter_it.rs. */
+export function lessonCost(m: ModelInfo): number {
+  return (75_000 * m.input + 46_000 * m.output) / 1e6;
+}
+
 export interface Usage {
   promptTokenCount: number;
   candidatesTokenCount: number;
   thoughtsTokenCount: number;
+  /** USD actually spent, when the provider says it (OpenRouter). */
+  cost?: number;
 }
 
 export interface MapNode {
@@ -144,14 +180,17 @@ export type JobEvent =
   | { event: "failed"; message: string };
 
 export const ai = {
-  settings: () => invoke<{ hasKey: boolean; models: Models; whisperReady: boolean }>("ai_settings_get"),
+  settings: () => invoke<AiSettings>("ai_settings_get"),
+  openrouterModels: () => invoke<ModelInfo[]>("openrouter_models"),
   /** Starts the download in the background; follow it with `whisperStatus`. */
   whisperDownload: () => invoke<void>("whisper_download"),
   whisperStatus: () => invoke<{ ready: boolean; downloading: string | null; error: string | null }>("whisper_status"),
   whisperCancel: () => invoke<void>("whisper_cancel"),
   whisperDelete: () => invoke<void>("whisper_delete"),
-  setSettings: (key: string | null, models: Models) => invoke<void>("ai_settings_set", { key, models }),
-  check: (key: string | null) => invoke<void>("ai_check", { key }),
+  setSettings: (s: { key?: string; openrouterKey?: string; provider: ProviderKind; models: Models; openrouter: ModelSet }) =>
+    invoke<void>("ai_settings_set", { key: s.key ?? null, openrouterKey: s.openrouterKey ?? null, provider: s.provider, models: s.models, openrouter: s.openrouter }),
+  /** Checks the key typed (or the saved one); returns a line for Settings (e.g. the credit left). */
+  check: (provider: ProviderKind, key: string | null) => invoke<string>("ai_check", { provider, key }),
   outputs: (id: string) => invoke<Outputs>("lesson_outputs", { id }),
   cancel: (jobId: string) => invoke<boolean>("job_cancel", { jobId }),
   async process(lessonId: string, options: { force?: boolean; extractOnly?: boolean }, onEvent: (e: JobEvent) => void): Promise<string> {
@@ -162,6 +201,12 @@ export const ai = {
     return jobId;
   },
 };
+
+/** What a run cost: the real figure from OpenRouter, or "would cost" at Gemini's paid list price. */
+export function costLine(u: Usage): string {
+  const fmt = (x: number) => (x < 0.01 ? x.toFixed(4) : x.toFixed(2)).replace(".", ",");
+  return u.cost != null ? `costo: ${fmt(u.cost)} $` : `a pagamento sarebbero circa ${fmt(costEstimate(u))} $`;
+}
 
 /** Paid-tier list price of gemini-3.8-flash (USD per 1M tokens, Nov 2026): rough cost of a run. */
 export function costEstimate(u: Usage): number {

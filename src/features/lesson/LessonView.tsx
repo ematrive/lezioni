@@ -176,8 +176,8 @@ export function LessonView({
     });
   const processed = !!outputs?.summary;
   const processButton = (
-    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={lesson.sources.length ? "Trascrivi, leggi le fonti e genera sintesi, mappa e studio con Gemini" : "Aggiungi prima le fonti"}>
-      <Sparkles className="size-4" /> {processed ? "Rigenera" : "Elabora con Gemini"}
+    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={lesson.sources.length ? "Trascrivi, leggi le fonti e genera sintesi, mappa e studio" : "Aggiungi prima le fonti"}>
+      <Sparkles className="size-4" /> {processed ? "Rigenera" : "Elabora"}
     </button>
   );
 

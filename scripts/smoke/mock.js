@@ -9,6 +9,7 @@
   const courses = [];
   const lessons = [];
   const outputs = {};
+  let aiProvider = "gemini";
   const chats = {};
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
@@ -151,7 +152,25 @@
           return l;
         }
         case "ai_settings_get":
-          return { hasKey: true, models: { engine: "local", transcribe: "gemini-3.8-flash", generate: "gemini-3.8-flash", fallback: "gemini-3.5-flash-lite" }, whisperReady: true };
+          return {
+            hasKey: true,
+            hasOpenrouterKey: true,
+            provider: aiProvider,
+            models: { engine: "local", transcribe: "gemini-3.5-flash-lite", generate: "gemini-3.8-flash", fallback: "gemini-3.5-flash-lite" },
+            openrouter: { transcribe: "google/gemini-3.5-flash-lite", generate: "anthropic/claude-haiku-5.5", fallback: "google/gemini-3.5-flash-lite" },
+            whisperReady: true,
+          };
+        case "ai_settings_set":
+          aiProvider = a.provider;
+          return null;
+        case "ai_check":
+          return a.provider === "openrouter" ? "Credito residuo: 9,62 $ (usati 0,38 $)" : "Funziona";
+        case "openrouter_models":
+          return [
+            { id: "anthropic/claude-haiku-5.5", name: "Anthropic: Claude Haiku 5.5", input: 0.1, output: 0.5, images: true, files: true },
+            { id: "deepseek/deepseek-v4-flash", name: "DeepSeek: V4 Flash", input: 0.09, output: 0.18, images: false, files: false },
+            { id: "google/gemini-3.5-flash-lite", name: "Google: Gemini 3.5 Flash Lite", input: 0.3, output: 2.5, images: true, files: true },
+          ];
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
@@ -178,7 +197,7 @@
               },
               info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
             };
-            send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000 }, warnings: [] });
+            send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, warnings: [] });
           };
           return null;
         }

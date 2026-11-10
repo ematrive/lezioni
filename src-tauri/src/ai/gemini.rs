@@ -80,6 +80,9 @@ pub struct Usage {
     pub candidates_token_count: u64,
     #[serde(default)]
     pub thoughts_token_count: u64,
+    /// What it really cost, in USD, when the provider says it (OpenRouter).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 impl Usage {
@@ -87,6 +90,9 @@ impl Usage {
         self.prompt_token_count += o.prompt_token_count;
         self.candidates_token_count += o.candidates_token_count;
         self.thoughts_token_count += o.thoughts_token_count;
+        if let Some(c) = o.cost {
+            self.cost = Some(self.cost.unwrap_or(0.0) + c);
+        }
     }
 }
 
@@ -153,7 +159,7 @@ fn api_error(status: reqwest::StatusCode, body: &str) -> anyhow::Error {
 }
 
 /// Seconds the server asks to wait (`RetryInfo.retryDelay`, e.g. "31s").
-fn retry_delay(body: &str) -> Option<Duration> {
+pub(crate) fn retry_delay(body: &str) -> Option<Duration> {
     let v: Value = serde_json::from_str(body).ok()?;
     v["error"]["details"].as_array()?.iter().find_map(|d| d["retryDelay"].as_str()?.trim_end_matches('s').parse::<f64>().ok()).map(|s| Duration::from_secs_f64(s.clamp(1.0, 120.0)))
 }
@@ -163,7 +169,7 @@ fn is_daily_quota(body: &str) -> bool {
     body.contains("PerDay") || body.contains("per day")
 }
 
-async fn sleep_or_cancel(d: Duration, cancel: &CancellationToken) -> Result<()> {
+pub(crate) async fn sleep_or_cancel(d: Duration, cancel: &CancellationToken) -> Result<()> {
     tokio::select! {
         _ = tokio::time::sleep(d) => Ok(()),
         _ = cancel.cancelled() => bail!("annullato"),

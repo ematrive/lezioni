@@ -64,6 +64,14 @@ Tutti i comandi sono `async` o `#[tauri::command(async)]`: nessuno gira sul thre
 
 L'avanzamento arriva all'interfaccia su un `Channel<JobEvent>` (`Step` con avanzamento frazionario, `Detail` per la riga di stato, `Done`, `Failed`); `jobs.rs` tiene i token di annullamento.
 
+### Fornitori (`ai/mod.rs`)
+
+`ai::Provider` (`Gemini` o `OpenRouter`, da `Settings.provider`) implementa il trait `Ai` delegando; `Settings::effective_models()` dà i modelli del fornitore scelto (con OpenRouter la trascrizione è sempre locale). `Usage.cost` porta il costo reale quando il fornitore lo dà.
+
+### Client OpenRouter (`ai/openrouter.rs`)
+
+`POST /api/v1/chat/completions` in stile OpenAI: immagini come `image_url` e PDF come `file` in data URL (fino a 30 MB, niente upload), `models: [modello, riserva]` per il fallback fatto da OpenRouter, `provider.data_collection = "deny"`, `response_format` con lo schema JSON (non strict), `usage.include` per il costo. Stessi nuovi tentativi di Gemini su 408/429/5xx; 401 e 402 diventano messaggi chiari. `GET /api/v1/credits` per la verifica della chiave, `GET /api/v1/models` (pubblico, in cache un'ora) per il listino delle Impostazioni. I modelli predefiniti sono stati scelti con `tests/openrouter_it.rs`.
+
 ### Client Gemini (`ai/gemini.rs`)
 
 REST `v1beta` con `generateContent` (ancora supportato; Google raccomanda la nuova Interactions API, che però al momento della scrittura non documentava il formato REST della risposta). Upload resumable della Files API (file fino a 2 GB, conservati 48 ore e cancellati dall'app appena usati). Su 429 e 5xx riprova con il ritardo indicato dal server (`RetryInfo`) o con backoff esponenziale, ma non insiste sulla quota giornaliera. Dopo due 503 di fila passa al modello di riserva (`Models.fallback`, `Answer.model` dice chi ha risposto). Timeout di 10 minuti per chiamata, ritentato una volta; un caricamento fermo per 90 s si interrompe. Ogni chiamata è registrata nel log con durata e token. La pipeline parla col trait `Ai`, così nei test c'è un modello finto.

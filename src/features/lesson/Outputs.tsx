@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, RotateCcw, Shuffle, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, costEstimate, fileUrl, sourceFile, toAppError, type JobEvent, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { ai, costLine, fileUrl, sourceFile, toAppError, type JobEvent, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 
@@ -48,7 +48,7 @@ export async function startProcessing(lesson: Lesson, force: boolean, onFinished
       setJob(lesson.id, null);
       if (e.event === "done") {
         const tokens = e.usage.promptTokenCount + e.usage.candidatesTokenCount + e.usage.thoughtsTokenCount;
-        toast(`«${lesson.title}» elaborata: ${tokens.toLocaleString("it-IT")} token (a pagamento sarebbero circa ${costEstimate(e.usage).toFixed(2)} $).`);
+        toast(`«${lesson.title}» elaborata: ${tokens.toLocaleString("it-IT")} token (${costLine(e.usage)}).`);
         if (e.warnings.length) toast(e.warnings.join("\n"), "error");
       } else if (e.message !== "annullato") toast(e.message, "error");
       onFinished();

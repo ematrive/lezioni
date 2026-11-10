@@ -92,6 +92,7 @@ pub fn run() {
             source_open,
             reveal,
             log_reveal,
+            openrouter_models,
             whisper_download,
             whisper_status,
             whisper_cancel,

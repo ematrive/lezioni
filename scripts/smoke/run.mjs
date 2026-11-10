@@ -85,12 +85,12 @@ try {
   await p.locator("li", { hasText: "Simplesso e degenerazione" }).first().waitFor();
 
   // Processing with Gemini (fake): progress bar, then the four tabs.
-  await p.getByRole("button", { name: "Elabora con Gemini" }).first().click();
+  await p.getByRole("button", { name: "Elabora", exact: true }).first().click();
   await p.getByText(/Trascrizione sul computer di registrazione/).waitFor();
   await p.getByText(/Whisper: 43% · Gemini ripulisce la parte 1 · 0:0/).waitFor();
   await shot("elaborazione");
   await p.evaluate(() => window.__finishJob());
-  await p.getByText(/elaborata: /).waitFor();
+  await p.getByText(/elaborata: .*costo: 0,03 \$/).waitFor();
   await p.getByRole("button", { name: "Sintesi", exact: true }).click();
   await p.getByText("base ammissibile").waitFor();
   await shot("sintesi");
@@ -161,6 +161,13 @@ try {
   await p.getByText("Gemini (Google)").waitFor();
   await p.getByText("Modello di trascrizione scaricato").waitFor();
   await shot("impostazioni");
+  // OpenRouter: price list and cost of a lesson under each model.
+  await p.getByLabel("OpenRouter (molti modelli)").check();
+  await p.getByText(/Credito residuo|openrouter.ai\/keys/).first().waitFor();
+  await p.getByText(/0,10 \$ \/ 0,50 \$ per milione di token .* una lezione di 1 h 30 ≈ 0,03 \$/).waitFor();
+  await p.getByRole("button", { name: "Verifica", exact: true }).click();
+  await p.getByText("Credito residuo: 9,62 $").waitFor();
+  await shot("impostazioni-openrouter");
   ok = errors.length === 0;
 } catch (e) {
   errors.push(String(e));

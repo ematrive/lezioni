@@ -1,6 +1,6 @@
 # Lezioni
 
-App desktop (Tauri 2 + React) per raccogliere le lezioni dei corsi: registrazioni, appunti dal tablet, foto di appunti a mano, PDF e testo, organizzati per corso e lezione in una cartella del computer. Con Gemini: trascrizione delle registrazioni, lettura di foto, appunti e PDF, sintesi, mappa concettuale, glossario, flashcard e domande d'esame. Ricerca in tutto l'archivio; condivisione come pacchetto `.lezione`, PDF, pagina web, Markdown (Obsidian, NotebookLM) e flashcard per Anki. Domande sulla lezione o su tutto il corso, con le fonti citate.
+App desktop (Tauri 2 + React) per raccogliere le lezioni dei corsi: registrazioni, appunti dal tablet, foto di appunti a mano, PDF e testo, organizzati per corso e lezione in una cartella del computer. Trascrizione delle registrazioni sul computer (Whisper), poi con Gemini o con un modello a scelta su OpenRouter: ripulitura del testo, lettura di foto, appunti e PDF, sintesi, mappa concettuale, glossario, flashcard e domande d'esame. Ricerca in tutto l'archivio; condivisione come pacchetto `.lezione`, PDF, pagina web, Markdown (Obsidian, NotebookLM) e flashcard per Anki. Domande sulla lezione o su tutto il corso, con le fonti citate.
 
 ## Documentazione
 

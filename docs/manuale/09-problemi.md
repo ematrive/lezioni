@@ -1,8 +1,14 @@
 # Problemi e domande frequenti
 
-**«Quota esaurita» durante l'elaborazione.** Il piano gratuito di Gemini ha un limite giornaliero. Le parti di registrazione già trascritte sono salvate: rilancia **Elabora con Gemini** il giorno dopo e riprende da lì. In alternativa attiva la fatturazione su Google (pochi centesimi a lezione).
+**«Quota esaurita» durante l'elaborazione.** Il piano gratuito di Gemini ha un limite giornaliero. Le parti di registrazione già trascritte sono salvate: rilancia **Elabora** il giorno dopo e riprende da lì. In alternativa attiva la fatturazione su Google, oppure passa a OpenRouter (pochi centesimi a lezione).
 
 **«Gemini è sovraccarico» (errore 503).** Sono i server di Google, pieni in quel momento (succede soprattutto col piano gratuito). L'app riprova da sola e dopo due rifiuti passa al modello di riserva; se non basta, riprova più tardi: le parti già fatte restano salvate. La trascrizione sul computer non ne risente.
+
+**«Credito OpenRouter esaurito».** Ricarica il credito su [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits); **Verifica** nelle Impostazioni mostra quanto ne resta.
+
+**«Modello non trovato su OpenRouter».** Il nome del modello è sbagliato o il modello è stato ritirato: scegline uno dai suggerimenti del campo nelle Impostazioni.
+
+**Foto e appunti a mano non vengono letti (OpenRouter).** Il modello per ripulire e leggere è «solo testo»: nelle Impostazioni scegline uno che legge le immagini (per esempio `google/gemini-3.5-flash-lite`).
 
 **«Trascrizione non ripulita».** Whisper ha trascritto la parte ma Gemini non è riuscito a ripulirla: nella lezione c'è il testo di Whisper, con i minuti, e alla prossima elaborazione l'app riprova solo la ripulitura.
 

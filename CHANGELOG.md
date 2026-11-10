@@ -1,5 +1,12 @@
 # Novità
 
+## 0.7.0
+
+- **OpenRouter** come alternativa a Gemini (Impostazioni → Servizio AI): una chiave per centinaia di modelli, pagati a consumo. Accanto a ogni modello l'app mostra il prezzo, se legge immagini e PDF e quanto costerebbe una lezione; a fine elaborazione dice il **costo reale**. Predefiniti: Gemini 3.5 Flash-Lite per ripulire e leggere, Claude Haiku 5.5 per la sintesi. Solo fornitori che non usano i dati per addestrare i modelli.
+- Con Gemini, ripulitura e lettura delle fonti usano ora `gemini-3.5-flash-lite` (più veloce e meno spesso sovraccarico).
+- Il pulsante si chiama ora **Elabora**.
+- I titoli che alcuni modelli scrivono dopo il minuto vengono messi al posto giusto.
+
 ## 0.6.0
 
 - **Trascrizione sul computer** con Whisper: gratuita, senza limiti di quota e senza inviare l'audio a Google. Il modello (574 MB) si scarica una volta sola, anche dalle Impostazioni; il download continua a Impostazioni chiuse e si può annullare. Gemini poi ripulisce il testo parte per parte (paragrafi, titoli, formule, interventi degli studenti); se non risponde resta il testo di Whisper con i minuti, e la ripulitura viene ritentata la volta dopo. La trascrizione con Gemini resta disponibile nelle Impostazioni.

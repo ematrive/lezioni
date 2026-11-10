@@ -24,7 +24,7 @@ Le colonne si allargano o si stringono trascinandone il bordo; un doppio clic su
 
 1. Crea il corso e la lezione ([Corsi e lezioni](02-archivio.md)).
 2. Trascina dentro registrazione, appunti e slide ([Aggiungere le fonti](03-fonti.md)).
-3. Premi **Elabora con Gemini** ([Elaborare con Gemini](04-gemini.md)).
+3. Premi **Elabora** ([Elaborare le lezioni](04-elaborare.md)).
 4. Studia dalle schede Sintesi, Mappa e Studio ([Studiare](05-studiare.md)) e fai domande ([Domande](06-domande.md)).
 5. Condividi la lezione con i compagni ([Condividere](08-condividere.md)).
 
