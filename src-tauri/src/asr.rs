@@ -226,18 +226,28 @@ pub trait Asr: Send + Sync {
 }
 
 pub struct Whisper {
+    model: PathBuf,
+    /// On the GPU where there is one (Metal on macOS).
     ctx: whisper_rs::WhisperContext,
+    /// Loaded only if the GPU fails: the same model on the processor.
+    cpu: std::sync::OnceLock<whisper_rs::WhisperContext>,
+}
+
+fn load_ctx(model: &Path, gpu: bool) -> Result<whisper_rs::WhisperContext> {
+    let t = Instant::now();
+    let mut params = whisper_rs::WhisperContextParameters::default();
+    params.use_gpu(gpu && params.use_gpu);
+    let ctx = whisper_rs::WhisperContext::new_with_params(model, params).map_err(|e| anyhow!("caricamento del modello di trascrizione: {e}"))?;
+    log::info!("modello di trascrizione caricato in {:.1} s ({})", t.elapsed().as_secs_f64(), if gpu && cfg!(target_os = "macos") { "GPU" } else { "processore" });
+    Ok(ctx)
 }
 
 impl Whisper {
     pub fn load(model: &Path) -> Result<Self> {
         static HOOKS: std::sync::Once = std::sync::Once::new();
-        // whisper.cpp prints a lot on stderr: route it to `log` (off below warnings).
+        // whisper.cpp and ggml messages go to `log` (warnings and errors end up in lezioni.log).
         HOOKS.call_once(whisper_rs::install_logging_hooks);
-        let t = Instant::now();
-        let ctx = whisper_rs::WhisperContext::new_with_params(model, whisper_rs::WhisperContextParameters::default()).map_err(|e| anyhow!("caricamento del modello di trascrizione: {e}"))?;
-        log::info!("modello di trascrizione caricato in {:.1} s", t.elapsed().as_secs_f64());
-        Ok(Self { ctx })
+        Ok(Self { model: model.to_path_buf(), ctx: load_ctx(model, true)?, cpu: Default::default() })
     }
 }
 
@@ -250,63 +260,93 @@ fn read_wav(path: &Path) -> Result<Vec<f32>> {
     r.samples::<i16>().map(|s| Ok(s? as f32 / 32768.0)).collect()
 }
 
+/// ggml's abort callback: `data` is an `AtomicBool` that outlives the call to `full`.
+/// (Not `set_abort_callback_safe`: in whisper-rs 0.16 it registers a `Box<dyn FnMut>` but
+/// reads it back as the closure type, so it returns garbage and aborts the encoder: error -6.)
+unsafe extern "C" fn abort_flag(data: *mut std::ffi::c_void) -> bool {
+    unsafe { (*(data as *const AtomicBool)).load(Ordering::Relaxed) }
+}
+
+fn run(ctx: &whisper_rs::WhisperContext, samples: &[f32], prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
+    let mut state = ctx.create_state().map_err(|e| anyhow!("trascrizione: {e}"))?;
+    let mut p = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
+    p.set_language(Some("it"));
+    p.set_n_threads(std::thread::available_parallelism().map(|n| n.get().min(8) as i32).unwrap_or(4));
+    p.set_initial_prompt(prompt);
+    p.set_print_progress(false);
+    p.set_print_realtime(false);
+    p.set_print_special(false);
+    p.set_print_timestamps(false);
+    p.set_suppress_blank(true);
+    p.set_suppress_nst(true);
+    // The progress callback must be 'static: share the value through an atomic.
+    let pct = Arc::new(AtomicI32::new(-1));
+    let pc = pct.clone();
+    p.set_progress_callback_safe(move |v: i32| pc.store(v, Ordering::Relaxed));
+    let stop = Arc::new(AtomicBool::new(false));
+    unsafe {
+        p.set_abort_callback(Some(abort_flag));
+        p.set_abort_callback_user_data(Arc::as_ptr(&stop) as *mut std::ffi::c_void);
+    }
+    // A watcher thread forwards progress and cancellation while `full` runs.
+    let done = AtomicBool::new(false);
+    let t = Instant::now();
+    let res = std::thread::scope(|s| {
+        s.spawn(|| {
+            let mut shown = -1;
+            while !done.load(Ordering::Relaxed) {
+                if cancel.is_cancelled() {
+                    stop.store(true, Ordering::Relaxed);
+                }
+                let v = pct.load(Ordering::Relaxed);
+                if v != shown && v >= 0 {
+                    shown = v;
+                    progress(v);
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        });
+        let r = state.full(p, samples);
+        done.store(true, Ordering::Relaxed);
+        r
+    });
+    if cancel.is_cancelled() {
+        bail!("annullato");
+    }
+    res.map_err(|e| anyhow!("trascrizione: {e}"))?;
+    let secs = samples.len() as f64 / crate::audio::RATE as f64;
+    log::info!("whisper: {:.0} s di audio in {:.0} s", secs, t.elapsed().as_secs_f64());
+    let mut out = Vec::new();
+    for seg in state.as_iter() {
+        let text = seg.to_str_lossy().map_err(|e| anyhow!("trascrizione: {e}"))?.trim().to_string();
+        if !text.is_empty() {
+            out.push(Segment { start: seg.start_timestamp() as f64 / 100.0, end: seg.end_timestamp() as f64 / 100.0, text });
+        }
+    }
+    Ok(out)
+}
+
 impl Asr for Whisper {
     fn transcribe(&self, wav: &Path, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
         let samples = read_wav(wav)?;
-        let mut state = self.ctx.create_state().map_err(|e| anyhow!("trascrizione: {e}"))?;
-        let mut p = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
-        p.set_language(Some("it"));
-        p.set_n_threads(std::thread::available_parallelism().map(|n| n.get().min(8) as i32).unwrap_or(4));
-        p.set_initial_prompt(prompt);
-        p.set_print_progress(false);
-        p.set_print_realtime(false);
-        p.set_print_special(false);
-        p.set_print_timestamps(false);
-        p.set_suppress_blank(true);
-        p.set_suppress_nst(true);
-        // The callbacks must be 'static: share the progress through atomics.
-        let pct = Arc::new(AtomicI32::new(-1));
-        let pc = pct.clone();
-        p.set_progress_callback_safe(move |v: i32| pc.store(v, Ordering::Relaxed));
-        let stop = Arc::new(AtomicBool::new(false));
-        let sc = stop.clone();
-        p.set_abort_callback_safe(move || sc.load(Ordering::Relaxed));
-        // A watcher thread forwards progress and cancellation while `full` runs.
-        let done = Arc::new(AtomicBool::new(false));
-        let t = Instant::now();
-        let res = std::thread::scope(|s| {
-            s.spawn(|| {
-                let mut shown = -1;
-                while !done.load(Ordering::Relaxed) {
-                    if cancel.is_cancelled() {
-                        stop.store(true, Ordering::Relaxed);
-                    }
-                    let v = pct.load(Ordering::Relaxed);
-                    if v != shown && v >= 0 {
-                        shown = v;
-                        progress(v);
-                    }
-                    std::thread::sleep(Duration::from_millis(250));
-                }
-            });
-            let r = state.full(p, &samples);
-            done.store(true, Ordering::Relaxed);
-            r
-        });
-        if cancel.is_cancelled() {
-            bail!("annullato");
+        if let Some(cpu) = self.cpu.get() {
+            return run(cpu, &samples, prompt, cancel, progress);
         }
-        res.map_err(|e| anyhow!("trascrizione: {e}"))?;
-        let secs = samples.len() as f64 / crate::audio::RATE as f64;
-        log::info!("whisper: {:.0} s di audio in {:.0} s", secs, t.elapsed().as_secs_f64());
-        let mut out = Vec::new();
-        for seg in state.as_iter() {
-            let text = seg.to_str_lossy().map_err(|e| anyhow!("trascrizione: {e}"))?.trim().to_string();
-            if !text.is_empty() {
-                out.push(Segment { start: seg.start_timestamp() as f64 / 100.0, end: seg.end_timestamp() as f64 / 100.0, text });
+        match run(&self.ctx, &samples, prompt, cancel, progress) {
+            Err(e) if cfg!(target_os = "macos") && e.to_string() != "annullato" => {
+                // The GPU failed (Metal): the processor is slower but works.
+                log::warn!("whisper sulla GPU: {e:#}; riprovo sul processore");
+                let cpu = match self.cpu.get() {
+                    Some(c) => c,
+                    None => {
+                        let c = load_ctx(&self.model, false)?;
+                        self.cpu.get_or_init(|| c)
+                    }
+                };
+                run(cpu, &samples, prompt, cancel, progress)
             }
+            r => r,
         }
-        Ok(out)
     }
 }
 

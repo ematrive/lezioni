@@ -52,7 +52,7 @@ fn init_log(dir: Option<std::path::PathBuf>) {
         let big = std::fs::metadata(&p).is_ok_and(|m| m.len() > 5_000_000);
         std::fs::OpenOptions::new().create(true).append(!big).write(true).truncate(big).open(p).ok()
     });
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).target(env_logger::Target::Pipe(Box::new(Tee(file)))).try_init();
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,whisper_rs=warn")).target(env_logger::Target::Pipe(Box::new(Tee(file)))).try_init();
     log::info!("Lezioni {} avviata", env!("CARGO_PKG_VERSION"));
 }
 

@@ -36,3 +36,25 @@ fn whisper_transcribes() {
         println!("{}", asr::paragraphs(&segs, c.start));
     }
 }
+
+/// Cancelling stops whisper.cpp in the middle (abort callback), with "annullato".
+#[test]
+fn whisper_cancels() {
+    let (Ok(model), Ok(input)) = (std::env::var("LEZIONI_IT_WHISPER"), std::env::var("LEZIONI_IT_AUDIO")) else {
+        eprintln!("LEZIONI_IT_WHISPER o LEZIONI_IT_AUDIO non impostate: test saltato");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let cancel = CancellationToken::new();
+    let parts = audio::split(std::path::Path::new(&input), dir.path(), 20 * 60, &cancel).unwrap();
+    let w = Whisper::load(std::path::Path::new(&model)).unwrap();
+    let c2 = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        c2.cancel();
+    });
+    let t = std::time::Instant::now();
+    let r = w.transcribe(&parts[0].path, "", &cancel, &|_| {});
+    assert_eq!(r.unwrap_err().to_string(), "annullato");
+    eprintln!("fermato dopo {:.1} s", t.elapsed().as_secs_f64());
+}
