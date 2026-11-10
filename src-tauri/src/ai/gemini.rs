@@ -67,6 +67,8 @@ pub struct Request {
     pub max_output_tokens: Option<u32>,
     /// `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`; None = model default.
     pub thinking: Option<&'static str>,
+    /// Tries after the first on 429/5xx; None = the default (6). Low for best-effort calls.
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -206,12 +208,13 @@ impl Gemini {
 
     /// POST JSON to `models/{model}:{method}` with retries on 429 / 5xx. With `fallback`, two 503
     /// in a row switch to the fallback model. Returns the answer and the model that gave it.
-    async fn post_json(&self, model: &str, method: &str, body: &Value, fallback: bool, cancel: &CancellationToken) -> Result<(Value, String)> {
+    async fn post_json(&self, model: &str, method: &str, body: &Value, fallback: bool, retries: Option<u32>, cancel: &CancellationToken) -> Result<(Value, String)> {
+        let max = retries.unwrap_or(RETRIES);
         let mut wait = Duration::from_secs(4);
         let mut timeouts = 0;
         let mut model = model.to_string();
         let mut overloaded = 0;
-        for attempt in 0..=RETRIES {
+        for attempt in 0..=max {
             if cancel.is_cancelled() {
                 bail!("annullato");
             }
@@ -231,9 +234,9 @@ impl Gemini {
                     continue;
                 }
                 Err(e) if e.is_timeout() => bail!("Gemini non risponde (nessuna risposta in {} minuti): riprova più tardi", CALL_TIMEOUT.as_secs() / 60),
-                Err(e) if attempt < RETRIES && e.is_connect() => {
+                Err(e) if attempt < max && e.is_connect() => {
                     log::warn!("gemini: {e}");
-                    self.say(format!("Connessione a Gemini non riuscita, riprovo tra {} s (tentativo {} di {RETRIES})", wait.as_secs(), attempt + 1));
+                    self.say(format!("Connessione a Gemini non riuscita, riprovo tra {} s (tentativo {} di {max})", wait.as_secs(), attempt + 1));
                     sleep_or_cancel(wait, cancel).await?;
                     wait *= 2;
                     continue;
@@ -246,7 +249,7 @@ impl Gemini {
                 return Ok((serde_json::from_str(&text).context("risposta di Gemini non valida")?, model));
             }
             overloaded = if status.as_u16() == 503 { overloaded + 1 } else { 0 };
-            if let Some(f) = self.fallback.as_ref().filter(|f| fallback && attempt < RETRIES && overloaded >= 2 && **f != model) {
+            if let Some(f) = self.fallback.as_ref().filter(|f| fallback && attempt < max && overloaded >= 2 && **f != model) {
                 log::warn!("gemini: {model} sovraccarico, passo a {f}");
                 self.say(format!("{model} è sovraccarico, uso {f} per questa richiesta"));
                 model = f.clone();
@@ -255,17 +258,17 @@ impl Gemini {
             }
             let retriable = status.as_u16() == 429 && !is_daily_quota(&text) || status.is_server_error();
             log::warn!("gemini HTTP {status}: {}", text.chars().take(500).collect::<String>());
-            if retriable && attempt < RETRIES {
+            if retriable && attempt < max {
                 let d = retry_delay(&text).unwrap_or(wait);
                 let why = if status.as_u16() == 429 { "limite di richieste raggiunto" } else { "Gemini è sovraccarico" };
-                self.say(format!("{why} (HTTP {}), riprovo tra {} s (tentativo {} di {RETRIES})", status.as_u16(), d.as_secs(), attempt + 1));
+                self.say(format!("{why} (HTTP {}), riprovo tra {} s (tentativo {} di {max})", status.as_u16(), d.as_secs(), attempt + 1));
                 sleep_or_cancel(d, cancel).await?;
                 wait = (wait * 2).min(Duration::from_secs(90));
                 continue;
             }
             return Err(api_error(status, &text));
         }
-        unreachable!()
+        bail!("Gemini non risponde: riprova più tardi")
     }
 
     pub async fn generate(&self, model: &str, req: &Request, cancel: &CancellationToken) -> Result<Answer> {
@@ -288,7 +291,7 @@ impl Gemini {
             body["systemInstruction"] = json!({ "parts": [{ "text": s }] });
         }
         let t = Instant::now();
-        let (v, used) = self.post_json(model, "generateContent", &body, true, cancel).await?;
+        let (v, used) = self.post_json(model, "generateContent", &body, true, req.retries, cancel).await?;
         let mut a = parse_answer(&v);
         if let Ok(a) = &mut a {
             if used != model {
@@ -302,7 +305,7 @@ impl Gemini {
     /// Tokens of a prompt (used to measure audio: 32 tokens per second).
     pub async fn count_tokens(&self, model: &str, parts: &[Part], cancel: &CancellationToken) -> Result<u64> {
         let body = json!({ "contents": [{ "role": "user", "parts": parts.iter().map(Part::to_json).collect::<Vec<_>>() }] });
-        let (v, _) = self.post_json(model, "countTokens", &body, false, cancel).await?;
+        let (v, _) = self.post_json(model, "countTokens", &body, false, None, cancel).await?;
         v["totalTokens"].as_u64().ok_or_else(|| anyhow!("conteggio dei token non disponibile"))
     }
 

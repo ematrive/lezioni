@@ -41,3 +41,23 @@ jobs:
           name: screenshot
           path: scripts/smoke/out
           if-no-files-found: ignore
+
+  # whisper.cpp with Metal is compiled only here (Linux builds the CPU version).
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Backend (Rust, Metal)
+        working-directory: src-tauri
+        run: cargo test --lib

@@ -278,6 +278,16 @@ pub fn needs_transcription(lesson: &Lesson, force: bool) -> bool {
     lesson.meta.sources.iter().any(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video) && !s.omitted && (force || !lesson.path.join(extract_rel(s)).is_file()))
 }
 
+/// A recording with parts still in Whisper's text (cleanup failed last time): processing must
+/// try the cleanup again even though the extract exists.
+pub fn cleanup_pending(lesson_dir: &Path, s: &Source) -> bool {
+    let dir = lesson_dir.join(parts_rel(s));
+    fs::read_dir(&dir).into_iter().flatten().flatten().any(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        name.strip_suffix(".whisper.md").is_some_and(|n| !dir.join(format!("{n}.md")).is_file())
+    })
+}
+
 /// Times `[hh:mm:ss]` in a text, in seconds.
 fn times(text: &str) -> Vec<u64> {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\[(\d{2}):(\d{2}):(\d{2})\]").unwrap());
@@ -290,6 +300,15 @@ fn plausible_cleanup(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
     let words = |t: &str| t.split_whitespace().count();
     let (rt, ct) = (times(raw), times(cleaned));
     words(cleaned) * 2 >= words(raw) && ct.len() * 2 >= rt.len() && ct.iter().all(|&t| t + 5 >= start && t <= end + 5)
+}
+
+/// Result of the cleanup of one part (its text is Whisper's when it failed).
+struct Cleaned {
+    text: String,
+    usage: Usage,
+    warning: Option<String>,
+    /// Gemini did not answer at all (overloaded, offline): skip the cleanup of the next parts.
+    unreachable: bool,
 }
 
 /// What a part needs: nothing (already cleaned) or the cleanup of Whisper's text.
@@ -387,12 +406,13 @@ impl<A: Ai> Ctx<'_, A> {
             return Ok(RawPart::Done(t));
         }
         let raw_rel = parts_rel(s).join(format!("{:02}.whisper.md", i + 1));
-        if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.whisper.md", i + 1))) {
-            return Ok(RawPart::Raw(t));
-        }
         let c = &chunks[i];
         let total = chunks.last().map(|c| c.start + c.secs.round() as u64).unwrap_or(0);
         let frac = step.0 as f64 + i as f64 / chunks.len() as f64;
+        if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.whisper.md", i + 1))) {
+            (self.progress)(frac, step.1, format!("Ripulitura di {}, parte {} di {} (già trascritta sul computer)", s.original_name, i + 1, chunks.len()));
+            return Ok(RawPart::Raw(t));
+        }
         (self.progress)(frac, step.1, format!("Trascrizione sul computer di {}, parte {} di {}: {}–{} di {}", s.original_name, i + 1, chunks.len(), hms(c.start), hms(c.start + c.secs.round() as u64), hms(total)));
         let segs = self.whisper(asr, &c.path, prompt, cleaning).await?;
         let text = asr::paragraphs(&segs, c.start);
@@ -405,9 +425,9 @@ impl<A: Ai> Ctx<'_, A> {
         Ok(RawPart::Raw(text))
     }
 
-    /// Gemini cleans Whisper's text of part `i`: (text, saved as final, usage, warning).
-    /// On any failure the raw text is used, and the next run tries the cleanup again.
-    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String)) -> Result<(String, bool, Usage, Option<String>)> {
+    /// Gemini cleans Whisper's text of part `i`. On any failure the raw text is used, and the
+    /// next run tries the cleanup again.
+    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String)) -> Result<Cleaned> {
         let c = &chunks[i];
         let (start, end) = (c.start, c.start + c.secs.round() as u64);
         let req = Request {
@@ -415,23 +435,26 @@ impl<A: Ai> Ctx<'_, A> {
             parts: vec![Part::Text(prompts::clean_transcript(i + 1, chunks.len(), &context.0, &context.1, &raw))],
             max_output_tokens: Some(32_000),
             thinking: Some("LOW"),
+            // Best effort (Whisper's text is already there): do not wait minutes on an overloaded
+            // Gemini; two 503 still switch to the fallback model.
+            retries: Some(3),
             ..Default::default()
         };
         let not_clean = |why: String| format!("{}: parte da {} non ripulita ({why}); c'è il testo di Whisper, verrà ripulita alla prossima elaborazione", s.original_name, hms(start));
         match self.ai.generate(&self.models.transcribe, &req, self.cancel).await {
             Err(e) if e.to_string() == "annullato" => Err(e),
-            Err(e) => Ok((raw, false, Usage::default(), Some(not_clean(format!("{e:#}"))))),
+            Err(e) => Ok(Cleaned { text: raw, usage: Usage::default(), warning: Some(not_clean(format!("{e:#}"))), unreachable: true }),
             Ok(a) => {
                 self.note_fallback(&a);
                 let t = a.text.trim().to_string();
                 if a.finish == "MAX_TOKENS" {
-                    Ok((raw, false, a.usage, Some(not_clean("risposta troncata".into()))))
+                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("risposta troncata".into())), unreachable: false })
                 } else if !plausible_cleanup(&raw, &t, start, end) {
                     log::warn!("ripulitura scartata per {} parte {}: {} parole e {} tempi contro {} e {}", s.original_name, i + 1, t.split_whitespace().count(), times(&t).len(), raw.split_whitespace().count(), times(&raw).len());
-                    Ok((raw, false, a.usage, Some(not_clean("la risposta di Gemini aveva perso parti del testo o dei minuti".into()))))
+                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("la risposta di Gemini aveva perso parti del testo o dei minuti".into())), unreachable: false })
                 } else {
                     self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), t.as_bytes())?;
-                    Ok((t, true, a.usage, None))
+                    Ok(Cleaned { text: t, usage: a.usage, warning: None, unreachable: false })
                 }
             }
         }
@@ -447,17 +470,23 @@ impl<A: Ai> Ctx<'_, A> {
         let prompt = asr_prompt(&context.0, &context.1, &lesson.meta.notes);
         let n = chunks.len();
         let mut texts: Vec<String> = vec![String::new(); n];
-        let mut complete = true;
+        let mut skipped = 0;
         let cleaning = Mutex::new(None);
         let mut pending: Option<(usize, String)> = None;
+        // After a cleanup that Gemini could not answer, the other parts keep Whisper's text.
+        let mut gave_up = false;
         for i in 0..=n {
             self.check()?;
             let p = pending.take();
             let next = async {
                 if i < n { self.raw_part(asr, lesson_id, s, chunks, i, step, &prompt, &cleaning).await.map(Some) } else { Ok(None) }
             };
+            let skip = gave_up;
             let clean = async {
                 let (j, raw) = p?;
+                if skip {
+                    return Some((j, Ok(Cleaned { text: raw, usage: Usage::default(), warning: None, unreachable: false })));
+                }
                 *cleaning.lock().unwrap() = Some(j);
                 if i == n {
                     (self.detail)(format!("Gemini ripulisce la parte {} di {n}…", j + 1));
@@ -468,11 +497,14 @@ impl<A: Ai> Ctx<'_, A> {
             };
             let (next, cleaned) = futures::join!(next, clean);
             if let Some((j, r)) = cleaned {
-                let (t, saved, u, w) = r?;
-                usage.add(&u);
-                complete &= saved;
-                warnings.extend(w);
-                texts[j] = t;
+                let c = r?;
+                usage.add(&c.usage);
+                gave_up |= c.unreachable;
+                if skip {
+                    skipped += 1;
+                }
+                warnings.extend(c.warning);
+                texts[j] = c.text;
             }
             match next? {
                 Some(RawPart::Done(t)) => texts[i] = t,
@@ -480,7 +512,12 @@ impl<A: Ai> Ctx<'_, A> {
                 None => {}
             }
         }
-        Ok((texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"), complete))
+        if skipped > 0 {
+            warnings.push(format!("{}: Gemini non risponde, {skipped} parti restano con il testo di Whisper; verranno ripulite alla prossima elaborazione", s.original_name));
+        }
+        // Complete even with parts not cleaned: the text is saved and shown, and the parts left
+        // in Whisper's text are found again by `cleanup_pending`.
+        Ok((texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"), true))
     }
 
     async fn transcribe_chunks(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
@@ -615,14 +652,18 @@ impl<A: Ai> Ctx<'_, A> {
                 }
                 continue;
             }
-            let text = if existing.is_file() && !opts.force {
+            let text = if existing.is_file() && !opts.force && !cleanup_pending(&current.path, s) {
                 Some(fs::read_to_string(&existing)?)
             } else {
                 let before = report.warnings.len();
                 match self.extract(&current, s, step, &mut report.usage, &mut report.warnings).await {
                     Ok(Some((t, true))) => {
                         self.archive.write(lesson_id, &extract_rel(s), t.as_bytes())?;
-                        let _ = fs::remove_dir_all(self.archive.lesson(lesson_id)?.path.join(parts_rel(s)));
+                        // Parts still waiting for the cleanup stay for the next run.
+                        let dir = self.archive.lesson(lesson_id)?.path;
+                        if !cleanup_pending(&dir, s) {
+                            let _ = fs::remove_dir_all(dir.join(parts_rel(s)));
+                        }
                         Some(t)
                     }
                     // Truncated: used for this summary, not kept as if it were complete.
@@ -888,18 +929,28 @@ mod tests {
         ai.fail_cleanup.store(true, Ordering::SeqCst);
         let asr = Arc::new(FakeAsr::default());
         let r = run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
-        assert_eq!(r.warnings.iter().filter(|w| w.contains("non ripulita")).count(), 3, "{:?}", r.warnings);
+        // The first failure stops the cleanups of this run (Gemini is not answering).
+        assert_eq!(r.warnings.len(), 2, "{:?}", r.warnings);
+        assert!(r.warnings[0].contains("parte da 00:00:00 non ripulita") && r.warnings[1].contains("2 parti restano con il testo di Whisper"), "{:?}", r.warnings);
         let l = st.lib.lesson(&st.lesson).unwrap();
-        assert!(!l.path.join(extract_rel(&l.meta.sources[0])).exists(), "raw text is not the final extract");
+        let src = &l.meta.sources[0];
+        // Whisper's text is what the user sees (transcript tab, search, chat) until cleaned.
+        assert_eq!(outputs(&l).extracts[&src.id], "[00:00:01] ehm allora il simplesso\n\n[00:00:11] ehm allora il simplesso\n\n[00:00:21] ehm allora il simplesso");
+        assert!(cleanup_pending(&l.path, src));
         assert!(outputs(&l).summary.unwrap().contains("Simplesso"), "summary made from Whisper's text");
-        assert!(ai.prompts.lock().unwrap().last().unwrap().contains("ehm allora il simplesso"));
 
         ai.fail_cleanup.store(false, Ordering::SeqCst);
         let r = run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(asr.calls.load(Ordering::SeqCst), 3, "Whisper not run again");
-        let out = outputs(&st.lib.lesson(&st.lesson).unwrap());
-        assert!(out.extracts.values().next().unwrap().starts_with("[00:00:01] il simplesso"));
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        assert_eq!(outputs(&l).extracts[&l.meta.sources[0].id], "[00:00:01] il simplesso\n\n[00:00:11] il simplesso\n\n[00:00:21] il simplesso");
+        assert!(!l.path.join(parts_rel(&l.meta.sources[0])).exists(), "parts removed once all cleaned");
+
+        // Nothing pending: a third run only redoes the summary.
+        let before = count(&ai, "Ripuliscila");
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert_eq!(count(&ai, "Ripuliscila"), before);
     }
 
     #[test]
