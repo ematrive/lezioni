@@ -152,6 +152,8 @@
         }
         case "ai_settings_get":
           return { hasKey: true, models: { engine: "local", transcribe: "gemini-3.8-flash", generate: "gemini-3.8-flash", fallback: "gemini-3.5-flash-lite" }, whisperReady: true };
+        case "whisper_status":
+          return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
           return outputs[a.id] ?? { extracts: {}, summary: null, map: null, study: null, info: null };
         case "lesson_process": {

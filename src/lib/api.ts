@@ -145,11 +145,10 @@ export type JobEvent =
 
 export const ai = {
   settings: () => invoke<{ hasKey: boolean; models: Models; whisperReady: boolean }>("ai_settings_get"),
-  whisperDownload(onMessage: (m: string) => void) {
-    const channel = new Channel<string>();
-    channel.onmessage = onMessage;
-    return invoke<void>("whisper_download", { channel });
-  },
+  /** Starts the download in the background; follow it with `whisperStatus`. */
+  whisperDownload: () => invoke<void>("whisper_download"),
+  whisperStatus: () => invoke<{ ready: boolean; downloading: string | null; error: string | null }>("whisper_status"),
+  whisperCancel: () => invoke<void>("whisper_cancel"),
   whisperDelete: () => invoke<void>("whisper_delete"),
   setSettings: (key: string | null, models: Models) => invoke<void>("ai_settings_set", { key, models }),
   check: (key: string | null) => invoke<void>("ai_check", { key }),

@@ -93,6 +93,8 @@ pub fn run() {
             reveal,
             log_reveal,
             whisper_download,
+            whisper_status,
+            whisper_cancel,
             whisper_delete,
             ai_settings_get,
             ai_settings_set,

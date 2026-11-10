@@ -34,17 +34,17 @@ pub fn model_path(dir: &Path) -> PathBuf {
     dir.join(MODEL.file)
 }
 
-/// Downloads the model into `dir` (through a `.part` file, verified before the rename).
-pub async fn download(dir: &Path, notify: &(dyn Fn(String) + Send + Sync), cancel: &CancellationToken) -> Result<PathBuf> {
-    let dest = model_path(dir);
+/// Downloads `MODEL` into `dir` (through a `.part` file, verified before the rename).
+async fn download(dir: &Path, model: &ModelFile, notify: &(dyn Fn(String) + Send + Sync), cancel: &CancellationToken) -> Result<PathBuf> {
+    let dest = dir.join(model.file);
     if dest.is_file() {
         return Ok(dest);
     }
     fs::create_dir_all(dir).with_context(|| format!("creazione di {}", dir.display()))?;
-    let part = dir.join(format!("{}.part", MODEL.file));
+    let part = dir.join(format!("{}.part", model.file));
     let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(60)).build()?;
     let resp = tokio::select! {
-        r = http.get(MODEL.url).send() => r.context("download del modello di trascrizione")?,
+        r = http.get(model.url).send() => r.context("download del modello di trascrizione")?,
         _ = cancel.cancelled() => bail!("annullato"),
     };
     if !resp.status().is_success() {
@@ -72,40 +72,120 @@ pub async fn download(dir: &Path, notify: &(dyn Fn(String) + Send + Sync), cance
         got += chunk.len() as u64;
         if last.elapsed() > Duration::from_secs(1) {
             last = Instant::now();
-            notify(format!("Download del modello di trascrizione (una volta sola): {} di {} MB", mb(got), mb(MODEL.size)));
+            notify(format!("Download del modello di trascrizione (una volta sola): {} di {} MB", mb(got), mb(model.size)));
         }
     }
     out.flush()?;
     drop(out);
     let sum = format!("{:x}", hash.finalize());
-    if got != MODEL.size || sum != MODEL.sha256 {
+    if got != model.size || sum != model.sha256 {
         let _ = fs::remove_file(&part);
-        bail!("il modello di trascrizione scaricato è incompleto o danneggiato ({} di {} MB): riprova", mb(got), mb(MODEL.size));
+        bail!("il modello di trascrizione scaricato è incompleto o danneggiato ({} di {} MB): riprova", mb(got), mb(model.size));
     }
     fs::rename(&part, &dest)?;
     log::info!("modello di trascrizione scaricato in {}", dest.display());
     Ok(dest)
 }
 
-/// The model on disk and, once loaded, in memory (kept for the next lessons).
+/// What Settings shows about the model, whoever started the download.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStatus {
+    pub ready: bool,
+    /// Progress line while a download runs.
+    pub downloading: Option<String>,
+    /// Why the last download failed.
+    pub error: Option<String>,
+}
+
+/// The model on disk and, once loaded, in memory (kept for the next lessons). One download at a
+/// time, shared by Settings and by processing, and it goes on when Settings is closed.
 pub struct Loader {
     dir: PathBuf,
+    model: &'static ModelFile,
     loaded: tokio::sync::Mutex<Option<Arc<Whisper>>>,
     downloading: tokio::sync::Mutex<()>,
+    progress: std::sync::Mutex<Option<String>>,
+    error: std::sync::Mutex<Option<String>>,
+    cancel: std::sync::Mutex<Option<CancellationToken>>,
 }
 
 impl Loader {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, loaded: Default::default(), downloading: Default::default() }
+        Self::with_model(dir, &MODEL)
+    }
+
+    fn with_model(dir: PathBuf, model: &'static ModelFile) -> Self {
+        Self { dir, model, loaded: Default::default(), downloading: Default::default(), progress: Default::default(), error: Default::default(), cancel: Default::default() }
+    }
+
+    fn path(&self) -> PathBuf {
+        self.dir.join(self.model.file)
     }
 
     pub fn downloaded(&self) -> bool {
-        model_path(&self.dir).is_file()
+        self.path().is_file()
     }
 
+    pub fn status(&self) -> ModelStatus {
+        ModelStatus { ready: self.downloaded(), downloading: self.progress.lock().unwrap().clone(), error: self.error.lock().unwrap().clone() }
+    }
+
+    /// From Settings: starts the download in the background (nothing if one is running).
+    pub fn start_download(self: &Arc<Self>) {
+        if self.downloaded() || self.progress.lock().unwrap().is_some() {
+            return;
+        }
+        // Shown at once, before the task gets the lock.
+        *self.progress.lock().unwrap() = Some("Avvio del download…".into());
+        let me = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = me.download(&|_| {}, &CancellationToken::new()).await;
+        });
+    }
+
+    pub fn cancel_download(&self) {
+        if let Some(t) = &*self.cancel.lock().unwrap() {
+            t.cancel();
+        }
+    }
+
+    /// Downloads the model if missing. If another download is running, waits for it and passes
+    /// its progress on.
     pub async fn download(&self, notify: &(dyn Fn(String) + Send + Sync), cancel: &CancellationToken) -> Result<PathBuf> {
-        let _one = self.downloading.lock().await;
-        download(&self.dir, notify, cancel).await
+        let dest = self.path();
+        let _one = loop {
+            if let Ok(g) = self.downloading.try_lock() {
+                break g;
+            }
+            if let Some(p) = self.progress.lock().unwrap().clone() {
+                notify(p);
+            }
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                _ = cancel.cancelled() => bail!("annullato"),
+            }
+        };
+        if dest.is_file() {
+            *self.progress.lock().unwrap() = None;
+            return Ok(dest);
+        }
+        let token = cancel.child_token();
+        *self.cancel.lock().unwrap() = Some(token.clone());
+        *self.error.lock().unwrap() = None;
+        *self.progress.lock().unwrap() = Some("Avvio del download…".into());
+        let both = |m: String| {
+            *self.progress.lock().unwrap() = Some(m.clone());
+            notify(m);
+        };
+        let r = download(&self.dir, self.model, &both, &token).await;
+        *self.progress.lock().unwrap() = None;
+        *self.cancel.lock().unwrap() = None;
+        if let Err(e) = &r {
+            log::warn!("download del modello: {e:#}");
+            *self.error.lock().unwrap() = Some(if e.to_string() == "annullato" { "Download annullato.".into() } else { format!("{e:#}") });
+        }
+        r
     }
 
     pub async fn get(&self, notify: &(dyn Fn(String) + Send + Sync), cancel: &CancellationToken) -> Result<Arc<dyn Asr>> {
@@ -123,7 +203,7 @@ impl Loader {
     pub fn delete(&self) -> Result<()> {
         let mut g = self.loaded.try_lock().map_err(|_| anyhow!("il modello di trascrizione è in uso: riprova al termine dell'elaborazione"))?;
         *g = None;
-        let p = model_path(&self.dir);
+        let p = self.path();
         if p.exists() {
             fs::remove_file(&p).with_context(|| format!("eliminazione di {}", p.display()))?;
         }
@@ -272,6 +352,64 @@ mod tests {
 
     fn seg(start: f64, end: f64, text: &str) -> Segment {
         Segment { start, end, text: text.into() }
+    }
+
+    /// Serves `body` once, slowly (so that a download is seen running), then stops listening.
+    fn slow_server(body: Vec<u8>) -> String {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let mut b = [0u8; 4096];
+            let _ = c.read(&mut b).unwrap();
+            write!(c, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            for piece in body.chunks(body.len() / 10) {
+                c.write_all(piece).unwrap();
+                std::thread::sleep(Duration::from_millis(150));
+            }
+        });
+        format!("http://{addr}/model.bin")
+    }
+
+    #[tokio::test]
+    async fn one_shared_download() {
+        let body = vec![7u8; 100_000];
+        let sha = format!("{:x}", Sha256::digest(&body));
+        let url = slow_server(body);
+        let model: &'static ModelFile = Box::leak(Box::new(ModelFile { file: "m.bin", url: Box::leak(url.into_boxed_str()), size: 100_000, sha256: Box::leak(sha.into_boxed_str()) }));
+        let dir = tempfile::tempdir().unwrap();
+        let l = Arc::new(Loader::with_model(dir.path().to_path_buf(), model));
+        let (a, b) = (l.clone(), l.clone());
+        let first = tokio::spawn(async move { a.download(&|_| {}, &CancellationToken::new()).await });
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(l.status().downloading.is_some(), "the status is visible while downloading");
+        // A second caller (e.g. processing, or Settings opened again) waits for the same download:
+        // the server answers only once.
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let s2 = seen.clone();
+        let second = b.download(&move |m| s2.lock().unwrap().push(m), &CancellationToken::new()).await.unwrap();
+        first.await.unwrap().unwrap();
+        assert!(second.is_file());
+        assert!(!seen.lock().unwrap().is_empty(), "the waiting caller got the progress");
+        let st = l.status();
+        assert!(st.ready && st.downloading.is_none() && st.error.is_none(), "{st:?}");
+    }
+
+    #[tokio::test]
+    async fn cancelled_download_leaves_nothing() {
+        let url = slow_server(vec![1u8; 100_000]);
+        let model: &'static ModelFile = Box::leak(Box::new(ModelFile { file: "m.bin", url: Box::leak(url.into_boxed_str()), size: 100_000, sha256: "x" }));
+        let dir = tempfile::tempdir().unwrap();
+        let l = Arc::new(Loader::with_model(dir.path().to_path_buf(), model));
+        let a = l.clone();
+        let job = tokio::spawn(async move { a.download(&|_| {}, &CancellationToken::new()).await });
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        l.cancel_download();
+        assert!(job.await.unwrap().is_err());
+        let st = l.status();
+        assert!(!st.ready && st.downloading.is_none() && st.error.as_deref() == Some("Download annullato."), "{st:?}");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0, "no .part left");
     }
 
     #[test]

@@ -239,14 +239,20 @@ pub async fn ai_check(key: Option<String>) -> CmdResult<()> {
     Ok(g.check().await?)
 }
 
-/// Downloads the Whisper model now (from Settings); progress lines on `channel`.
-#[tauri::command]
-pub async fn whisper_download(state: State<'_, AppState>, channel: tauri::ipc::Channel<String>) -> CmdResult<()> {
-    let notify = move |m: String| {
-        let _ = channel.send(m);
-    };
-    state.whisper.download(&notify, &tokio_util::sync::CancellationToken::new()).await?;
-    Ok(())
+/// Starts downloading the Whisper model in the background (from Settings).
+#[tauri::command(async)]
+pub fn whisper_download(state: State<'_, AppState>) {
+    state.whisper.start_download();
+}
+
+#[tauri::command(async)]
+pub fn whisper_status(state: State<'_, AppState>) -> crate::asr::ModelStatus {
+    state.whisper.status()
+}
+
+#[tauri::command(async)]
+pub fn whisper_cancel(state: State<'_, AppState>) {
+    state.whisper.cancel_download();
 }
 
 #[tauri::command(async)]

@@ -2,7 +2,7 @@
 
 ## 0.6.0
 
-- **Trascrizione sul computer** con Whisper: gratuita, senza limiti di quota e senza inviare l'audio a Google. Il modello (574 MB) si scarica una volta sola. Gemini poi ripulisce il testo parte per parte (paragrafi, titoli, formule, interventi degli studenti); se non risponde resta il testo di Whisper con i minuti, e la ripulitura viene ritentata la volta dopo. La trascrizione con Gemini resta disponibile nelle Impostazioni.
+- **Trascrizione sul computer** con Whisper: gratuita, senza limiti di quota e senza inviare l'audio a Google. Il modello (574 MB) si scarica una volta sola, anche dalle Impostazioni; il download continua a Impostazioni chiuse e si può annullare. Gemini poi ripulisce il testo parte per parte (paragrafi, titoli, formule, interventi degli studenti); se non risponde resta il testo di Whisper con i minuti, e la ripulitura viene ritentata la volta dopo. La trascrizione con Gemini resta disponibile nelle Impostazioni.
 - **Modello di riserva**: quando Google risponde due volte che il modello è sovraccarico, la richiesta passa a `gemini-3.5-flash-lite` (modificabile nelle Impostazioni) e l'app lo segnala.
 
 ## 0.5.1

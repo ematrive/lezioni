@@ -67,23 +67,37 @@ function GeminiSettings() {
   const [models, setModels] = useState<Models>({ engine: "local", transcribe: "", generate: "", fallback: "" });
   const [state, setState] = useState<"" | "checking" | "ok">("");
   const [whisperReady, setWhisperReady] = useState(false);
+  // The download runs in the backend (it goes on with Settings closed): ask how it is going.
   const [download, setDownload] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const refresh = () =>
+    ai
+      .whisperStatus()
+      .then((s) => {
+        setWhisperReady(s.ready);
+        setDownload(s.downloading);
+        setDownloadError(s.error);
+      })
+      .catch(() => {});
   useEffect(() => {
     ai.settings().then((s) => {
       setHasKey(s.hasKey);
       setModels(s.models);
-      setWhisperReady(s.whisperReady);
     });
+    refresh();
   }, []);
+  useEffect(() => {
+    if (!download) return;
+    const t = setInterval(refresh, 1000);
+    return () => clearInterval(t);
+  }, [download]);
   const getModel = async () => {
-    setDownload("Avvio del download…");
     try {
-      await ai.whisperDownload(setDownload);
-      setWhisperReady(true);
+      await ai.whisperDownload();
     } catch (e) {
       toast(toAppError(e).message, "error");
     }
-    setDownload(null);
+    refresh();
   };
   const dropModel = async () => {
     try {
@@ -144,11 +158,17 @@ function GeminiSettings() {
       {models.engine === "local" && (
         <div className="flex items-center gap-2 text-sm" data-whisper>
           <span className="min-w-0 flex-1 text-zinc-600 dark:text-zinc-400">
-            {download ?? (whisperReady ? "Modello di trascrizione scaricato (574 MB)." : "Il modello di trascrizione (574 MB) si scarica una volta sola, alla prima elaborazione o adesso.")}
+            {download ?? (whisperReady ? "Modello di trascrizione scaricato (574 MB)." : "Il modello di trascrizione (574 MB) si scarica una volta sola, alla prima elaborazione o adesso. Puoi chiudere le Impostazioni: il download continua.")}
+            {!download && downloadError && <span className="block text-xs text-red-600">{downloadError}</span>}
           </span>
           {!whisperReady && !download && (
             <button className="btn" onClick={getModel}>
               <Download className="size-4" /> Scarica ora
+            </button>
+          )}
+          {download && (
+            <button className="btn" onClick={() => ai.whisperCancel().then(refresh)}>
+              Annulla
             </button>
           )}
           {whisperReady && (

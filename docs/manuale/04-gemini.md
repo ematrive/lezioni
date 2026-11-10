@@ -27,7 +27,7 @@ Sotto la barra, una seconda riga dice cosa sta aspettando (il caricamento con i 
 
 ### La trascrizione sul computer
 
-- La prima volta l'app scarica il **modello di trascrizione** (574 MB, una volta sola). Puoi scaricarlo prima da **Impostazioni → Trascrizione delle registrazioni → Scarica ora**.
+- La prima volta l'app scarica il **modello di trascrizione** (574 MB, una volta sola). Puoi scaricarlo prima da **Impostazioni → Trascrizione delle registrazioni → Scarica ora**: il download continua anche se chiudi le Impostazioni, e riaprendole vedi a che punto è (o lo annulli).
 - Su un Mac con chip Apple (M1 e successivi) è veloce; su computer più vecchi o senza scheda grafica può richiedere quanto la registrazione stessa.
 - Se Gemini non riesce a ripulire una parte (per esempio è sovraccarico), resta il testo di Whisper, già con i minuti, e l'app lo segnala: la ripulitura viene ritentata alla prossima elaborazione.
 - Nelle Impostazioni puoi scegliere invece **Con Gemini**: l'audio viene inviato a Google, che riconosce anche chi parla, ma usa molta quota e col piano gratuito a volte è sovraccarico.
