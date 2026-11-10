@@ -256,6 +256,7 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
             let _ = ch.send(JobEvent::Step { done, total, message });
         };
         let detail = move |message: String| {
+            log::info!("{message}");
             let _ = ch2.send(JobEvent::Detail { message });
         };
         let ctx = pipeline::Ctx { ai: &ai, archive: &archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: pipeline::WINDOW_SECS };

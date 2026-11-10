@@ -266,8 +266,13 @@ impl Gemini {
             body["systemInstruction"] = json!({ "parts": [{ "text": s }] });
         }
         let url = format!("{}/v1beta/models/{model}:generateContent", self.base);
+        let t = Instant::now();
         let v = self.post_json(&url, &body, cancel).await?;
-        parse_answer(&v)
+        let a = parse_answer(&v);
+        if let Ok(a) = &a {
+            log::info!("gemini {model}: risposta in {:.0} s, {} token in ingresso, {} in uscita, {} di ragionamento, fine {}", t.elapsed().as_secs_f64(), a.usage.prompt_token_count, a.usage.candidates_token_count, a.usage.thoughts_token_count, a.finish);
+        }
+        a
     }
 
     /// Tokens of a prompt (used to measure audio: 32 tokens per second).
