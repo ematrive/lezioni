@@ -1,0 +1,201 @@
+//! Splits a recording into WAV parts (16 kHz, mono, 16 bit) of a fixed length, decoding with
+//! Symphonia (pure Rust: m4a/AAC, mp3, wav, flac, ogg/vorbis; the audio track of mp4/mov).
+//!
+//! Why: Gemini has no start/end offset for audio parts, so asking for a 20-minute window of a
+//! whole uploaded file is billed as the whole file every time. Sending parts bills each minute
+//! once. 16 kHz mono is what Gemini downsamples to anyway (and plenty for speech): 32 KB/s,
+//! about 38 MB per 20 minutes.
+use std::fs::File;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, anyhow, bail};
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
+use symphonia::core::errors::Error as SymError;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use tokio_util::sync::CancellationToken;
+
+pub const RATE: u32 = 16_000;
+
+#[derive(Debug, Clone)]
+pub struct Chunk {
+    pub path: PathBuf,
+    /// Start in the original recording, seconds.
+    pub start: u64,
+    pub secs: f64,
+}
+
+/// Linear-interpolation resampler to `RATE`, fed in blocks (keeps the tail between calls).
+struct Resampler {
+    step: f64,
+    t: f64,
+    buf: Vec<f32>,
+}
+
+impl Resampler {
+    fn new(from: u32) -> Self {
+        Self { step: from as f64 / RATE as f64, t: 0.0, buf: Vec::new() }
+    }
+
+    fn push(&mut self, input: &[f32], out: &mut Vec<i16>) {
+        self.buf.extend_from_slice(input);
+        while self.t + 1.0 < self.buf.len() as f64 {
+            let i = self.t as usize;
+            let f = (self.t - i as f64) as f32;
+            let v = self.buf[i] * (1.0 - f) + self.buf[i + 1] * f;
+            out.push((v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16);
+            self.t += self.step;
+        }
+        let drop = (self.t as usize).min(self.buf.len());
+        self.buf.drain(..drop);
+        self.t -= drop as f64;
+    }
+}
+
+struct Writer {
+    dir: PathBuf,
+    window: u64,
+    chunks: Vec<Chunk>,
+    current: Option<(hound::WavWriter<std::io::BufWriter<File>>, u64)>,
+}
+
+impl Writer {
+    fn spec() -> hound::WavSpec {
+        hound::WavSpec { channels: 1, sample_rate: RATE, bits_per_sample: 16, sample_format: hound::SampleFormat::Int }
+    }
+
+    fn write(&mut self, samples: &[i16]) -> Result<()> {
+        let per_chunk = self.window * RATE as u64;
+        for &s in samples {
+            if self.current.as_ref().is_none_or(|(_, n)| *n >= per_chunk) {
+                self.close()?;
+                let i = self.chunks.len() + 1;
+                let path = self.dir.join(format!("parte-{i:02}.wav"));
+                let w = hound::WavWriter::create(&path, Self::spec()).context("scrittura di una parte della registrazione")?;
+                self.chunks.push(Chunk { path, start: (i as u64 - 1) * self.window, secs: 0.0 });
+                self.current = Some((w, 0));
+            }
+            let (w, n) = self.current.as_mut().unwrap();
+            w.write_sample(s)?;
+            *n += 1;
+        }
+        Ok(())
+    }
+
+    fn close(&mut self) -> Result<()> {
+        if let Some((w, n)) = self.current.take() {
+            w.finalize()?;
+            if let Some(c) = self.chunks.last_mut() {
+                c.secs = n as f64 / RATE as f64;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Decodes `path` and writes parts of `window` seconds into `out_dir`. Errors mean the format
+/// is not supported here (the caller can fall back to sending the whole file).
+pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToken) -> Result<Vec<Chunk>> {
+    std::fs::create_dir_all(out_dir)?;
+    let file = File::open(path).with_context(|| format!("apertura di {}", path.display()))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default()).map_err(|e| anyhow!("formato non riconosciuto: {e}"))?;
+    let mut format = probed.format;
+    // The first track we can decode (a video file also has a video track).
+    let (track_id, mut decoder, rate) = format
+        .tracks()
+        .iter()
+        .filter(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+        .find_map(|t| {
+            let d = symphonia::default::get_codecs().make(&t.codec_params, &DecoderOptions::default()).ok()?;
+            Some((t.id, d, t.codec_params.sample_rate))
+        })
+        .ok_or_else(|| anyhow!("nessuna traccia audio decodificabile"))?;
+    let mut resampler: Option<Resampler> = rate.map(Resampler::new);
+    let mut w = Writer { dir: out_dir.to_path_buf(), window, chunks: Vec::new(), current: None };
+    let mut mono = Vec::new();
+    let mut out = Vec::new();
+    let mut decoded_any = false;
+    loop {
+        if cancel.is_cancelled() {
+            bail!("annullato");
+        }
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(SymError::ResetRequired) => break,
+            Err(e) => return Err(anyhow!("lettura della registrazione: {e}")),
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let buf = match decoder.decode(&packet) {
+            Ok(b) => b,
+            // A damaged packet: skip it, as players do.
+            Err(SymError::DecodeError(_)) => continue,
+            Err(e) => return Err(anyhow!("decodifica della registrazione: {e}")),
+        };
+        let spec = *buf.spec();
+        let ch = spec.channels.count().max(1);
+        let mut sb = SampleBuffer::<f32>::new(buf.capacity() as u64, spec);
+        sb.copy_interleaved_ref(buf);
+        mono.clear();
+        mono.extend(sb.samples().chunks(ch).map(|f| f.iter().sum::<f32>() / ch as f32));
+        let rs = resampler.get_or_insert_with(|| Resampler::new(spec.rate));
+        out.clear();
+        rs.push(&mono, &mut out);
+        w.write(&out)?;
+        decoded_any = true;
+    }
+    w.close()?;
+    if !decoded_any || w.chunks.is_empty() {
+        bail!("la registrazione è vuota o non decodificabile");
+    }
+    Ok(w.chunks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 44.1 kHz stereo WAV of `secs` seconds (a 440 Hz tone).
+    pub fn tone(path: &Path, secs: u32) {
+        let spec = hound::WavSpec { channels: 2, sample_rate: 44_100, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+        let mut w = hound::WavWriter::create(path, spec).unwrap();
+        for i in 0..44_100 * secs {
+            let v = ((i as f32 * 440.0 * std::f32::consts::TAU / 44_100.0).sin() * 8000.0) as i16;
+            w.write_sample(v).unwrap();
+            w.write_sample(v).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+
+    #[test]
+    fn splits_in_parts() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("lezione.wav");
+        tone(&src, 25);
+        let parts = split(&src, &t.path().join("parti"), 10, &CancellationToken::new()).unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts.iter().map(|c| c.start).collect::<Vec<_>>(), [0, 10, 20]);
+        assert!((parts[0].secs - 10.0).abs() < 0.01 && (parts[2].secs - 5.0).abs() < 0.05, "{parts:?}");
+        let r = hound::WavReader::open(&parts[1].path).unwrap();
+        assert_eq!(r.spec().sample_rate, RATE);
+        assert_eq!(r.spec().channels, 1);
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("rotto.m4a");
+        std::fs::write(&src, b"non sono audio").unwrap();
+        assert!(split(&src, &t.path().join("p"), 10, &CancellationToken::new()).is_err());
+    }
+}

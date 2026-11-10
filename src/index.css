@@ -1,0 +1,89 @@
+@import "tailwindcss";
+@import "./lib/prose.css";
+
+/* Dark mode follows the .dark class on <html> (light / dark / system, see src/lib/theme.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  font-size: 14px;
+  user-select: none;
+}
+input, textarea, select { user-select: text; }
+
+/* Short, quiet motion: overlays pop in, banners slide down, toasts fade. Off with «Riduci movimento». */
+@keyframes c-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@keyframes c-fade { from { opacity: 0; } }
+@keyframes c-slide-down { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes c-rise { from { opacity: 0; transform: translateY(8px); } }
+.anim-pop { animation: c-pop 120ms ease-out; }
+.anim-fade { animation: c-fade 140ms ease-out; }
+.anim-slide-down { animation: c-slide-down 160ms ease-out; }
+.anim-toast { animation: c-rise 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+@layer components {
+/* Plain tables with user-resizable columns (see useTableColumns). */
+.rtable {
+  table-layout: fixed;
+  min-width: 100%;
+}
+.rtable > thead > tr > th {
+  position: relative;
+}
+.rtable > * > tr > th,
+.rtable > * > tr > td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field {
+  @apply w-full rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 outline-none
+    focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20
+    dark:border-zinc-700 dark:bg-zinc-900;
+}
+/* Native selects ignore padding on macOS (shorter than inputs): draw our own chevron so
+   every .field has the same height. */
+select.field {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 14px;
+}
+input[type="number"].field { appearance: textfield; -moz-appearance: textfield; }
+input[type="number"].field::-webkit-inner-spin-button,
+input[type="number"].field::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.label { @apply mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400; }
+.btn {
+  @apply inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 font-medium
+    hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800;
+}
+.btn-primary { @apply border-sky-600 bg-sky-600 text-white hover:bg-sky-700 dark:border-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700; }
+.btn-danger { @apply border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950; }
+}
+
+/* Section reached from the manual's table of contents or a "?" button. */
+@keyframes help-flash { from { background: rgb(14 165 233 / 0.25); } to { background: transparent; } }
+.help-flash { animation: help-flash 1.5s ease-out; border-radius: 4px; }
+
+/* Drag & drop between connections (src/lib/dnd.tsx). */
+body.dnd-active,
+body.dnd-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/* Impostazioni → Editor: size and font of the code editors (CodeMirror). */
+.cm-editor { font-size: var(--editor-font-size, inherit); }
+html.editor-font .cm-editor .cm-scroller { font-family: var(--editor-font); }

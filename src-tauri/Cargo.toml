@@ -1,0 +1,43 @@
+[package]
+name = "lezioni"
+version = "0.4.0"
+description = "Lezioni: registrazioni, appunti e sintesi dei corsi"
+edition = "2024"
+
+[lib]
+name = "lezioni_lib"
+# Desktop only: no staticlib/cdylib (mobile), which makes linking much heavier.
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+trash = "=5.2.9"
+log = "0.4"
+tokio = { version = "1", features = ["rt", "macros", "time", "fs", "sync"] }
+tokio-util = { version = "0.7", features = ["io"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream"] }
+base64 = "0.22"
+keyring = "4.2.0"
+futures = "0.3"
+# Decoding of recordings (pure Rust, no ffmpeg) to split them before upload.
+symphonia = { version = "0.5", default-features = false, features = ["aac", "isomp4", "mp3", "flac", "wav", "pcm", "ogg", "vorbis", "adpcm"] }
+hound = "3.5"
+regex = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+env_logger = "0.11"
+
+[dev-dependencies]
+tempfile = "3"
