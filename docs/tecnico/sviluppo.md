@@ -11,6 +11,20 @@ pnpm install
 pnpm tauri dev
 ```
 
+### Su Mac, da zero
+
+```bash
+xcode-select --install                     # compilatore e git di Apple
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust (opzioni predefinite)
+brew install node@24 pnpm                  # oppure Node 24 da nodejs.org e `npm i -g pnpm`
+git clone https://github.com/ematrive/lezioni.git ~/lezioni
+cd ~/lezioni && pnpm install && pnpm tauri dev
+```
+
+La prima compilazione di Rust richiede qualche minuto, le successive pochi secondi. Le modifiche all'interfaccia si vedono subito; quelle in `src-tauri` ricompilano e riavviano l'app da sole. I log escono nel Terminale. Per aggiornare: `git pull`, poi di nuovo `pnpm tauri dev` (dopo `pnpm install` se è cambiato `package.json`).
+
+L'app in sviluppo usa le stesse impostazioni e la stessa chiave nel Portachiavi dell'app installata (stesso identificatore): macOS può chiedere il permesso di leggere la chiave, scegli **Consenti sempre**.
+
 Sul computer di sviluppo principale compila Rust con il limite di memoria (vedi `CLAUDE.md`):
 
 ```bash
