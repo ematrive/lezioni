@@ -279,7 +279,7 @@ export function LessonView({
 function ProcessMenu({ main, disabled, onForce }: { main: React.ReactNode; disabled: boolean; onForce: () => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative flex">
+    <div className="relative flex [&>button:first-child]:rounded-r-none">
       {main}
       <button className="btn btn-primary -ml-px rounded-l-none border-l-sky-700 px-1.5" disabled={disabled} onClick={() => setOpen(!open)} title="Altre opzioni">
         <ChevronDown className="size-4" />
@@ -357,7 +357,8 @@ function KindIcon({ kind, className }: { kind: SourceKind; className?: string })
 function Sources({ lesson, busy, onPick, onPasteText, onChanged }: { lesson: Lesson; busy: boolean; onPick: () => void; onPasteText: () => void; onChanged: (l: Lesson) => void }) {
   const [notes, setNotes] = useState(lesson.notes);
   const remove = async (s: Source) => {
-    const ok = await ask(`Spostare nel Cestino «${s.originalName}»?`, { title: "Rimuovi fonte", kind: "warning", okLabel: "Rimuovi", cancelLabel: "Annulla" });
+    const extracted = s.kind === "audio" || s.kind === "video" ? " e la sua trascrizione" : s.kind === "text" ? "" : " e il testo estratto";
+    const ok = await ask(`Rimuovere «${s.originalName}»${extracted} dalla lezione?\n\nVa nel Cestino la copia che Lezioni tiene nella cartella dell'archivio: il file originale che avevi aggiunto resta dov'era.`, { title: "Rimuovi fonte", kind: "warning", okLabel: "Rimuovi", cancelLabel: "Annulla" });
     if (!ok) return;
     try {
       onChanged(await api.removeSource(lesson.id, s.id));

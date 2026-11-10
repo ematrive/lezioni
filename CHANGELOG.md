@@ -5,6 +5,8 @@
 - **Elaborazione più chiara**: la barra avanza parte per parte e una seconda riga dice cosa sta succedendo (caricamento su Gemini con i MB inviati, attesa della risposta, nuovi tentativi quando Gemini è occupato) e da quanto tempo.
 - Niente più attese senza fine: se Gemini non risponde in 10 minuti l'app riprova una sola volta, e un caricamento fermo per un minuto e mezzo si interrompe con un messaggio. Prima un'attesa poteva durare più di un'ora senza segnali.
 - Un errore interno ora chiude l'elaborazione con un messaggio, invece di lasciare la barra ferma.
+- Rimuovere una fonte spiega cosa succede: va nel Cestino la copia nell'archivio, l'originale resta dov'era.
+- Corretto l'angolo destro di **Elabora con Gemini** accanto alla freccia del menu.
 - **File di log** (Impostazioni → Diagnostica → Mostra il file di log) da allegare alle segnalazioni.
 
 ## 0.5.0

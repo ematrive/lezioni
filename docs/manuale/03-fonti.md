@@ -30,7 +30,7 @@ Con **⌘V** (Mac) o **Ctrl+V** (Windows), fuori da un campo di testo:
 | Testo | txt, md | Usato così com'è |
 | Office | docx, pptx, … | Non vengono letti: esportali in PDF e aggiungi il PDF |
 
-Le fonti sono raggruppate per tipo. Le registrazioni si ascoltano direttamente nella pagina; le foto si vedono in miniatura. Il pulsante con la freccia apre il file con l'app del sistema, il cestino lo rimuove: il file va nel Cestino del computer e il testo che ne era stato estratto viene cancellato.
+Le fonti sono raggruppate per tipo. Le registrazioni si ascoltano direttamente nella pagina; le foto si vedono in miniatura. Il pulsante con la freccia apre il file con l'app del sistema, il cestino lo rimuove dalla lezione: va nel Cestino del computer la **copia** che Lezioni tiene nell'archivio (il file originale che avevi trascinato resta dov'era) e la trascrizione o il testo estratto vengono cancellati, quindi rimuovere una registrazione già trascritta significa doverla ritrascrivere se la aggiungi di nuovo.
 
 ![Le fonti di una lezione](img/fonti.png)
 
