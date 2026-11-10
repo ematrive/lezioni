@@ -10,7 +10,7 @@ Lezioni è un'app desktop **Tauri 2**: un backend **Rust** che legge e scrive l'
                 │ comandi Tauri, Channel per l'avanzamento
 ┌───────────────▼──────────────── Rust (src-tauri/src) ────────┐
 │ commands.rs → library.rs (archivio su cartella)               │
-│               pipeline.rs ─ audio.rs (divisione registrazioni)│
+│               pipeline.rs ─ audio.rs (divisione) ─ asr.rs (Whisper)│
 │                           └ ai/ (trait Ai, gemini.rs, prompts)│
 │               search.rs · share.rs · chat.rs                  │
 │ secrets.rs (portachiavi) · settings.rs · jobs.rs              │
@@ -46,11 +46,15 @@ La fonte di verità è una **cartella scelta dall'utente**, sincronizzabile con 
 
 Tutti i comandi sono `async` o `#[tauri::command(async)]`: nessuno gira sul thread principale, che bloccherebbe la finestra su un archivio lento.
 
-## Elaborazione con Gemini (`pipeline.rs`)
+## Elaborazione (`pipeline.rs`)
 
 1. **Estrazione per fonte** → `estratti/<file>.md`, riusata nelle elaborazioni successive (salvo *Rielabora anche le fonti*):
-   - **registrazioni e video**: `audio.rs` decodifica con Symphonia (m4a/AAC, mp3, wav, flac, ogg/vorbis, audio di mp4/mov), ricampiona a 16 kHz mono e scrive parti WAV di `WINDOW_SECS` (20 minuti). Ogni parte va a Gemini (inline se piccola, altrimenti Files API) con `prompts::transcribe_clip`; i tempi `[mm:ss]` relativi alla parte vengono spostati con `shift_times`. Ogni parte è salvata appena pronta in `estratti/.parti/`, così dopo un errore si riprende da lì. Motivo: l'API non ha offset di inizio/fine per l'audio, quindi chiedere finestre di un file intero farebbe pagare il file intero a ogni finestra;
-   - **formati non decodificabili** (opus, amr…): file intero con finestre di tempo nel prompt (`transcribe_whole`, durata da `countTokens`: 32 token/s di audio), con avviso;
+   - **registrazioni e video**: `audio.rs` decodifica con Symphonia (m4a/AAC, mp3, wav, flac, ogg/vorbis, audio di mp4/mov), ricampiona a 16 kHz mono e scrive parti WAV di `WINDOW_SECS` (20 minuti). Poi, secondo `Models.engine`:
+     - **`local`** (predefinito): `asr.rs` trascrive ogni parte con whisper.cpp (`whisper-rs`, Metal su macOS; modello `ggml-large-v3-turbo-q5_0.bin` scaricato in `app_data_dir()/modelli` e verificato con SHA-256, tenuto in memoria da `asr::Loader`). I segmenti diventano paragrafi `[hh:mm:ss]` assoluti (`asr::paragraphs`, che scarta le frasi «allucinate» sul silenzio) salvati in `.parti/NN.whisper.md`; Gemini li ripulisce (`prompts::clean_transcript`, solo testo) e il risultato va in `.parti/NN.md`. La ripulitura della parte N corre mentre Whisper fa la N+1 (`futures::join!`). Una ripulitura fallita, troncata o non plausibile (`plausible_cleanup`: metà delle parole e dei tempi, tempi dentro la parte) lascia il testo di Whisper con un avviso e l'estratto non viene salvato, così il giro dopo rifà solo la ripulitura;
+     - **`gemini`**: ogni parte va a Gemini (inline se piccola, altrimenti Files API) con `prompts::transcribe_clip`; i tempi `[mm:ss]` relativi alla parte vengono spostati con `shift_times`. Motivo delle parti: l'API non ha offset di inizio/fine per l'audio, quindi chiedere finestre di un file intero farebbe pagare il file intero a ogni finestra.
+
+     Ogni parte è salvata appena pronta in `estratti/.parti/`, così dopo un errore si riprende da lì;
+   - **formati non decodificabili** (opus, amr…): con Whisper errore chiaro (convertire in m4a/mp3); con Gemini file intero con finestre di tempo nel prompt (`transcribe_whole`, durata da `countTokens`: 32 token/s di audio), con avviso;
    - **foto e PDF**: inline o Files API con `prompts::IMAGE` / `prompts::PDF`;
    - **testo**: copiato così com'è;
    - **Office**: saltato con avviso (Gemini non lo legge).
@@ -58,11 +62,11 @@ Tutti i comandi sono `async` o `#[tauri::command(async)]`: nessuno gira sul thre
 3. Se una **registrazione** non è stata trascritta, l'elaborazione si ferma prima della sintesi.
 4. **Sintesi**: un'unica richiesta con tutti gli estratti codificati `[F1]`, `[F2]`… e le note, con output JSON vincolato da `prompts::generate_schema()` (`responseJsonSchema`): `titolo`, `sintesi` (Markdown con riferimenti `[F1 00:12:30]`), `mappa` (albero a profondità fissa), `glossario`, `flashcard`, `domande_esame`. `info.json` registra modello, token usati e la corrispondenza codice → fonte.
 
-L'avanzamento arriva all'interfaccia su un `Channel<JobEvent>` (`Step`, `Done`, `Failed`); `jobs.rs` tiene i token di annullamento.
+L'avanzamento arriva all'interfaccia su un `Channel<JobEvent>` (`Step` con avanzamento frazionario, `Detail` per la riga di stato, `Done`, `Failed`); `jobs.rs` tiene i token di annullamento.
 
 ### Client Gemini (`ai/gemini.rs`)
 
-REST `v1beta` con `generateContent` (ancora supportato; Google raccomanda la nuova Interactions API, che però al momento della scrittura non documentava il formato REST della risposta). Upload resumable della Files API (file fino a 2 GB, conservati 48 ore e cancellati dall'app appena usati). Su 429 e 5xx riprova con il ritardo indicato dal server (`RetryInfo`) o con backoff esponenziale, ma non insiste sulla quota giornaliera. La pipeline parla col trait `Ai`, così nei test c'è un modello finto.
+REST `v1beta` con `generateContent` (ancora supportato; Google raccomanda la nuova Interactions API, che però al momento della scrittura non documentava il formato REST della risposta). Upload resumable della Files API (file fino a 2 GB, conservati 48 ore e cancellati dall'app appena usati). Su 429 e 5xx riprova con il ritardo indicato dal server (`RetryInfo`) o con backoff esponenziale, ma non insiste sulla quota giornaliera. Dopo due 503 di fila passa al modello di riserva (`Models.fallback`, `Answer.model` dice chi ha risposto). Timeout di 10 minuti per chiamata, ritentato una volta; un caricamento fermo per 90 s si interrompe. Ogni chiamata è registrata nel log con durata e token. La pipeline parla col trait `Ai`, così nei test c'è un modello finto.
 
 ## Ricerca (`search.rs`)
 

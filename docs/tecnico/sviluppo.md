@@ -4,6 +4,7 @@
 
 - Node 24 e pnpm (versione in `package.json`, `packageManager`);
 - Rust stabile;
+- `cmake` e un compilatore C++ per whisper.cpp (su Mac: `xcode-select --install` e `brew install cmake`). I binding di `whisper-rs-sys` sono quelli inclusi nel crate (`WHISPER_DONT_GENERATE_BINDINGS` in `src-tauri/.cargo/config.toml`), quindi non serve libclang;
 - su Linux le librerie di Tauri: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`.
 
 ```bash
@@ -16,7 +17,7 @@ pnpm tauri dev
 ```bash
 xcode-select --install                     # compilatore e git di Apple
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust (opzioni predefinite)
-brew install node@24 pnpm                  # oppure Node 24 da nodejs.org e `npm i -g pnpm`
+brew install node@24 pnpm cmake            # oppure Node 24 da nodejs.org e `npm i -g pnpm`
 git clone https://github.com/ematrive/lezioni.git ~/lezioni
 cd ~/lezioni && pnpm install && pnpm tauri dev
 ```
@@ -37,6 +38,7 @@ systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0 -p CPUQuota=150% -
 |---|---|
 | `cd src-tauri && cargo test` | Archivio, divisione dell'audio, pipeline con un modello finto (parti, ripresa dopo errori, testi troncati, fonti escluse), ricerca, pacchetti (andata e ritorno, duplicati, percorsi malevoli, sostituzione fallita), Markdown, Anki, chat |
 | `cargo test --test decode` | Divisione di m4a/AAC, mp3, ogg e dell'audio di mp4 creati con ffmpeg (saltato se ffmpeg manca); opus deve fallire |
+| `LEZIONI_IT_WHISPER=/percorso/ggml-tiny-q5_1.bin cargo test --test whisper_it -- --nocapture` | Whisper vero su un tono o su `LEZIONI_IT_AUDIO`: stampa i paragrafi e il tempo impiegato. Il modello `tiny` (32 MB) basta per provare il codice; la qualità vera è quella di large-v3-turbo |
 | `LEZIONI_IT=1 GEMINI_API_KEY=… cargo test --test gemini_it -- --nocapture` | L'API vera di Gemini: upload, countTokens, trascrizione di una parte, output JSON con lo schema vero. `LEZIONI_IT_AUDIO=/percorso/reg.m4a` per una registrazione vera, `LEZIONI_IT_MODEL` per un altro modello. Consuma un po' di quota |
 | `pnpm build` | TypeScript e build dell'interfaccia |
 | `pnpm test:ui` | Tutta l'interfaccia nel browser (Playwright) con il backend finto `scripts/smoke/mock.js`: prima apertura, corsi e lezioni, trascina e incolla, elaborazione, schede, domande, esportazione HTML e PDF, ricerca, importazione. Screenshot in `scripts/smoke/out` |

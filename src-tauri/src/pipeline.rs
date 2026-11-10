@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ai::gemini::{INLINE_MAX, mime_for};
 use crate::ai::{Ai, Part, Request, Usage, prompts};
+use crate::asr::{self, Asr};
 use crate::audio;
 use crate::library::{EXTRACTS_DIR, GENERATED_DIR, Lesson, Library, SOURCES_DIR, Source, SourceKind};
 
@@ -27,16 +28,36 @@ const AUDIO_TOKENS_PER_SEC: u64 = 32;
 /// Video: ~258 tokens per frame at 1 fps plus the audio track.
 const VIDEO_TOKENS_PER_SEC: u64 = 290;
 
+/// Who turns recordings into text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    /// Whisper on the computer, then Gemini cleans the text.
+    #[default]
+    Local,
+    /// The audio goes to Gemini.
+    Gemini,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Models {
+    #[serde(default)]
+    pub engine: Engine,
     pub transcribe: String,
     pub generate: String,
+    /// Model used when the asked one is overloaded (503); empty = none.
+    #[serde(default = "default_fallback")]
+    pub fallback: String,
+}
+
+fn default_fallback() -> String {
+    "gemini-3.5-flash-lite".into()
 }
 
 impl Default for Models {
     fn default() -> Self {
-        Self { transcribe: "gemini-3.8-flash".into(), generate: "gemini-3.8-flash".into() }
+        Self { engine: Engine::Local, transcribe: "gemini-3.8-flash".into(), generate: "gemini-3.8-flash".into(), fallback: default_fallback() }
     }
 }
 
@@ -216,6 +237,10 @@ pub struct Ctx<'a, A: Ai> {
     pub detail: &'a (dyn Fn(String) + Send + Sync),
     /// Length of a transcription part (`WINDOW_SECS`; shorter in tests).
     pub window: u64,
+    /// Speech recognition on the computer; None = recordings go to Gemini.
+    pub asr: Option<Arc<dyn Asr>>,
+    /// Requests answered by the fallback model: (count, model).
+    pub fallbacks: Mutex<(u32, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -236,7 +261,52 @@ fn kind_label(k: SourceKind) -> &'static str {
     }
 }
 
+/// Whisper's initial prompt: context that steers spelling of names and terms (short: Whisper
+/// keeps only the last ~220 tokens).
+fn asr_prompt(course: &str, title: &str, notes: &str) -> String {
+    let notes: String = notes.split_whitespace().take(40).collect::<Vec<_>>().join(" ");
+    let mut p = format!("Lezione universitaria di {course}: {title}.");
+    if !notes.is_empty() {
+        p.push(' ');
+        p.push_str(&notes);
+    }
+    p
+}
+
+/// True when processing will transcribe at least one recording (to get Whisper ready first).
+pub fn needs_transcription(lesson: &Lesson, force: bool) -> bool {
+    lesson.meta.sources.iter().any(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video) && !s.omitted && (force || !lesson.path.join(extract_rel(s)).is_file()))
+}
+
+/// Times `[hh:mm:ss]` in a text, in seconds.
+fn times(text: &str) -> Vec<u64> {
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\[(\d{2}):(\d{2}):(\d{2})\]").unwrap());
+    RE.captures_iter(text).map(|c| c[1].parse::<u64>().unwrap_or(0) * 3600 + c[2].parse::<u64>().unwrap_or(0) * 60 + c[3].parse::<u64>().unwrap_or(0)).collect()
+}
+
+/// A cleaned transcript must keep the content and the times of the raw one: at least half of
+/// the words and of the times, all times inside the part (a few seconds of slack).
+fn plausible_cleanup(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
+    let words = |t: &str| t.split_whitespace().count();
+    let (rt, ct) = (times(raw), times(cleaned));
+    words(cleaned) * 2 >= words(raw) && ct.len() * 2 >= rt.len() && ct.iter().all(|&t| t + 5 >= start && t <= end + 5)
+}
+
+/// What a part needs: nothing (already cleaned) or the cleanup of Whisper's text.
+enum RawPart {
+    Done(String),
+    Raw(String),
+}
+
 impl<A: Ai> Ctx<'_, A> {
+    fn note_fallback(&self, a: &crate::ai::Answer) {
+        if !a.model.is_empty() {
+            let mut f = self.fallbacks.lock().unwrap();
+            f.0 += 1;
+            f.1 = a.model.clone();
+        }
+    }
+
     fn check(&self) -> Result<()> {
         if self.cancel.is_cancelled() { bail!("annullato") } else { Ok(()) }
     }
@@ -257,6 +327,7 @@ impl<A: Ai> Ctx<'_, A> {
         let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![part, Part::Text(prompt)], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
         (self.detail)("In attesa della risposta di Gemini…".into());
         let a = self.ai.generate(&self.models.transcribe, &req, self.cancel).await?;
+        self.note_fallback(&a);
         usage.add(&a.usage);
         let t = a.text.trim();
         Ok((if t == "[SILENZIO]" { String::new() } else { t.to_string() }, a.finish != "MAX_TOKENS"))
@@ -274,8 +345,12 @@ impl<A: Ai> Ctx<'_, A> {
         let (p, d, c, w) = (path.to_path_buf(), tmp.clone(), self.cancel.clone(), self.window);
         let split = tokio::task::spawn_blocking(move || audio::split(&p, &d, w, &c)).await?;
         let result = match split {
-            Ok(chunks) => self.transcribe_chunks(lesson_id, s, &chunks, step, usage, warnings).await,
+            Ok(chunks) => match &self.asr {
+                Some(asr) => self.transcribe_local(asr, lesson_id, s, &chunks, step, usage, warnings).await,
+                None => self.transcribe_chunks(lesson_id, s, &chunks, step, usage, warnings).await,
+            },
             Err(e) if e.to_string() == "annullato" => Err(e),
+            Err(e) if self.asr.is_some() => Err(anyhow!("non riesco a leggere l'audio ({e:#}): convertila in m4a o mp3 e aggiungila di nuovo, oppure scegli la trascrizione con Gemini nelle Impostazioni")),
             Err(e) => {
                 log::warn!("{label}: {e:#}");
                 warnings.push(format!("{label}: non riesco a dividere la registrazione in parti ({e:#}), la invio intera e costa di più; convertila in m4a o mp3 per risparmiare"));
@@ -284,6 +359,128 @@ impl<A: Ai> Ctx<'_, A> {
         };
         let _ = fs::remove_dir_all(&tmp);
         result
+    }
+
+    /// Whisper on one part, in a blocking thread; its percentage goes to the detail line.
+    async fn whisper(&self, asr: &Arc<dyn Asr>, wav: &Path, prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<Vec<asr::Segment>> {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i32>();
+        let (a, w, p, c) = (asr.clone(), wav.to_path_buf(), prompt.to_string(), self.cancel.clone());
+        let mut job = tokio::task::spawn_blocking(move || a.transcribe(&w, &p, &c, &move |v| {
+            let _ = tx.send(v);
+        }));
+        loop {
+            tokio::select! {
+                r = &mut job => return r?,
+                Some(v) = rx.recv() => {
+                    let other = cleaning.lock().unwrap().map(|j| format!(" · Gemini ripulisce la parte {}", j + 1)).unwrap_or_default();
+                    (self.detail)(format!("Whisper: {v}%{other}"));
+                }
+            }
+        }
+    }
+
+    /// Part `i` from Whisper, or what was saved by an earlier run.
+    #[allow(clippy::too_many_arguments)]
+    async fn raw_part(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, step: (u32, u32), prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<RawPart> {
+        let dir = self.archive.lesson(lesson_id)?.path.join(parts_rel(s));
+        if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.md", i + 1))) {
+            return Ok(RawPart::Done(t));
+        }
+        let raw_rel = parts_rel(s).join(format!("{:02}.whisper.md", i + 1));
+        if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.whisper.md", i + 1))) {
+            return Ok(RawPart::Raw(t));
+        }
+        let c = &chunks[i];
+        let total = chunks.last().map(|c| c.start + c.secs.round() as u64).unwrap_or(0);
+        let frac = step.0 as f64 + i as f64 / chunks.len() as f64;
+        (self.progress)(frac, step.1, format!("Trascrizione sul computer di {}, parte {} di {}: {}–{} di {}", s.original_name, i + 1, chunks.len(), hms(c.start), hms(c.start + c.secs.round() as u64), hms(total)));
+        let segs = self.whisper(asr, &c.path, prompt, cleaning).await?;
+        let text = asr::paragraphs(&segs, c.start);
+        if text.trim().is_empty() {
+            // Silence: nothing to clean.
+            self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), b"")?;
+            return Ok(RawPart::Done(String::new()));
+        }
+        self.archive.write(lesson_id, &raw_rel, text.as_bytes())?;
+        Ok(RawPart::Raw(text))
+    }
+
+    /// Gemini cleans Whisper's text of part `i`: (text, saved as final, usage, warning).
+    /// On any failure the raw text is used, and the next run tries the cleanup again.
+    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String)) -> Result<(String, bool, Usage, Option<String>)> {
+        let c = &chunks[i];
+        let (start, end) = (c.start, c.start + c.secs.round() as u64);
+        let req = Request {
+            system: Some(prompts::SYSTEM.into()),
+            parts: vec![Part::Text(prompts::clean_transcript(i + 1, chunks.len(), &context.0, &context.1, &raw))],
+            max_output_tokens: Some(32_000),
+            thinking: Some("LOW"),
+            ..Default::default()
+        };
+        let not_clean = |why: String| format!("{}: parte da {} non ripulita ({why}); c'è il testo di Whisper, verrà ripulita alla prossima elaborazione", s.original_name, hms(start));
+        match self.ai.generate(&self.models.transcribe, &req, self.cancel).await {
+            Err(e) if e.to_string() == "annullato" => Err(e),
+            Err(e) => Ok((raw, false, Usage::default(), Some(not_clean(format!("{e:#}"))))),
+            Ok(a) => {
+                self.note_fallback(&a);
+                let t = a.text.trim().to_string();
+                if a.finish == "MAX_TOKENS" {
+                    Ok((raw, false, a.usage, Some(not_clean("risposta troncata".into()))))
+                } else if !plausible_cleanup(&raw, &t, start, end) {
+                    log::warn!("ripulitura scartata per {} parte {}: {} parole e {} tempi contro {} e {}", s.original_name, i + 1, t.split_whitespace().count(), times(&t).len(), raw.split_whitespace().count(), times(&raw).len());
+                    Ok((raw, false, a.usage, Some(not_clean("la risposta di Gemini aveva perso parti del testo o dei minuti".into()))))
+                } else {
+                    self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), t.as_bytes())?;
+                    Ok((t, true, a.usage, None))
+                }
+            }
+        }
+    }
+
+    /// Recording → transcript with Whisper, part by part; Gemini cleans part N while Whisper
+    /// does part N+1. Raw parts are kept (`NN.whisper.md`) until cleaned (`NN.md`).
+    #[allow(clippy::too_many_arguments)]
+    async fn transcribe_local(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
+        let lesson = self.archive.lesson(lesson_id)?;
+        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| c.meta.name).unwrap_or_default();
+        let context = (course, lesson.meta.title.clone());
+        let prompt = asr_prompt(&context.0, &context.1, &lesson.meta.notes);
+        let n = chunks.len();
+        let mut texts: Vec<String> = vec![String::new(); n];
+        let mut complete = true;
+        let cleaning = Mutex::new(None);
+        let mut pending: Option<(usize, String)> = None;
+        for i in 0..=n {
+            self.check()?;
+            let p = pending.take();
+            let next = async {
+                if i < n { self.raw_part(asr, lesson_id, s, chunks, i, step, &prompt, &cleaning).await.map(Some) } else { Ok(None) }
+            };
+            let clean = async {
+                let (j, raw) = p?;
+                *cleaning.lock().unwrap() = Some(j);
+                if i == n {
+                    (self.detail)(format!("Gemini ripulisce la parte {} di {n}…", j + 1));
+                }
+                let r = self.clean_part(lesson_id, s, chunks, j, raw, &context).await;
+                *cleaning.lock().unwrap() = None;
+                Some((j, r))
+            };
+            let (next, cleaned) = futures::join!(next, clean);
+            if let Some((j, r)) = cleaned {
+                let (t, saved, u, w) = r?;
+                usage.add(&u);
+                complete &= saved;
+                warnings.extend(w);
+                texts[j] = t;
+            }
+            match next? {
+                Some(RawPart::Done(t)) => texts[i] = t,
+                Some(RawPart::Raw(t)) => pending = Some((i, t)),
+                None => {}
+            }
+        }
+        Ok((texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"), complete))
     }
 
     async fn transcribe_chunks(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
@@ -384,6 +581,13 @@ impl<A: Ai> Ctx<'_, A> {
         }))
     }
 
+    fn fallback_warning(&self, report: &mut Report) {
+        let f = self.fallbacks.lock().unwrap();
+        if f.0 > 0 {
+            report.warnings.push(format!("Gemini era sovraccarico: {} richieste fatte con il modello di riserva {}", f.0, f.1));
+        }
+    }
+
     pub async fn run(&self, lesson_id: &str, opts: &Options) -> Result<Report> {
         let mut report = Report::default();
         let lesson = self.archive.lesson(lesson_id)?;
@@ -414,6 +618,7 @@ impl<A: Ai> Ctx<'_, A> {
             let text = if existing.is_file() && !opts.force {
                 Some(fs::read_to_string(&existing)?)
             } else {
+                let before = report.warnings.len();
                 match self.extract(&current, s, step, &mut report.usage, &mut report.warnings).await {
                     Ok(Some((t, true))) => {
                         self.archive.write(lesson_id, &extract_rel(s), t.as_bytes())?;
@@ -422,7 +627,9 @@ impl<A: Ai> Ctx<'_, A> {
                     }
                     // Truncated: used for this summary, not kept as if it were complete.
                     Ok(Some((t, false))) => {
-                        report.warnings.push(format!("{}: testo incompleto (risposta troppo lunga), non salvato; verrà rifatto alla prossima elaborazione", s.original_name));
+                        if report.warnings.len() == before {
+                            report.warnings.push(format!("{}: testo incompleto (risposta troppo lunga), non salvato; verrà rifatto alla prossima elaborazione", s.original_name));
+                        }
                         Some(t)
                     }
                     Ok(None) => None,
@@ -449,6 +656,7 @@ impl<A: Ai> Ctx<'_, A> {
             );
         }
         if opts.extract_only {
+            self.fallback_warning(&mut report);
             return Ok(report);
         }
         if extracts.is_empty() {
@@ -468,6 +676,7 @@ impl<A: Ai> Ctx<'_, A> {
         };
         (self.detail)("In attesa della risposta di Gemini…".into());
         let a = self.ai.generate(&self.models.generate, &req, self.cancel).await?;
+        self.note_fallback(&a);
         report.usage.add(&a.usage);
         if a.finish == "MAX_TOKENS" {
             bail!("la risposta di Gemini è stata troncata: prova con meno fonti o con un modello con più spazio di risposta");
@@ -483,12 +692,13 @@ impl<A: Ai> Ctx<'_, A> {
         self.archive.write(lesson_id, &gdir.join("studio.json"), &serde_json::to_vec_pretty(&study)?)?;
         let info = Info {
             generated: Utc::now(),
-            model: self.models.generate.clone(),
+            model: if a.model.is_empty() { self.models.generate.clone() } else { a.model.clone() },
             usage: report.usage.clone(),
             suggested_title: g.titolo,
             sources: extracts.iter().map(|(code, s, _)| (code.clone(), s.id.clone())).collect(),
         };
         self.archive.write(lesson_id, &gdir.join("info.json"), &serde_json::to_vec_pretty(&info)?)?;
+        self.fallback_warning(&mut report);
         (self.progress)(total as f64, total, "Fatto".into());
         Ok(report)
     }
@@ -536,6 +746,23 @@ mod tests {
         truncate_images: bool,
         /// Seconds the fallback (whole file) path believes the recording lasts.
         whole_secs: u64,
+        /// The cleanup of Whisper's text fails (Gemini overloaded).
+        fail_cleanup: std::sync::atomic::AtomicBool,
+    }
+
+    /// Fake Whisper: one sentence per part, 1 s after its start.
+    #[derive(Default)]
+    struct FakeAsr {
+        calls: AtomicUsize,
+    }
+
+    impl Asr for FakeAsr {
+        fn transcribe(&self, wav: &Path, _prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
+            assert!(wav.is_file());
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            progress(100);
+            Ok(vec![asr::Segment { start: 1.0, end: 4.0, text: "ehm allora il simplesso".into() }])
+        }
     }
 
     impl Ai for Fake {
@@ -548,7 +775,12 @@ mod tests {
             self.prompts.lock().unwrap().push(prompt.clone());
             let usage = Usage { prompt_token_count: 100, candidates_token_count: 10, thoughts_token_count: 0 };
             let mut finish = "STOP";
-            let text = if req.schema.is_some() {
+            let text = if let Some(raw) = prompt.split("Trascrizione:\n").nth(1).filter(|_| prompt.contains("Ripuliscila")) {
+                if self.fail_cleanup.load(Ordering::SeqCst) {
+                    bail!("errore di Gemini (HTTP 503): high demand");
+                }
+                raw.replace("ehm allora ", "")
+            } else if req.schema.is_some() {
                 serde_json::json!({
                     "titolo": "Il simplesso",
                     "sintesi": "## Simplesso\nSi parte da una base ammissibile. [F1 00:00:10]",
@@ -568,7 +800,7 @@ mod tests {
                 }
                 "# Appunti\n$x_1 + x_2 \\le 4$".into()
             };
-            Ok(Answer { text, usage, finish: finish.into() })
+            Ok(Answer { text, usage, finish: finish.into(), model: String::new() })
         }
         async fn count_tokens(&self, _m: &str, _p: &[Part], _c: &CancellationToken) -> Result<u64> {
             Ok(self.whole_secs * 32)
@@ -620,12 +852,63 @@ mod tests {
     }
 
     async fn run(st: &Setup, ai: &Fake, opts: Options) -> Result<Report> {
+        run_with(st, ai, None, opts).await
+    }
+
+    async fn run_with(st: &Setup, ai: &Fake, asr: Option<Arc<dyn Asr>>, opts: Options) -> Result<Report> {
         let models = Models::default();
         let cancel = CancellationToken::new();
         let progress = |_: f64, _: u32, _: String| {};
         let detail = |_: String| {};
-        let ctx = Ctx { ai, archive: &st.archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: 10 };
+        let ctx = Ctx { ai, archive: &st.archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: 10, asr, fallbacks: Default::default() };
         ctx.run(&st.lesson, &opts).await
+    }
+
+    #[tokio::test]
+    async fn local_transcription_then_cleanup() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        let asr = Arc::new(FakeAsr::default());
+        let r = run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        assert_eq!(asr.calls.load(Ordering::SeqCst), 3);
+        assert_eq!(count(&ai, "Ripuliscila"), 3);
+        assert_eq!(count(&ai, "Trascrivila tutta"), 0, "no audio to Gemini");
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        let out = outputs(&l);
+        assert_eq!(out.extracts[&l.meta.sources[0].id], "[00:00:01] il simplesso\n\n[00:00:11] il simplesso\n\n[00:00:21] il simplesso");
+        assert!(!l.path.join(parts_rel(&l.meta.sources[0])).exists());
+        assert!(out.summary.is_some());
+    }
+
+    #[tokio::test]
+    async fn failed_cleanup_keeps_whisper_text_and_retries_only_the_cleanup() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        ai.fail_cleanup.store(true, Ordering::SeqCst);
+        let asr = Arc::new(FakeAsr::default());
+        let r = run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert_eq!(r.warnings.iter().filter(|w| w.contains("non ripulita")).count(), 3, "{:?}", r.warnings);
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        assert!(!l.path.join(extract_rel(&l.meta.sources[0])).exists(), "raw text is not the final extract");
+        assert!(outputs(&l).summary.unwrap().contains("Simplesso"), "summary made from Whisper's text");
+        assert!(ai.prompts.lock().unwrap().last().unwrap().contains("ehm allora il simplesso"));
+
+        ai.fail_cleanup.store(false, Ordering::SeqCst);
+        let r = run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        assert_eq!(asr.calls.load(Ordering::SeqCst), 3, "Whisper not run again");
+        let out = outputs(&st.lib.lesson(&st.lesson).unwrap());
+        assert!(out.extracts.values().next().unwrap().starts_with("[00:00:01] il simplesso"));
+    }
+
+    #[test]
+    fn cleanup_checks() {
+        let raw = "[00:20:01] uno due tre quattro\n\n[00:20:30] cinque sei sette otto";
+        assert!(plausible_cleanup(raw, "### Titolo\n[00:20:01] uno due tre quattro cinque sei sette", 1200, 1800));
+        assert!(!plausible_cleanup(raw, "[00:20:01] uno", 1200, 1800), "text lost");
+        assert!(!plausible_cleanup(raw, "uno due tre quattro cinque sei sette otto", 1200, 1800), "times lost");
+        assert!(!plausible_cleanup(raw, "[00:45:00] uno due tre quattro cinque sei sette otto", 1200, 1800), "time outside the part");
     }
 
     fn count(ai: &Fake, needle: &str) -> usize {

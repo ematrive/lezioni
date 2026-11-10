@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, FolderOpen, KeyRound } from "lucide-react";
+import { Check, Download, FolderOpen, KeyRound, Mic } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ai, api, toAppError, type Models } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
@@ -64,14 +64,40 @@ const LINK = "text-sky-600 hover:underline";
 function GeminiSettings() {
   const [hasKey, setHasKey] = useState(false);
   const [key, setKey] = useState("");
-  const [models, setModels] = useState<Models>({ transcribe: "", generate: "" });
+  const [models, setModels] = useState<Models>({ engine: "local", transcribe: "", generate: "", fallback: "" });
   const [state, setState] = useState<"" | "checking" | "ok">("");
+  const [whisperReady, setWhisperReady] = useState(false);
+  const [download, setDownload] = useState<string | null>(null);
   useEffect(() => {
     ai.settings().then((s) => {
       setHasKey(s.hasKey);
       setModels(s.models);
+      setWhisperReady(s.whisperReady);
     });
   }, []);
+  const getModel = async () => {
+    setDownload("Avvio del download…");
+    try {
+      await ai.whisperDownload(setDownload);
+      setWhisperReady(true);
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    }
+    setDownload(null);
+  };
+  const dropModel = async () => {
+    try {
+      await ai.whisperDelete();
+      setWhisperReady(false);
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    }
+  };
+  const engine = (engine: Models["engine"]) => {
+    const m = { ...models, engine };
+    setModels(m);
+    save(null, m);
+  };
   const save = async (newKey: string | null, m = models) => {
     try {
       await ai.setSettings(newKey, m);
@@ -94,6 +120,45 @@ function GeminiSettings() {
     }
   };
   return (
+    <>
+    <div className="space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+      <div className="flex items-center gap-2 font-medium">
+        <Mic className="size-4" /> Trascrizione delle registrazioni
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-start gap-2">
+          <input type="radio" className="mt-1" checked={models.engine === "local"} onChange={() => engine("local")} />
+          <span>
+            <span className="font-medium">Sul computer (Whisper)</span>
+            <span className="block text-xs text-zinc-500">Gratuita e senza limiti: l'audio non lascia il computer. Poi Gemini ripulisce il testo (paragrafi, titoli, formule); se non risponde resta il testo di Whisper.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2">
+          <input type="radio" className="mt-1" checked={models.engine === "gemini"} onChange={() => engine("gemini")} />
+          <span>
+            <span className="font-medium">Con Gemini</span>
+            <span className="block text-xs text-zinc-500">Invia l'audio a Google: capisce anche chi parla, ma usa molta quota e col piano gratuito può essere sovraccarico.</span>
+          </span>
+        </label>
+      </div>
+      {models.engine === "local" && (
+        <div className="flex items-center gap-2 text-sm" data-whisper>
+          <span className="min-w-0 flex-1 text-zinc-600 dark:text-zinc-400">
+            {download ?? (whisperReady ? "Modello di trascrizione scaricato (574 MB)." : "Il modello di trascrizione (574 MB) si scarica una volta sola, alla prima elaborazione o adesso.")}
+          </span>
+          {!whisperReady && !download && (
+            <button className="btn" onClick={getModel}>
+              <Download className="size-4" /> Scarica ora
+            </button>
+          )}
+          {whisperReady && (
+            <button className="btn btn-danger" onClick={dropModel} title="Libera 574 MB; si riscarica alla prossima elaborazione">
+              Elimina
+            </button>
+          )}
+        </div>
+      )}
+    </div>
     <div className="space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <div className="flex items-center gap-2 font-medium">
         <KeyRound className="size-4" /> Gemini (Google)
@@ -130,20 +195,25 @@ function GeminiSettings() {
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <label className="block">
-          <span className="label">Modello per trascrivere e leggere le fonti</span>
+          <span className="label">Per trascrivere, ripulire e leggere le fonti</span>
           <input className="field font-mono" value={models.transcribe} onChange={(e) => setModels({ ...models, transcribe: e.target.value })} onBlur={() => save(null)} />
         </label>
         <label className="block">
           <span className="label">Modello per sintesi, mappa e studio</span>
           <input className="field font-mono" value={models.generate} onChange={(e) => setModels({ ...models, generate: e.target.value })} onBlur={() => save(null)} />
         </label>
+        <label className="block">
+          <span className="label">Di riserva, se Gemini è sovraccarico</span>
+          <input className="field font-mono" placeholder="nessuno" value={models.fallback} onChange={(e) => setModels({ ...models, fallback: e.target.value })} onBlur={() => save(null)} />
+        </label>
       </div>
       <p className="text-xs text-zinc-500">
-        Predefinito: gemini-3.8-flash. Più economico: gemini-3.5-flash-lite. Nell'Unione Europea i dati inviati non vengono usati da Google per migliorare i suoi prodotti, nemmeno col piano
+        Predefiniti: gemini-3.8-flash, e gemini-3.5-flash-lite di riserva (costa la metà, un po' meno accurato). Nell'Unione Europea i dati inviati non vengono usati da Google per migliorare i suoi prodotti, nemmeno col piano
         gratuito. Se condividi l'app con altri studenti nell'UE, i termini di Google chiedono che ciascuno usi il piano a pagamento (pochi centesimi a lezione).
       </p>
     </div>
+    </>
   );
 }

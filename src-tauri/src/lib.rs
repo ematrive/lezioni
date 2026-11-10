@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod asr;
 pub mod audio;
 pub mod chat;
 pub mod commands;
@@ -68,7 +69,7 @@ pub fn run() {
             if let Some(d) = &settings.library_dir {
                 allow_assets(app.handle(), d);
             }
-            app.manage(AppState { settings: Mutex::new(settings), settings_path, write: Default::default(), jobs: Default::default(), opened: Mutex::new(packages_in_args()) });
+            app.manage(AppState { settings: Mutex::new(settings), settings_path, write: Default::default(), jobs: Default::default(), opened: Mutex::new(packages_in_args()), whisper: std::sync::Arc::new(asr::Loader::new(app.path().app_data_dir()?.join("modelli"))) });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -91,6 +92,8 @@ pub fn run() {
             source_open,
             reveal,
             log_reveal,
+            whisper_download,
+            whisper_delete,
             ai_settings_get,
             ai_settings_set,
             ai_check,

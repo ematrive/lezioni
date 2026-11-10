@@ -151,7 +151,7 @@
           return l;
         }
         case "ai_settings_get":
-          return { hasKey: true, models: { transcribe: "gemini-3.8-flash", generate: "gemini-3.8-flash" } };
+          return { hasKey: true, models: { engine: "local", transcribe: "gemini-3.8-flash", generate: "gemini-3.8-flash", fallback: "gemini-3.5-flash-lite" }, whisperReady: true };
         case "lesson_outputs":
           return outputs[a.id] ?? { extracts: {}, summary: null, map: null, study: null, info: null };
         case "lesson_process": {
@@ -162,8 +162,8 @@
             return (message) => cbs[a.channel.id]?.({ index: i++, message });
           })();
           const audio = l.sources.find((s) => s.kind === "audio");
-          setTimeout(() => send({ event: "step", done: 0, total: 3, message: "Trascrizione di registrazione.m4a, parte 1 di 3: 00:00:00–00:20:00 di 00:52:10" }), 50);
-          setTimeout(() => send({ event: "detail", message: "Caricamento su Gemini: 12 di 38 MB" }), 80);
+          setTimeout(() => send({ event: "step", done: 0.33, total: 3, message: "Trascrizione sul computer di registrazione.m4a, parte 2 di 3: 00:20:00–00:40:00 di 00:52:10" }), 50);
+          setTimeout(() => send({ event: "detail", message: "Whisper: 43% · Gemini ripulisce la parte 1" }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
               extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$." } : {},

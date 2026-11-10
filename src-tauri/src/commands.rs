@@ -1,6 +1,6 @@
 //! All the `#[tauri::command]`s. They are thin: the work is in `library.rs`.
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use chrono::NaiveDate;
 use serde::Serialize;
@@ -19,6 +19,7 @@ pub struct AppState {
     pub jobs: crate::jobs::Jobs,
     /// `.lezione` files the app was opened with (double click), until the UI asks for them.
     pub opened: Mutex<Vec<PathBuf>>,
+    pub whisper: Arc<crate::asr::Loader>,
 }
 
 impl AppState {
@@ -191,19 +192,20 @@ pub fn log_reveal(app: AppHandle) -> CmdResult<()> {
 
 use crate::ai::Gemini;
 use crate::jobs::JobEvent;
-use crate::pipeline::{self, Archive, Models, Options, Outputs};
+use crate::pipeline::{self, Archive, Engine, Models, Options, Outputs};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsView {
     has_key: bool,
     models: Models,
+    whisper_ready: bool,
 }
 
 #[tauri::command(async)]
 pub fn ai_settings_get(state: State<'_, AppState>) -> CmdResult<AiSettingsView> {
     let has_key = crate::secrets::gemini_key()?.is_some();
-    Ok(AiSettingsView { has_key, models: state.settings.lock().unwrap().models.clone() })
+    Ok(AiSettingsView { has_key, models: state.settings.lock().unwrap().models.clone(), whisper_ready: state.whisper.downloaded() })
 }
 
 /// `key`: None = keep, "" = remove, otherwise the new key.
@@ -216,7 +218,7 @@ pub fn ai_settings_set(state: State<'_, AppState>, key: Option<String>, models: 
     let clean = |m: String, d: String| if m.trim().is_empty() { d } else { m.trim().to_string() };
     let def = Models::default();
     let mut s = state.settings.lock().unwrap();
-    s.models = Models { transcribe: clean(models.transcribe, def.transcribe), generate: clean(models.generate, def.generate) };
+    s.models = Models { engine: models.engine, transcribe: clean(models.transcribe, def.transcribe), generate: clean(models.generate, def.generate), fallback: models.fallback.trim().to_string() };
     s.save(&state.settings_path)?;
     Ok(())
 }
@@ -237,19 +239,47 @@ pub async fn ai_check(key: Option<String>) -> CmdResult<()> {
     Ok(g.check().await?)
 }
 
+/// Downloads the Whisper model now (from Settings); progress lines on `channel`.
+#[tauri::command]
+pub async fn whisper_download(state: State<'_, AppState>, channel: tauri::ipc::Channel<String>) -> CmdResult<()> {
+    let notify = move |m: String| {
+        let _ = channel.send(m);
+    };
+    state.whisper.download(&notify, &tokio_util::sync::CancellationToken::new()).await?;
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn whisper_delete(state: State<'_, AppState>) -> CmdResult<()> {
+    Ok(state.whisper.delete()?)
+}
+
 /// Starts processing a lesson in the background; events on `channel`.
 #[tauri::command]
 pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_id: String, options: Options, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
     let dir = state.settings.lock().unwrap().library_dir.clone().ok_or_else(|| AppError::NoLibrary { message: "Scegli la cartella dell'archivio".into() })?;
+    let models = state.settings.lock().unwrap().models.clone();
     let ch = channel.clone();
-    let ai = gemini()?.with_notify(std::sync::Arc::new(move |message| {
+    let ai = gemini()?.with_fallback(&models.fallback).with_notify(Arc::new(move |message| {
         let _ = ch.send(JobEvent::Detail { message });
     }));
     let archive = Archive { dir, lock: state.write.clone() };
-    let models = state.settings.lock().unwrap().models.clone();
     let cancel = state.jobs.start(&job_id);
+    let whisper = state.whisper.clone();
     let ch = channel.clone();
     let work = tauri::async_runtime::spawn(async move {
+        // Whisper only when a recording is still to be transcribed: download (first time) and load.
+        let lesson = archive.lesson(&lesson_id)?;
+        let asr: Option<Arc<dyn crate::asr::Asr>> = if models.engine == Engine::Local && pipeline::needs_transcription(&lesson, options.force) {
+            let _ = ch.send(JobEvent::Step { done: 0.0, total: 1, message: "Preparazione della trascrizione sul computer…".into() });
+            let c = ch.clone();
+            let notify = move |message: String| {
+                let _ = c.send(JobEvent::Detail { message });
+            };
+            Some(whisper.get(&notify, &cancel).await?)
+        } else {
+            None
+        };
         let ch2 = ch.clone();
         let progress = move |done: f64, total: u32, message: String| {
             log::info!("{message}");
@@ -259,7 +289,7 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
             log::info!("{message}");
             let _ = ch2.send(JobEvent::Detail { message });
         };
-        let ctx = pipeline::Ctx { ai: &ai, archive: &archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: pipeline::WINDOW_SECS };
+        let ctx = pipeline::Ctx { ai: &ai, archive: &archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: pipeline::WINDOW_SECS, asr, fallbacks: Default::default() };
         ctx.run(&lesson_id, &options).await
     });
     tauri::async_runtime::spawn(async move {
@@ -379,9 +409,12 @@ pub struct ChatAnswer {
 
 #[tauri::command]
 pub async fn chat_ask(state: State<'_, AppState>, lesson_id: String, scope: Scope, question: String) -> CmdResult<ChatAnswer> {
-    let ai = gemini()?;
+    let (model, fallback) = {
+        let m = &state.settings.lock().unwrap().models;
+        (m.generate.clone(), m.fallback.clone())
+    };
+    let ai = gemini()?.with_fallback(&fallback);
     let lib = state.library()?;
-    let model = state.settings.lock().unwrap().models.generate.clone();
     let (messages, usage) = chat::ask(&ai, &model, &lib, &lesson_id, scope, &question, &tokio_util::sync::CancellationToken::new()).await?;
     Ok(ChatAnswer { messages, usage })
 }

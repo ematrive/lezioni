@@ -2,6 +2,12 @@
 
 **«Quota esaurita» durante l'elaborazione.** Il piano gratuito di Gemini ha un limite giornaliero. Le parti di registrazione già trascritte sono salvate: rilancia **Elabora con Gemini** il giorno dopo e riprende da lì. In alternativa attiva la fatturazione su Google (pochi centesimi a lezione).
 
+**«Gemini è sovraccarico» (errore 503).** Sono i server di Google, pieni in quel momento (succede soprattutto col piano gratuito). L'app riprova da sola e dopo due rifiuti passa al modello di riserva; se non basta, riprova più tardi: le parti già fatte restano salvate. La trascrizione sul computer non ne risente.
+
+**«Trascrizione non ripulita».** Whisper ha trascritto la parte ma Gemini non è riuscito a ripulirla: nella lezione c'è il testo di Whisper, con i minuti, e alla prossima elaborazione l'app riprova solo la ripulitura.
+
+**Il download del modello di trascrizione non riesce.** Servono 574 MB liberi e una connessione stabile; il download riparte da capo a ogni tentativo. Si può avviare da **Impostazioni → Scarica ora**.
+
 **L'elaborazione sembra ferma.** Guarda la riga sotto la barra: dice cosa sta aspettando e da quanto. Il caricamento di una parte dipende dalla connessione; la risposta di Gemini per una parte di 20 minuti arriva di solito in 1–3 minuti. Se Gemini non risponde in 10 minuti l'app riprova una volta e poi si ferma con un errore; se il caricamento non avanza per un minuto e mezzo, si ferma subito. Le parti già fatte restano salvate.
 
 **Segnalare un problema.** In **Impostazioni → Diagnostica**, **Mostra il file di log** apre la cartella con `lezioni.log`, che registra cosa ha fatto l'app (contiene i nomi dei file, ma non la chiave API né il testo delle lezioni): allegalo alla segnalazione insieme a uno screenshot.

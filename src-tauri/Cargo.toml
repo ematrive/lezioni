@@ -1,6 +1,6 @@
 [package]
 name = "lezioni"
-version = "0.5.1"
+version = "0.6.0"
 description = "Lezioni: registrazioni, appunti e sintesi dei corsi"
 edition = "2024"
 
@@ -38,6 +38,12 @@ hound = "3.5"
 regex = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 env_logger = "0.11"
+# Transcription on the computer (whisper.cpp).
+whisper-rs = "0.16"
+sha2 = "0.10"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
 
 [dev-dependencies]
 tempfile = "3"

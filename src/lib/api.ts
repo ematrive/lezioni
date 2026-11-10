@@ -103,8 +103,12 @@ export function today(): string {
 // ---------- AI ----------
 
 export interface Models {
+  /** Recordings: Whisper on the computer, or Gemini. */
+  engine: "local" | "gemini";
   transcribe: string;
   generate: string;
+  /** Used when the model above is overloaded (503); empty = off. */
+  fallback: string;
 }
 
 export interface Usage {
@@ -140,7 +144,13 @@ export type JobEvent =
   | { event: "failed"; message: string };
 
 export const ai = {
-  settings: () => invoke<{ hasKey: boolean; models: Models }>("ai_settings_get"),
+  settings: () => invoke<{ hasKey: boolean; models: Models; whisperReady: boolean }>("ai_settings_get"),
+  whisperDownload(onMessage: (m: string) => void) {
+    const channel = new Channel<string>();
+    channel.onmessage = onMessage;
+    return invoke<void>("whisper_download", { channel });
+  },
+  whisperDelete: () => invoke<void>("whisper_delete"),
   setSettings: (key: string | null, models: Models) => invoke<void>("ai_settings_set", { key, models }),
   check: (key: string | null) => invoke<void>("ai_check", { key }),
   outputs: (id: string) => invoke<Outputs>("lesson_outputs", { id }),

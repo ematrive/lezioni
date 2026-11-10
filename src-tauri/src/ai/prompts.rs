@@ -40,6 +40,22 @@ Se la parte comincia o finisce a metà frase, trascrivi comunque quello che si s
     )
 }
 
+/// Cleanup of Whisper's text (one part of the recording). Text only: small, cheap requests.
+pub fn clean_transcript(n: usize, of: usize, course: &str, title: &str, raw: &str) -> String {
+    let which = if of > 1 { format!("la parte {n} di {of} della trascrizione") } else { "la trascrizione".into() };
+    format!(
+        "Questa è {which} automatica (fatta da un riconoscimento vocale) di una lezione universitaria del corso «{course}», argomento «{title}». \
+Ripuliscila senza riassumere e senza togliere contenuti:\n\
+- togli intercalari, ripetizioni e false partenze (ehm, cioè, allora…);\n\
+- correggi le parole riconosciute male quando il contesto rende chiaro cosa è stato detto (termini tecnici, nomi, formule); non inventare quello che non si capisce;\n\
+- ogni paragrafo inizia con un tempo [hh:mm:ss]: mantienili esattamente come sono. Puoi unire due paragrafi brevi tenendo il tempo del primo, ma non scrivere tempi nuovi;\n\
+- quando cambia argomento metti un titolo Markdown (### Titolo) prima del paragrafo;\n\
+- se dal contesto è chiaro che interviene uno studente, scrivi **Studente:** all'inizio della sua battuta;\n\
+- formule e simboli dettati a voce scrivili in LaTeX ($...$).\n\
+Rispondi solo con la trascrizione ripulita in Markdown, senza introduzioni.\n\nTrascrizione:\n{raw}"
+    )
+}
+
 pub const IMAGE: &str = "Questa è una foto o una pagina di appunti di una lezione (scritti a mano, dal tablet, o una lavagna). \
 Trascrivi tutto il contenuto in Markdown, nell'ordine di lettura: titoli, elenchi, tabelle, formule in LaTeX. \
 Descrivi grafici, schemi e disegni in corsivo tra parentesi, con assi, etichette e relazioni, così che si capiscano senza vederli. \

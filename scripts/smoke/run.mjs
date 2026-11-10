@@ -86,8 +86,8 @@ try {
 
   // Processing with Gemini (fake): progress bar, then the four tabs.
   await p.getByRole("button", { name: "Elabora con Gemini" }).first().click();
-  await p.getByText(/Trascrizione di registrazione/).waitFor();
-  await p.getByText(/Caricamento su Gemini: 12 di 38 MB · 0:0/).waitFor();
+  await p.getByText(/Trascrizione sul computer di registrazione/).waitFor();
+  await p.getByText(/Whisper: 43% · Gemini ripulisce la parte 1 · 0:0/).waitFor();
   await shot("elaborazione");
   await p.evaluate(() => window.__finishJob());
   await p.getByText(/elaborata: /).waitFor();
@@ -159,6 +159,7 @@ try {
 
   await p.getByRole("button", { name: "Impostazioni" }).click();
   await p.getByText("Gemini (Google)").waitFor();
+  await p.getByText("Modello di trascrizione scaricato").waitFor();
   await shot("impostazioni");
   ok = errors.length === 0;
 } catch (e) {

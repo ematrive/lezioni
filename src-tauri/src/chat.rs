@@ -164,7 +164,7 @@ mod tests {
         async fn generate(&self, _m: &str, req: &Request, _c: &CancellationToken) -> Result<Answer> {
             let Part::Text(t) = &req.parts[0] else { unreachable!() };
             self.prompts.lock().unwrap().push(t.clone());
-            Ok(Answer { text: "Risposta [F1 00:00:05]".into(), usage: Usage::default(), finish: "STOP".into() })
+            Ok(Answer { text: "Risposta [F1 00:00:05]".into(), usage: Usage::default(), finish: "STOP".into(), model: String::new() })
         }
         async fn count_tokens(&self, _m: &str, _p: &[Part], _c: &CancellationToken) -> Result<u64> {
             Ok(0)

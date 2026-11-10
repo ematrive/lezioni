@@ -36,6 +36,8 @@ pub struct Gemini {
     key: String,
     base: String,
     notify: Option<Notify>,
+    /// Model to switch to when the asked one answers 503 twice in a row.
+    fallback: Option<String>,
 }
 
 /// A part of the prompt.
@@ -92,6 +94,8 @@ pub struct Answer {
     pub usage: Usage,
     /// `STOP` normally; `MAX_TOKENS` when the answer was cut.
     pub finish: String,
+    /// The model that answered (the fallback one when the first was overloaded); empty = as asked.
+    pub model: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -173,7 +177,13 @@ impl Gemini {
         // No global timeout: an upload of a long recording on a slow connection may take a while.
         // Each model call has its own timeout (see post_json).
         let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).build().expect("http client");
-        Self { http, key: key.into(), base: base.into(), notify: None }
+        Self { http, key: key.into(), base: base.into(), notify: None, fallback: None }
+    }
+
+    pub fn with_fallback(mut self, model: &str) -> Self {
+        let m = model.trim();
+        self.fallback = (!m.is_empty()).then(|| m.to_string());
+        self
     }
 
     pub fn with_notify(mut self, n: Notify) -> Self {
@@ -194,15 +204,19 @@ impl Gemini {
         }
     }
 
-    /// POST JSON with retries on 429 / 5xx.
-    async fn post_json(&self, url: &str, body: &Value, cancel: &CancellationToken) -> Result<Value> {
+    /// POST JSON to `models/{model}:{method}` with retries on 429 / 5xx. With `fallback`, two 503
+    /// in a row switch to the fallback model. Returns the answer and the model that gave it.
+    async fn post_json(&self, model: &str, method: &str, body: &Value, fallback: bool, cancel: &CancellationToken) -> Result<(Value, String)> {
         let mut wait = Duration::from_secs(4);
         let mut timeouts = 0;
+        let mut model = model.to_string();
+        let mut overloaded = 0;
         for attempt in 0..=RETRIES {
             if cancel.is_cancelled() {
                 bail!("annullato");
             }
-            let send = self.http.post(url).header("x-goog-api-key", &self.key).timeout(CALL_TIMEOUT).json(body).send();
+            let url = format!("{}/v1beta/models/{model}:{method}", self.base);
+            let send = self.http.post(&url).header("x-goog-api-key", &self.key).timeout(CALL_TIMEOUT).json(body).send();
             let resp = tokio::select! {
                 r = send => r,
                 _ = cancel.cancelled() => bail!("annullato"),
@@ -229,7 +243,15 @@ impl Gemini {
             let status = resp.status();
             let text = resp.text().await.context("risposta di Gemini")?;
             if status.is_success() {
-                return serde_json::from_str(&text).context("risposta di Gemini non valida");
+                return Ok((serde_json::from_str(&text).context("risposta di Gemini non valida")?, model));
+            }
+            overloaded = if status.as_u16() == 503 { overloaded + 1 } else { 0 };
+            if let Some(f) = self.fallback.as_ref().filter(|f| fallback && attempt < RETRIES && overloaded >= 2 && **f != model) {
+                log::warn!("gemini: {model} sovraccarico, passo a {f}");
+                self.say(format!("{model} è sovraccarico, uso {f} per questa richiesta"));
+                model = f.clone();
+                overloaded = 0;
+                continue;
             }
             let retriable = status.as_u16() == 429 && !is_daily_quota(&text) || status.is_server_error();
             log::warn!("gemini HTTP {status}: {}", text.chars().take(500).collect::<String>());
@@ -265,12 +287,14 @@ impl Gemini {
         if let Some(s) = &req.system {
             body["systemInstruction"] = json!({ "parts": [{ "text": s }] });
         }
-        let url = format!("{}/v1beta/models/{model}:generateContent", self.base);
         let t = Instant::now();
-        let v = self.post_json(&url, &body, cancel).await?;
-        let a = parse_answer(&v);
-        if let Ok(a) = &a {
-            log::info!("gemini {model}: risposta in {:.0} s, {} token in ingresso, {} in uscita, {} di ragionamento, fine {}", t.elapsed().as_secs_f64(), a.usage.prompt_token_count, a.usage.candidates_token_count, a.usage.thoughts_token_count, a.finish);
+        let (v, used) = self.post_json(model, "generateContent", &body, true, cancel).await?;
+        let mut a = parse_answer(&v);
+        if let Ok(a) = &mut a {
+            if used != model {
+                a.model = used.clone();
+            }
+            log::info!("gemini {used}: risposta in {:.0} s, {} token in ingresso, {} in uscita, {} di ragionamento, fine {}", t.elapsed().as_secs_f64(), a.usage.prompt_token_count, a.usage.candidates_token_count, a.usage.thoughts_token_count, a.finish);
         }
         a
     }
@@ -278,8 +302,7 @@ impl Gemini {
     /// Tokens of a prompt (used to measure audio: 32 tokens per second).
     pub async fn count_tokens(&self, model: &str, parts: &[Part], cancel: &CancellationToken) -> Result<u64> {
         let body = json!({ "contents": [{ "role": "user", "parts": parts.iter().map(Part::to_json).collect::<Vec<_>>() }] });
-        let url = format!("{}/v1beta/models/{model}:countTokens", self.base);
-        let v = self.post_json(&url, &body, cancel).await?;
+        let (v, _) = self.post_json(model, "countTokens", &body, false, cancel).await?;
         v["totalTokens"].as_u64().ok_or_else(|| anyhow!("conteggio dei token non disponibile"))
     }
 
@@ -411,7 +434,7 @@ fn parse_answer(v: &Value) -> Result<Answer> {
         bail!("Gemini non ha risposto (motivo: {})", if finish.is_empty() { "sconosciuto" } else { &finish });
     }
     let usage = serde_json::from_value(v["usageMetadata"].clone()).unwrap_or_default();
-    Ok(Answer { text, usage, finish })
+    Ok(Answer { text, usage, finish, model: String::new() })
 }
 
 #[cfg(test)]
@@ -424,6 +447,13 @@ mod tests {
     }
 
     fn fake_server_h(answers: Vec<(u16, String, &'static str)>) -> String {
+        fake_server_log(answers).0
+    }
+
+    /// Also returns the request lines received ("POST /v1beta/… HTTP/1.1").
+    fn fake_server_log(answers: Vec<(u16, String, &'static str)>) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen2 = seen.clone();
         use std::io::{Read, Write};
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap();
@@ -437,6 +467,7 @@ mod tests {
                     let n = c.read(&mut b).unwrap();
                     buf.extend_from_slice(&b[..n]);
                 }
+                seen2.lock().unwrap().push(String::from_utf8_lossy(&buf).lines().next().unwrap_or_default().to_string());
                 let head = String::from_utf8_lossy(&buf).to_lowercase();
                 let len: usize = head.lines().find_map(|l| l.strip_prefix("content-length:")).map(|v| v.trim().parse().unwrap()).unwrap_or(0);
                 let start = head.find("\r\n\r\n").unwrap() + 4;
@@ -447,7 +478,7 @@ mod tests {
                 let _ = write!(c, "HTTP/1.1 {code} X\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             }
         });
-        format!("http://{addr}")
+        (format!("http://{addr}"), seen)
     }
 
     #[tokio::test]
@@ -468,6 +499,19 @@ mod tests {
         assert_eq!(r.name, "files/a");
         assert!(said.lock().unwrap().iter().any(|m| m.starts_with("Caricamento su Gemini")));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn overloaded_model_falls_back() {
+        let busy = r#"{"error":{"code":503,"message":"high demand","details":[{"retryDelay":"1s"}]}}"#;
+        let ok = r#"{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}"#;
+        let (base, seen) = fake_server_log(vec![(503, String::new(), busy), (503, String::new(), busy), (200, String::new(), ok)]);
+        let g = Gemini::with_base("k", base).with_fallback("lite");
+        let req = Request { parts: vec![Part::Text("ciao".into())], ..Default::default() };
+        let a = g.generate("flash", &req, &CancellationToken::new()).await.unwrap();
+        assert_eq!((a.text.as_str(), a.model.as_str()), ("ok", "lite"));
+        let seen = seen.lock().unwrap();
+        assert!(seen[1].contains("/models/flash:generateContent") && seen[2].contains("/models/lite:generateContent"), "{seen:?}");
     }
 
     #[tokio::test]
