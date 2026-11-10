@@ -70,6 +70,7 @@ export const api = {
   removeSource: (lessonId: string, sourceId: string) => invoke<Lesson>("source_remove", { lessonId, sourceId }),
   openSource: (lessonId: string, sourceId: string) => invoke<void>("source_open", { lessonId, sourceId }),
   reveal: (path: string) => invoke<void>("reveal", { path }),
+  revealLog: () => invoke<void>("log_reveal"),
 };
 
 /** Path of a source on disk. */
@@ -134,6 +135,7 @@ export interface Outputs {
 
 export type JobEvent =
   | { event: "step"; done: number; total: number; message: string }
+  | { event: "detail"; message: string }
   | { event: "done"; usage: Usage; warnings: string[] }
   | { event: "failed"; message: string };
 

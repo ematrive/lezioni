@@ -87,6 +87,7 @@ try {
   // Processing with Gemini (fake): progress bar, then the four tabs.
   await p.getByRole("button", { name: "Elabora con Gemini" }).first().click();
   await p.getByText(/Trascrizione di registrazione/).waitFor();
+  await p.getByText(/Caricamento su Gemini: 12 di 38 MB · 0:0/).waitFor();
   await shot("elaborazione");
   await p.evaluate(() => window.__finishJob());
   await p.getByText(/elaborata: /).waitFor();

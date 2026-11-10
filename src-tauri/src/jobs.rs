@@ -11,7 +11,10 @@ use crate::ai::Usage;
 #[serde(tag = "event", rename_all = "camelCase")]
 pub enum JobEvent {
     #[serde(rename_all = "camelCase")]
-    Step { done: u32, total: u32, message: String },
+    Step { done: f64, total: u32, message: String },
+    /// What the current step is waiting for (upload, Gemini's answer, a retry).
+    #[serde(rename_all = "camelCase")]
+    Detail { message: String },
     #[serde(rename_all = "camelCase")]
     Done { usage: Usage, warnings: Vec<String> },
     #[serde(rename_all = "camelCase")]

@@ -210,8 +210,10 @@ pub struct Ctx<'a, A: Ai> {
     pub archive: &'a Archive,
     pub models: &'a Models,
     pub cancel: &'a CancellationToken,
-    /// (steps done, total steps, message)
-    pub progress: &'a (dyn Fn(u32, u32, String) + Send + Sync),
+    /// (steps done, fractional within a long step; total steps; message)
+    pub progress: &'a (dyn Fn(f64, u32, String) + Send + Sync),
+    /// A second line under the step: what the current call is waiting for.
+    pub detail: &'a (dyn Fn(String) + Send + Sync),
     /// Length of a transcription part (`WINDOW_SECS`; shorter in tests).
     pub window: u64,
 }
@@ -253,6 +255,7 @@ impl<A: Ai> Ctx<'_, A> {
     /// One request on a media part: (text, complete). `[SILENZIO]` becomes empty.
     async fn ask_media(&self, part: Part, prompt: String, usage: &mut Usage) -> Result<(String, bool)> {
         let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![part, Part::Text(prompt)], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
+        (self.detail)("In attesa della risposta di Gemini…".into());
         let a = self.ai.generate(&self.models.transcribe, &req, self.cancel).await?;
         usage.add(&a.usage);
         let t = a.text.trim();
@@ -266,7 +269,7 @@ impl<A: Ai> Ctx<'_, A> {
     #[allow(clippy::too_many_arguments)]
     async fn transcribe(&self, lesson_id: &str, s: &Source, path: &Path, mime: &str, video: bool, step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
         let label = &s.original_name;
-        (self.progress)(step.0, step.1, format!("Preparazione di {label}…"));
+        (self.progress)(step.0 as f64, step.1, format!("Preparazione di {label}…"));
         let tmp = std::env::temp_dir().join(format!("lezioni-{}", uuid::Uuid::new_v4()));
         let (p, d, c, w) = (path.to_path_buf(), tmp.clone(), self.cancel.clone(), self.window);
         let split = tokio::task::spawn_blocking(move || audio::split(&p, &d, w, &c)).await?;
@@ -296,7 +299,8 @@ impl<A: Ai> Ctx<'_, A> {
                 continue;
             }
             let end = c.start + c.secs.round() as u64;
-            (self.progress)(step.0, step.1, format!("Trascrizione di {label}: {}–{} di {}", hms(c.start), hms(end), hms(total)));
+            let frac = step.0 as f64 + i as f64 / chunks.len() as f64;
+            (self.progress)(frac, step.1, format!("Trascrizione di {label}, parte {} di {}: {}–{} di {}", i + 1, chunks.len(), hms(c.start), hms(end), hms(total)));
             let (part, remote) = self.file_part(&c.path, "audio/wav").await?;
             let r = self.ask_media(part, prompts::transcribe_clip(i + 1, chunks.len(), &hms(c.start)), usage).await;
             if let Some(n) = remote {
@@ -318,7 +322,7 @@ impl<A: Ai> Ctx<'_, A> {
     /// Fallback: the whole file uploaded once, transcribed in time windows. Each window bills
     /// the whole file again.
     async fn transcribe_whole(&self, path: &Path, mime: &str, video: bool, label: &str, step: (u32, u32), usage: &mut Usage) -> Result<(String, bool)> {
-        (self.progress)(step.0, step.1, format!("Caricamento di {label} su Gemini…"));
+        (self.progress)(step.0 as f64, step.1, format!("Caricamento di {label} su Gemini…"));
         let f = self.ai.upload(path, mime, self.cancel).await?;
         let file = Part::File { mime: f.mime.clone().unwrap_or_else(|| mime.into()), uri: f.uri.clone() };
         let result = async {
@@ -329,7 +333,7 @@ impl<A: Ai> Ctx<'_, A> {
             for i in 0..windows {
                 self.check()?;
                 let (from, to) = (hms(i * self.window), hms((i + 1) * self.window));
-                (self.progress)(step.0, step.1, format!("Trascrizione di {label}: {from}–{} di {}", hms(((i + 1) * self.window).min(secs)), hms(secs)));
+                (self.progress)(step.0 as f64 + i as f64 / windows as f64, step.1, format!("Trascrizione di {label}: {from}–{} di {}", hms(((i + 1) * self.window).min(secs)), hms(secs)));
                 let (t, ok) = self.ask_media(file.clone(), prompts::transcribe_window(&from, &to, i == 0, i + 1 == windows), usage).await?;
                 complete &= ok;
                 if !t.is_empty() {
@@ -362,11 +366,11 @@ impl<A: Ai> Ctx<'_, A> {
             (SourceKind::Audio, Some(m)) => self.transcribe(&lesson.meta.id, s, &path, m, false, step, usage, warnings).await?,
             (SourceKind::Video, Some(m)) => self.transcribe(&lesson.meta.id, s, &path, m, true, step, usage, warnings).await?,
             (SourceKind::Image, Some(m)) => {
-                (self.progress)(step.0, step.1, format!("Lettura di {label}…"));
+                (self.progress)(step.0 as f64, step.1, format!("Lettura di {label}…"));
                 self.read_with_model(&path, m, prompts::IMAGE, usage).await?
             }
             (SourceKind::Pdf, Some(m)) => {
-                (self.progress)(step.0, step.1, format!("Lettura di {label}…"));
+                (self.progress)(step.0 as f64, step.1, format!("Lettura di {label}…"));
                 self.read_with_model(&path, m, prompts::PDF, usage).await?
             }
             (SourceKind::Document, _) => {
@@ -451,7 +455,7 @@ impl<A: Ai> Ctx<'_, A> {
             bail!("nessuna fonte leggibile: {}", report.warnings.join("; "));
         }
         self.check()?;
-        (self.progress)(total - 1, total, "Sintesi, mappa e materiale di studio…".into());
+        (self.progress)((total - 1) as f64, total, "Sintesi, mappa e materiale di studio…".into());
         let lesson = self.archive.lesson(lesson_id)?;
         let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| c.meta.name).unwrap_or_default();
         let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
@@ -462,6 +466,7 @@ impl<A: Ai> Ctx<'_, A> {
             max_output_tokens: Some(48_000),
             ..Default::default()
         };
+        (self.detail)("In attesa della risposta di Gemini…".into());
         let a = self.ai.generate(&self.models.generate, &req, self.cancel).await?;
         report.usage.add(&a.usage);
         if a.finish == "MAX_TOKENS" {
@@ -484,7 +489,7 @@ impl<A: Ai> Ctx<'_, A> {
             sources: extracts.iter().map(|(code, s, _)| (code.clone(), s.id.clone())).collect(),
         };
         self.archive.write(lesson_id, &gdir.join("info.json"), &serde_json::to_vec_pretty(&info)?)?;
-        (self.progress)(total, total, "Fatto".into());
+        (self.progress)(total as f64, total, "Fatto".into());
         Ok(report)
     }
 }
@@ -617,8 +622,9 @@ mod tests {
     async fn run(st: &Setup, ai: &Fake, opts: Options) -> Result<Report> {
         let models = Models::default();
         let cancel = CancellationToken::new();
-        let progress = |_: u32, _: u32, _: String| {};
-        let ctx = Ctx { ai, archive: &st.archive, models: &models, cancel: &cancel, progress: &progress, window: 10 };
+        let progress = |_: f64, _: u32, _: String| {};
+        let detail = |_: String| {};
+        let ctx = Ctx { ai, archive: &st.archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: 10 };
         ctx.run(&st.lesson, &opts).await
     }
 

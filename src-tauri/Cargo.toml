@@ -1,6 +1,6 @@
 [package]
 name = "lezioni"
-version = "0.5.0"
+version = "0.5.1"
 description = "Lezioni: registrazioni, appunti e sintesi dei corsi"
 edition = "2024"
 

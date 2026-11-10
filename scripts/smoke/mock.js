@@ -162,7 +162,8 @@
             return (message) => cbs[a.channel.id]?.({ index: i++, message });
           })();
           const audio = l.sources.find((s) => s.kind === "audio");
-          setTimeout(() => send({ event: "step", done: 0, total: 3, message: "Trascrizione di registrazione.m4a: 00:00:00–00:20:00 di 00:52:10" }), 50);
+          setTimeout(() => send({ event: "step", done: 0, total: 3, message: "Trascrizione di registrazione.m4a, parte 1 di 3: 00:00:00–00:20:00 di 00:52:10" }), 50);
+          setTimeout(() => send({ event: "detail", message: "Caricamento su Gemini: 12 di 38 MB" }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
               extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$." } : {},

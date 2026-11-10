@@ -2,6 +2,10 @@
 
 **«Quota esaurita» durante l'elaborazione.** Il piano gratuito di Gemini ha un limite giornaliero. Le parti di registrazione già trascritte sono salvate: rilancia **Elabora con Gemini** il giorno dopo e riprende da lì. In alternativa attiva la fatturazione su Google (pochi centesimi a lezione).
 
+**L'elaborazione sembra ferma.** Guarda la riga sotto la barra: dice cosa sta aspettando e da quanto. Il caricamento di una parte dipende dalla connessione; la risposta di Gemini per una parte di 20 minuti arriva di solito in 1–3 minuti. Se Gemini non risponde in 10 minuti l'app riprova una volta e poi si ferma con un errore; se il caricamento non avanza per un minuto e mezzo, si ferma subito. Le parti già fatte restano salvate.
+
+**Segnalare un problema.** In **Impostazioni → Diagnostica**, **Mostra il file di log** apre la cartella con `lezioni.log`, che registra cosa ha fatto l'app (contiene i nomi dei file, ma non la chiave API né il testo delle lezioni): allegalo alla segnalazione insieme a uno screenshot.
+
 **«Chiave API non valida».** Controlla di aver copiato tutta la chiave da [aistudio.google.com/apikey](https://aistudio.google.com/apikey) e premi **Verifica** nelle Impostazioni.
 
 **La registrazione viene inviata intera e costa di più.** Succede con i formati che l'app non sa dividere (per esempio opus). Converti la registrazione in m4a o mp3 e aggiungila di nuovo.

@@ -47,6 +47,13 @@ export function SettingsDialog({ libraryDir, onClose, onChanged }: { libraryDir:
             <option value="dark">Scuro</option>
           </select>
         </div>
+        <div>
+          <span className="label">Diagnostica</span>
+          <button className="btn" onClick={() => api.revealLog().catch((e) => toast(toAppError(e).message, "error"))}>
+            <FolderOpen className="size-4" /> Mostra il file di log
+          </button>
+          <p className="mt-1 text-xs text-zinc-500">Se qualcosa si blocca o va storto, il file <code>lezioni.log</code> racconta cosa stava facendo l'app: allegalo alla segnalazione.</p>
+        </div>
       </div>
     </Modal>
   );

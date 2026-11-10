@@ -26,14 +26,43 @@ fn packages_in_args() -> Vec<std::path::PathBuf> {
     std::env::args_os().skip(1).map(std::path::PathBuf::from).filter(|p| is_package(p) && p.is_file()).collect()
 }
 
+/// Log lines go to stderr and to `lezioni.log` in the app log folder (the only place a user
+/// who opened the app from the Finder can find them). Started again when over 5 MB.
+fn init_log(dir: Option<std::path::PathBuf>) {
+    struct Tee(Option<std::fs::File>);
+    impl std::io::Write for Tee {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            let _ = std::io::stderr().write_all(b);
+            if let Some(f) = &mut self.0 {
+                let _ = f.write_all(b);
+            }
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            if let Some(f) = &mut self.0 {
+                f.flush()?;
+            }
+            Ok(())
+        }
+    }
+    let file = dir.and_then(|d| {
+        std::fs::create_dir_all(&d).ok()?;
+        let p = d.join(commands::LOG_FILE);
+        let big = std::fs::metadata(&p).is_ok_and(|m| m.len() > 5_000_000);
+        std::fs::OpenOptions::new().create(true).append(!big).write(true).truncate(big).open(p).ok()
+    });
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).target(env_logger::Target::Pipe(Box::new(Tee(file)))).try_init();
+    log::info!("Lezioni {} avviata", env!("CARGO_PKG_VERSION"));
+}
+
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            init_log(app.path().app_log_dir().ok());
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let settings = settings::Settings::load(&settings_path);
             if let Some(d) = &settings.library_dir {
@@ -61,6 +90,7 @@ pub fn run() {
             source_path,
             source_open,
             reveal,
+            log_reveal,
             ai_settings_get,
             ai_settings_set,
             ai_check,

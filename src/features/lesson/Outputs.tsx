@@ -11,6 +11,10 @@ export interface JobState {
   done: number;
   total: number;
   message: string;
+  /** What the step is waiting for (upload, Gemini's answer, a retry). */
+  detail?: string;
+  /** Date.now() of the last step: the bar shows how long it has been going. */
+  since: number;
 }
 
 let jobs: Record<string, JobState> = {};
@@ -35,9 +39,11 @@ export function useJob(lessonId: string): JobState | null {
 
 export async function startProcessing(lesson: Lesson, force: boolean, onFinished: () => void) {
   if (jobs[lesson.id]) return;
-  setJob(lesson.id, { jobId: null, done: 0, total: lesson.sources.length + 1, message: "Avvio…" });
+  setJob(lesson.id, { jobId: null, done: 0, total: lesson.sources.length + 1, message: "Avvio…", since: Date.now() });
   const onEvent = (e: JobEvent) => {
-    if (e.event === "step") setJob(lesson.id, { ...(jobs[lesson.id] ?? { jobId: null }), done: e.done, total: e.total, message: e.message });
+    const cur = jobs[lesson.id] ?? { jobId: null, done: 0, total: 1, message: "", since: Date.now() };
+    if (e.event === "step") setJob(lesson.id, { ...cur, done: e.done, total: e.total, message: e.message, detail: undefined, since: Date.now() });
+    else if (e.event === "detail") setJob(lesson.id, { ...cur, detail: e.message });
     else {
       setJob(lesson.id, null);
       if (e.event === "done") {
@@ -59,11 +65,22 @@ export async function startProcessing(lesson: Lesson, force: boolean, onFinished
 
 export function JobBar({ job }: { job: JobState }) {
   const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
+  // Re-render every second for the elapsed time: a long Gemini call must not look frozen.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - job.since) / 1000));
+  const elapsed = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
   return (
     <div className="flex items-center gap-3 border-b border-sky-200 bg-sky-50 px-4 py-2 dark:border-sky-900 dark:bg-sky-950/40">
       <Sparkles className="size-4 shrink-0 animate-pulse text-sky-600" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{job.message}</div>
+        <div className="truncate text-xs text-zinc-500" data-job-detail>
+          {job.detail ?? "In corso…"} · {elapsed}
+        </div>
         <div className="mt-1 h-1 overflow-hidden rounded bg-sky-200 dark:bg-sky-900">
           <div className="h-full bg-sky-600 transition-all" style={{ width: `${Math.max(pct, 3)}%` }} />
         </div>

@@ -177,6 +177,16 @@ pub fn reveal(app: AppHandle, path: PathBuf) -> CmdResult<()> {
     app.opener().reveal_item_in_dir(path).map_err(|e| AppError::other(e.to_string()))
 }
 
+pub const LOG_FILE: &str = "lezioni.log";
+
+/// Shows the log file in the Finder / Explorer.
+#[tauri::command(async)]
+pub fn log_reveal(app: AppHandle) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let p = app.path().app_log_dir().map_err(|e| AppError::other(e.to_string()))?.join(LOG_FILE);
+    app.opener().reveal_item_in_dir(p).map_err(|e| AppError::other(e.to_string()))
+}
+
 // ---------- AI ----------
 
 use crate::ai::Gemini;
@@ -230,20 +240,39 @@ pub async fn ai_check(key: Option<String>) -> CmdResult<()> {
 /// Starts processing a lesson in the background; events on `channel`.
 #[tauri::command]
 pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_id: String, options: Options, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
-    let ai = gemini()?;
     let dir = state.settings.lock().unwrap().library_dir.clone().ok_or_else(|| AppError::NoLibrary { message: "Scegli la cartella dell'archivio".into() })?;
+    let ch = channel.clone();
+    let ai = gemini()?.with_notify(std::sync::Arc::new(move |message| {
+        let _ = ch.send(JobEvent::Detail { message });
+    }));
     let archive = Archive { dir, lock: state.write.clone() };
     let models = state.settings.lock().unwrap().models.clone();
     let cancel = state.jobs.start(&job_id);
-    tauri::async_runtime::spawn(async move {
-        let ch = channel.clone();
-        let progress = move |done: u32, total: u32, message: String| {
+    let ch = channel.clone();
+    let work = tauri::async_runtime::spawn(async move {
+        let ch2 = ch.clone();
+        let progress = move |done: f64, total: u32, message: String| {
+            log::info!("{message}");
             let _ = ch.send(JobEvent::Step { done, total, message });
         };
-        let ctx = pipeline::Ctx { ai: &ai, archive: &archive, models: &models, cancel: &cancel, progress: &progress, window: pipeline::WINDOW_SECS };
-        let ev = match ctx.run(&lesson_id, &options).await {
-            Ok(r) => JobEvent::Done { usage: r.usage, warnings: r.warnings },
-            Err(e) => JobEvent::Failed { message: format!("{e:#}") },
+        let detail = move |message: String| {
+            let _ = ch2.send(JobEvent::Detail { message });
+        };
+        let ctx = pipeline::Ctx { ai: &ai, archive: &archive, models: &models, cancel: &cancel, progress: &progress, detail: &detail, window: pipeline::WINDOW_SECS };
+        ctx.run(&lesson_id, &options).await
+    });
+    tauri::async_runtime::spawn(async move {
+        // The inner task is awaited separately so that a panic still reaches the UI.
+        let ev = match work.await {
+            Ok(Ok(r)) => JobEvent::Done { usage: r.usage, warnings: r.warnings },
+            Ok(Err(e)) => {
+                log::warn!("elaborazione: {e:#}");
+                JobEvent::Failed { message: format!("{e:#}") }
+            }
+            Err(e) => {
+                log::error!("elaborazione interrotta: {e}");
+                JobEvent::Failed { message: format!("errore interno durante l'elaborazione ({e}): manda il file di log (Impostazioni → Log) a chi sviluppa l'app") }
+            }
         };
         let _ = channel.send(ev);
         app.state::<AppState>().jobs.finish(&job_id);

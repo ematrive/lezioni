@@ -1,5 +1,12 @@
 # Novità
 
+## 0.5.1
+
+- **Elaborazione più chiara**: la barra avanza parte per parte e una seconda riga dice cosa sta succedendo (caricamento su Gemini con i MB inviati, attesa della risposta, nuovi tentativi quando Gemini è occupato) e da quanto tempo.
+- Niente più attese senza fine: se Gemini non risponde in 10 minuti l'app riprova una sola volta, e un caricamento fermo per un minuto e mezzo si interrompe con un messaggio. Prima un'attesa poteva durare più di un'ora senza segnali.
+- Un errore interno ora chiude l'elaborazione con un messaggio, invece di lasciare la barra ferma.
+- **File di log** (Impostazioni → Diagnostica → Mostra il file di log) da allegare alle segnalazioni.
+
 ## 0.5.0
 
 - **Guida** nell'app (pulsante *Guida* in basso a sinistra o <kbd>F1</kbd>): tutti i capitoli del manuale con indice, ricerca e screenshot, disponibile anche senza internet.

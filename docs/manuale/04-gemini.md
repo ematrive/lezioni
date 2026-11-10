@@ -19,11 +19,11 @@ Premi **Elabora con Gemini** in alto nella lezione. Una barra mostra a che punto
 
 ![L'elaborazione in corso](img/elaborazione.png)
 
-1. ogni **registrazione** viene divisa in parti di 20 minuti e trascritta una parte alla volta (una lezione di 2 ore richiede qualche minuto);
+1. ogni **registrazione** viene divisa in parti di 20 minuti e trascritta una parte alla volta: ogni parte viene caricata su Gemini (circa 38 MB) e trascritta in 1–3 minuti, quindi una lezione di 2 ore richiede in tutto 10–20 minuti;
 2. **foto e PDF** vengono letti, con le formule e la descrizione di grafici e schemi;
 3. da **tutte le fonti insieme**, più le tue note, vengono scritte sintesi, mappa, flashcard, domande d'esame e glossario.
 
-Puoi continuare a usare l'app mentre lavora, anche su altre lezioni; **Annulla** la ferma.
+Sotto la barra, una seconda riga dice cosa sta aspettando (il caricamento con i MB inviati, la risposta di Gemini, un nuovo tentativo se Gemini è occupato) e da quanto tempo. Puoi continuare a usare l'app mentre lavora, anche su altre lezioni; **Annulla** la ferma.
 
 ## Rielaborare
 
