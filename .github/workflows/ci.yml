@@ -26,6 +26,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Interfaccia (TypeScript + build)
         run: pnpm build
+      - name: Manuale (immagini e link)
+        run: pnpm docs:check
       - name: Backend (Rust)
         working-directory: src-tauri
         run: cargo test

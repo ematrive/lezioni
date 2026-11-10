@@ -2,6 +2,12 @@
 
 App desktop (Tauri 2 + React) per raccogliere le lezioni dei corsi: registrazioni, appunti dal tablet, foto di appunti a mano, PDF e testo, organizzati per corso e lezione in una cartella del computer. Con Gemini: trascrizione delle registrazioni, lettura di foto, appunti e PDF, sintesi, mappa concettuale, glossario, flashcard e domande d'esame. Ricerca in tutto l'archivio; condivisione come pacchetto `.lezione`, PDF, pagina web, Markdown (Obsidian, NotebookLM) e flashcard per Anki. Domande sulla lezione o su tutto il corso, con le fonti citate.
 
+## Documentazione
+
+- **Manuale utente**: [docs/manuale](docs/manuale/01-introduzione.md), lo stesso mostrato nell'app (**Guida**, <kbd>F1</kbd>).
+- **Novità**: [CHANGELOG.md](CHANGELOG.md).
+- **Documentazione tecnica**: [architettura](docs/tecnico/architettura.md), [sviluppo e test](docs/tecnico/sviluppo.md), [sicurezza e privacy](docs/tecnico/sicurezza.md), [rilascio](docs/rilascio.md), [piano del progetto](docs/piano.md).
+
 ## Sviluppo
 
 ```bash

@@ -1,5 +1,9 @@
 # Novità
 
+## 0.5.0
+
+- **Guida** nell'app (pulsante *Guida* in basso a sinistra o <kbd>F1</kbd>): tutti i capitoli del manuale con indice, ricerca e screenshot, disponibile anche senza internet.
+
 ## 0.4.0
 
 - **Domande**: una chat sulla lezione (risponde da trascrizioni, appunti e slide) o su tutto il corso (dalle sintesi delle lezioni). Le risposte citano le fonti: [F1 00:12:30] riapre la registrazione a quel minuto, [L3] apre la lezione. La conversazione resta salvata nella cartella della lezione e non viene mai inclusa nei pacchetti condivisi; le note personali vanno nel pacchetto solo se lo scegli.

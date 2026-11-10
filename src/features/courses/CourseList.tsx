@@ -1,5 +1,5 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import { BookOpen, Download, FolderOpen, Pencil, Plus, Search, Settings, Share2, Trash2, X } from "lucide-react";
+import { BookOpen, CircleHelp, Download, FolderOpen, Pencil, Plus, Search, Settings, Share2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { api, toAppError, type Course } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
@@ -15,7 +15,9 @@ export function CourseList({
   onQuery,
   onImport,
   onExport,
+  onHelp,
 }: {
+  onHelp: () => void;
   courses: Course[];
   selected: string | null;
   onSelect: (id: string) => void;
@@ -106,6 +108,10 @@ export function CourseList({
         </button>
         <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onSettings}>
           <Settings className="size-4" /> Impostazioni
+        </button>
+        <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onHelp} title="Guida (F1)">
+          <CircleHelp className="size-4" /> Guida
+          <kbd className="ml-auto rounded border border-zinc-300 px-1 text-[10px] text-zinc-400 dark:border-zinc-700">F1</kbd>
         </button>
       </div>
       {editing && (

@@ -37,15 +37,39 @@ export function linkRefs(md: string, source?: string): string {
 }
 
 /** Markdown with GFM tables and LaTeX; `#t=…` / `#f=…` links go to `onRef`. */
-export function Markdown({ text, source, onRef, exported }: { text: string; source?: string; onRef?: (href: string) => void; exported?: boolean }) {
+export function Markdown({
+  text,
+  source,
+  onRef,
+  exported,
+  imgSrc,
+  onLink,
+}: {
+  text: string;
+  source?: string;
+  onRef?: (href: string) => void;
+  exported?: boolean;
+  /** Maps a relative image path (`img/x.png`) to a URL (user guide). */
+  imgSrc?: (src: string) => string | undefined;
+  /** Relative links (`02-lezioni.md`) inside the user guide. */
+  onLink?: (href: string) => void;
+}) {
   return (
     <div className="prose-lezioni select-text">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
+          img: ({ src, alt }) => {
+            const url = typeof src === "string" ? (imgSrc?.(src) ?? src) : undefined;
+            return url ? <img src={url} alt={alt ?? ""} className="my-2 rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800" loading="lazy" /> : null;
+          },
           a: ({ href, children }) =>
-            href?.startsWith("#") && exported ? (
+            onLink && href && !/^(mailto:|#)/.test(href) ? (
+              <button className="text-sky-600 underline" onClick={() => onLink(href)}>
+                {children}
+              </button>
+            ) : href?.startsWith("#") && exported ? (
               <span className="ref">{children}</span>
             ) : href?.startsWith("#") ? (
               <button className="mx-0.5 rounded bg-sky-100 px-1 font-mono text-xs text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900" onClick={() => onRef?.(href)}>

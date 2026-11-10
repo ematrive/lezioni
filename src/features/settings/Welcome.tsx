@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, toAppError } from "../../lib/api";
 
 /** First run: where the archive lives. */
-export function Welcome({ suggested, onDone }: { suggested: string | null; onDone: () => void }) {
+export function Welcome({ suggested, onDone, onHelp }: { suggested: string | null; onDone: () => void; onHelp: () => void }) {
   const [error, setError] = useState("");
   const use = async (dir: string) => {
     try {
@@ -38,6 +38,13 @@ export function Welcome({ suggested, onDone }: { suggested: string | null; onDon
           </button>
         </div>
         {error && <p className="text-red-600">{error}</p>}
+        <p className="text-sm text-zinc-500">
+          Prima volta?{" "}
+          <button className="text-sky-600 hover:underline" onClick={onHelp}>
+            Leggi la guida
+          </button>{" "}
+          (anche più tardi, con F1).
+        </p>
       </div>
     </div>
   );

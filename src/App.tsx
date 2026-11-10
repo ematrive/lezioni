@@ -10,6 +10,7 @@ import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { SearchResults } from "./features/search/SearchResults";
 import { ImportDialog, pickPackage } from "./features/share/ImportDialog";
 import { ShareDialog } from "./features/share/ShareDialog";
+import { Guide } from "./features/help/Guide";
 import { usePaneSize } from "./lib/colwidths";
 import { Toasts, toast } from "./lib/toast";
 import { checkForUpdate } from "./lib/update";
@@ -48,6 +49,8 @@ export default function App() {
   /** `.lezione` files waiting to be imported (double click, drag & drop, menu). */
   const [packages, setPackages] = useState<string[]>([]);
   const [exporting, setExporting] = useState<Course | null>(null);
+  const [guide, setGuide] = useState(false);
+  const closeGuide = useCallback(() => setGuide(false), []);
   const coursePane = usePaneSize("courses", { def: 230, min: 170, max: 420 });
   const lessonPane = usePaneSize("lessons", { def: 300, min: 220, max: 520 });
 
@@ -58,6 +61,14 @@ export default function App() {
   }, [loadSettings]);
   useEffect(() => {
     checkForUpdate();
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setGuide((g) => !g);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
   }, []);
 
   const loadCourses = useCallback(async () => {
@@ -108,7 +119,13 @@ export default function App() {
   };
 
   if (!settings) return null;
-  if (!settings.libraryDir) return <Welcome suggested={settings.suggestedDir} onDone={loadSettings} />;
+  if (!settings.libraryDir)
+    return (
+      <>
+        <Welcome suggested={settings.suggestedDir} onDone={loadSettings} onHelp={() => setGuide(true)} />
+        {guide && <Guide onClose={closeGuide} />}
+      </>
+    );
 
   const course = courses.find((c) => c.id === courseId) ?? null;
 
@@ -129,6 +146,7 @@ export default function App() {
           onSettings={() => setShowSettings(true)}
           onImport={importNext}
           onExport={setExporting}
+          onHelp={() => setGuide(true)}
         />
         {coursePane.handle}
       </aside>
@@ -201,6 +219,7 @@ export default function App() {
           }}
         />
       )}
+      {guide && <Guide onClose={closeGuide} />}
       <Toasts />
     </div>
   );

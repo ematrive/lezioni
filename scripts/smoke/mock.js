@@ -29,7 +29,16 @@
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
-    convertFileSrc: (p) => "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30" fill="#bae6fd"/></svg>') + "#" + p,
+    // A sheet of handwritten-looking notes, for photos in the screenshots.
+    convertFileSrc: (p) =>
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#fdfcf7"/>' +
+          Array.from({ length: 9 }, (_, i) => `<path d="M30 ${50 + i * 26} q 40 -8 80 0 t 80 0 t 80 0 t ${60 + (i % 3) * 30} 0" stroke="#1e3a8a" stroke-width="3" fill="none" opacity="0.75"/>`).join("") +
+          '<rect x="250" y="150" width="110" height="90" fill="none" stroke="#b91c1c" stroke-width="3"/></svg>',
+      ) +
+      "#" +
+      p,
     transformCallback: (fn) => {
       const i = n++;
       cbs[i] = fn;
@@ -78,12 +87,14 @@
         case "search_archive": {
           const q = a.query.toLowerCase();
           const hits = [];
+          // Like the real backend (search.rs): no Markdown marks or [hh:mm:ss] in the snippet.
+          const clean = (t) => t.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, "").replace(/[#*`$_>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 140);
           for (const l of lessons) {
             const c = courses.find((x) => x.id === l.courseId);
             const o = outputs[l.id];
             for (const [sid, t] of Object.entries(o?.extracts ?? {}))
-              if (t.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "extract", sourceId: sid, label: "registrazione 10-11.m4a", snippet: t.slice(0, 120), time: 750, score: 1 });
-            if (o?.summary?.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "summary", sourceId: null, label: "Sintesi", snippet: o.summary.slice(0, 120), time: null, score: 1 });
+              if (t.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "extract", sourceId: sid, label: "registrazione 10-11.m4a", snippet: clean(t), time: 750, score: 1 });
+            if (o?.summary?.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "summary", sourceId: null, label: "Sintesi", snippet: clean(o.summary), time: null, score: 1 });
           }
           return hits;
         }

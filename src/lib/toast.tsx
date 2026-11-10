@@ -34,7 +34,7 @@ export function Toasts() {
     () => toasts,
   );
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex max-w-md flex-col gap-2">
+    <div data-toasts className="pointer-events-none fixed right-4 bottom-4 z-50 flex max-w-md flex-col gap-2">
       {list.map((t) => (
         <div
           key={t.id}
