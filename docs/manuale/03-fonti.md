@@ -35,3 +35,8 @@ Le fonti sono raggruppate per tipo. Le registrazioni si ascoltano direttamente n
 ![Le fonti di una lezione](img/fonti.png)
 
 > **Consiglio per gli appunti dal tablet.** Se usi GoodNotes, Notability, OneNote o simili, esporta le pagine della lezione in **PDF**: un PDF di più pagine è una sola fonte e viene letto meglio di tante foto.
+
+## Appunti a mano su slide e foto
+
+PDF e foto vengono letti dal modello come immagini, pagina per pagina: vede anche quello che hai scritto a mano sopra una slide stampata o una dispensa, le evidenziature e le frecce. Questi appunti finiscono nel testo letto nel punto in cui sono, in corsivo tra parentesi, come *(nota a mano: …)*; per un'evidenziatura viene scritto cosa è evidenziato. Così entrano anche nella sintesi e nelle domande. Una grafia molto difficile può essere letta male: controlla nella scheda Trascrizione, dove ogni fonte ha il suo testo e si corregge con **Modifica**.
+

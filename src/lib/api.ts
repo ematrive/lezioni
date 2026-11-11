@@ -199,6 +199,8 @@ export interface Outputs {
   bookmarks: Bookmark[];
   /** earlier versions, newest first */
   versions: Version[];
+  /** source id → pauses Whisper filled with invented words, still to be marked */
+  pauses: Record<string, number>;
 }
 
 export interface Version {
@@ -287,6 +289,8 @@ export const ai = {
   /** Cleans again the piece from `from` to `to` (seconds; null = the end) with `model` (null = the cleanup model). */
   reclean: (lessonId: string, sourceId: string, from: number, to: number | null, model: string | null) =>
     invoke<{ text: string; usage: Usage; model: string }>("extract_reclean", { lessonId, sourceId, from, to, model }),
+  /** Whisper's invented words on a break → a pause line; returns how many. */
+  markPauses: (lessonId: string, sourceId: string) => invoke<number>("extract_mark_pauses", { lessonId, sourceId }),
   versionRead: (lessonId: string, area: Version["area"], stamp: string, file: string) => invoke<string>("version_read", { lessonId, area, stamp, file }),
   versionRestore: (lessonId: string, area: Version["area"], stamp: string, file: string | null) => invoke<Lesson>("version_restore", { lessonId, area, stamp, file }),
   addBookmark: (lessonId: string, sourceId: string, at: number, kind: BookmarkKind, note = "") => invoke<Bookmark[]>("bookmark_add", { lessonId, sourceId, at, kind, note }),

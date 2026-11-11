@@ -683,3 +683,11 @@ pub fn terms_set(state: State<'_, AppState>, terms: String) -> CmdResult<()> {
 pub fn course_glossary(state: State<'_, AppState>, course_id: String) -> CmdResult<Vec<crate::course::GlossaryTerm>> {
     Ok(crate::course::glossary(&state.library()?, &course_id)?)
 }
+
+/// Turns the pauses Whisper filled with invented words into pause lines.
+#[tauri::command(async)]
+pub fn extract_mark_pauses(state: State<'_, AppState>, lesson_id: String, source_id: String) -> CmdResult<usize> {
+    not_busy(&state, &lesson_id)?;
+    let _w = state.writing();
+    Ok(pipeline::mark_pauses(&state.library()?, &lesson_id, &source_id)?)
+}

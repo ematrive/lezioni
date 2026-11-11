@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { ChevronDown, ChevronRight, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ai, api, courseAi, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
@@ -274,7 +275,7 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
 
 /** Markdown text editor with find and replace (all occurrences, ignoring case). With `reclean`,
  *  a selected piece of a transcript can be cleaned again from Whisper's text. */
-export function TextEditor({ initial, course, onSave, onCancel, reclean }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string } }) {
+export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string }; timed?: boolean }) {
   const [text, setText] = useState(initial);
   const [sel, setSel] = useState<[number, number]>([0, 0]);
   const [find, setFind] = useState("");
@@ -321,7 +322,26 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean }: { ini
           </button>
         )}
       </div>
-      {reclean && <Reclean lessonId={reclean.lessonId} sourceId={reclean.sourceId} text={text} sel={sel} onReplace={(a, b, piece) => setText(text.slice(0, a) + piece + text.slice(b))} />}
+      {(reclean || timed) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {reclean && <Reclean lessonId={reclean.lessonId} sourceId={reclean.sourceId} text={text} sel={sel} onReplace={(a, b, piece) => setText(text.slice(0, a) + piece + text.slice(b))} />}
+          {timed && sel[1] > sel[0] && pieceAt(text, sel[0], sel[1]) && (
+            <button
+              className="btn"
+              title="I paragrafi selezionati diventano una riga «Pausa» (intervallo, silenzio, chiacchiere fuori lezione)"
+              onClick={() => {
+                const p = pieceAt(text, sel[0], sel[1]);
+                if (!p) return;
+                const line = `[${clock(p.from)}] *(pausa ${p.to === null ? "fino alla fine" : `fino a ${clock(p.to)}`})*`;
+                setText(text.slice(0, p.start) + line + text.slice(p.end));
+                setSel([0, 0]);
+              }}
+            >
+              <Pause className="size-4" /> Segna come pausa
+            </button>
+          )}
+        </div>
+      )}
       <textarea
         className="field min-h-[60vh] font-mono text-sm"
         value={text}
@@ -541,12 +561,32 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
   }, [lesson, mark]);
   useEffect(() => {
     if (!seek) return;
-    sections.current[seek.sourceId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // To the paragraph of that minute (the last one starting before it), once it is on screen;
+    // the section's start when there is no minute.
+    let tries = 0;
+    let frame = 0;
+    const go = () => {
+      const sec = sections.current[seek.sourceId];
+      const times = sec ? [...sec.querySelectorAll<HTMLElement>("[data-t]")] : [];
+      if (!sec || (seek.secs >= 0 && !times.length && tries++ < 20)) {
+        frame = requestAnimationFrame(go);
+        return;
+      }
+      const at = seek.secs >= 0 ? times.filter((b) => Number(b.dataset.t) <= seek.secs).pop() : undefined;
+      const target = at?.closest("p") ?? null;
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.classList.add("flash");
+        setTimeout(() => target.classList.remove("flash"), 2000);
+      } else sec?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    frame = requestAnimationFrame(go);
     const p = players.current[seek.sourceId];
     if (p && seek.secs >= 0) {
       p.currentTime = seek.secs;
       p.play().catch(() => {});
     }
+    return () => cancelAnimationFrame(frame);
   }, [seek]);
   const withText = lesson.sources.filter((s) => outputs.extracts[s.id] !== undefined);
   if (!withText.length) return <Placeholder text="Qui comparirà la trascrizione delle registrazioni e il testo letto da foto, appunti e PDF." action={process} />;
@@ -587,6 +627,27 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                     ))}
                   </div>
                 )}
+                {editingId !== s.id && (outputs.pauses[s.id] ?? 0) > 0 && (
+                  <button
+                    className="btn"
+                    disabled={!editing}
+                    title="Whisper ha riempito delle pause (silenzio, intervallo) con parole inventate come «grazie grazie»: diventano una riga «Pausa»"
+                    onClick={async () => {
+                      const n = outputs.pauses[s.id];
+                      const ok = await ask(`Whisper ha riempito ${n === 1 ? "una pausa" : `${n} pause`} di «${s.originalName}» con parole inventate (come «grazie grazie grazie»). Sostituirle con una riga «Pausa»?\n\nLa trascrizione conta come corretta a mano; il testo di prima resta nelle versioni precedenti se rielabori.`, { title: "Pause", okLabel: "Sostituisci", cancelLabel: "Annulla" });
+                      if (!ok) return;
+                      try {
+                        await ai.markPauses(lesson.id, s.id);
+                        editing?.onSaved(await api.lesson(lesson.id));
+                        toast(n === 1 ? "Pausa segnata." : `${n} pause segnate.`);
+                      } catch (e) {
+                        toast(toAppError(e).message, "error");
+                      }
+                    }}
+                  >
+                    <Pause className="size-4" /> {outputs.pauses[s.id] === 1 ? "1 pausa da sistemare" : `${outputs.pauses[s.id]} pause da sistemare`}
+                  </button>
+                )}
                 {editingId !== s.id && !showRaw && <EditButton editing={editing} onClick={() => setEditingId(s.id)} />}
                 {editingId !== s.id && <VersionsButton lesson={lesson} versions={outputs.versions} area="estratti" file={`${s.file}.md`} current={outputs.extracts[s.id]} disabled={!editing} onRestored={(l) => editing?.onSaved(l)} />}
               </div>
@@ -624,6 +685,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                 initial={outputs.extracts[s.id]}
                 course={editing.course}
                 reclean={raw ? { lessonId: lesson.id, sourceId: s.id } : undefined}
+                timed={media}
                 onCancel={() => setEditingId(null)}
                 onSave={async (text) => {
                   const l = await ai.saveExtract(lesson.id, s.id, text);

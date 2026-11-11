@@ -1,4 +1,5 @@
 import "katex/dist/katex.min.css";
+import { Pause } from "lucide-react";
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -65,6 +66,25 @@ function marksByParagraph(text: string, marks: Mark[]): Map<number, Mark[]> {
   return out;
 }
 
+/** All the text of a hast node. */
+function textOf(node: unknown): string {
+  const n = node as { type?: string; value?: string; children?: unknown[] };
+  if (n?.type === "text") return n.value ?? "";
+  return (n?.children ?? []).map(textOf).join("");
+}
+
+/** "(pausa fino a 00:16:19)" after the time of a paragraph: a break of the lesson. */
+function pauseOf(node: unknown): { until: string | null } | null {
+  const kids = (node as { children?: unknown[] }).children ?? [];
+  const rest = kids
+    .filter((k) => !((k as { tagName?: string }).tagName === "a"))
+    .map(textOf)
+    .join("")
+    .trim();
+  const m = rest.match(/^\(?pausa fino (?:a (\d{1,2}:\d{2}(?::\d{2})?)|alla fine)\)?$/);
+  return m ? { until: m[1] ?? null } : null;
+}
+
 /** Seconds of the first `#t=…@N` link of a paragraph (hast node). */
 function firstTime(node: unknown): number | null {
   const kids = (node as { children?: { type: string; tagName?: string; properties?: { href?: unknown } }[] } | undefined)?.children ?? [];
@@ -112,6 +132,18 @@ export function Markdown({
         components={{
           p: ({ node, children }) => {
             if (inline) return <>{children}</>;
+            const pause = source ? pauseOf(node) : null;
+            if (pause) {
+              const from = firstTime(node);
+              const mins = from !== null && pause.until ? Math.round((toSecs(pause.until) - from) / 60) : null;
+              const link = Array.isArray(children) ? children[0] : children;
+              return (
+                <p className="flex items-center gap-2 text-sm text-zinc-400" data-pause>
+                  <Pause className="size-3.5" /> Pausa {link} {pause.until ? `– ${pause.until}` : "fino alla fine"}
+                  {mins !== null && mins > 0 && ` (${mins} min)`}
+                </p>
+              );
+            }
             const t = byParagraph ? firstTime(node) : null;
             const ms = t === null ? undefined : byParagraph?.get(t);
             if (!ms) return <p>{children}</p>;
@@ -137,7 +169,9 @@ export function Markdown({
             ) : href?.startsWith("#") && exported ? (
               <span className="ref">{children}</span>
             ) : href?.startsWith("#") ? (
-              <button className="mx-0.5 rounded bg-sky-100 px-1 font-mono text-xs text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900" onClick={() => onRef?.(href)}>
+              <button
+                data-t={href.match(/@(\d+)$/)?.[1]}
+                className="mx-0.5 rounded bg-sky-100 px-1 font-mono text-xs text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900" onClick={() => onRef?.(href)}>
                 {children}
               </button>
             ) : (

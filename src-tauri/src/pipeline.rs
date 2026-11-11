@@ -174,7 +174,7 @@ fn whisper_parts(lesson_dir: &Path, s: &Source) -> Option<String> {
     let mut names: Vec<String> = fs::read_dir(&dir).ok()?.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".whisper.md")).collect();
     names.sort();
     let texts: Vec<String> = names.iter().filter_map(|n| fs::read_to_string(dir.join(n)).ok()).filter(|t| !t.trim().is_empty()).collect();
-    if texts.is_empty() { None } else { Some(texts.join("\n\n")) }
+    if texts.is_empty() { None } else { Some(crate::pauses::mark(&texts.join("\n\n")).0) }
 }
 
 /// Writes `<dir>/<rel>` through a temporary file, so a crash never leaves half a file.
@@ -209,6 +209,22 @@ pub fn save_extract(lib: &Library, lesson_id: &str, source_id: &str, text: &str)
     close_parts(&l.path, s)?;
     write_atomic(&l.path, &extract_rel(s), text.as_bytes())?;
     lib.set_source_edited(lesson_id, source_id, Some(Utc::now()))
+}
+
+/// Marks the pauses Whisper filled with invented words in a transcript already made (its text and
+/// Whisper's). Counts as a correction by hand. Returns how many pauses.
+pub fn mark_pauses(lib: &Library, lesson_id: &str, source_id: &str) -> Result<usize> {
+    let l = lib.lesson(lesson_id)?;
+    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+    let (text, n) = crate::pauses::mark(&fs::read_to_string(l.path.join(extract_rel(s)))?);
+    if n == 0 {
+        return Ok(0);
+    }
+    if let Ok(raw) = fs::read_to_string(l.path.join(raw_rel(s))) {
+        write_atomic(&l.path, &raw_rel(s), crate::pauses::mark(&raw).0.as_bytes())?;
+    }
+    save_extract(lib, lesson_id, source_id, &text)?;
+    Ok(n)
 }
 
 fn mark_info_edited(l: &Lesson) -> Result<()> {
@@ -586,7 +602,8 @@ impl<A: Ai> Ctx<'_, A> {
         }
         (self.progress)(frac, step.1, format!("Trascrizione sul computer di {}, parte {} di {}: {}–{} di {}", s.original_name, i + 1, chunks.len(), hms(c.start), hms(c.start + c.secs.round() as u64), hms(total)));
         let segs = self.whisper(asr, &c.path, prompt, cleaning).await?;
-        let text = asr::paragraphs(&segs, c.start);
+        // What Whisper invents on silence (a break) becomes one pause line before the cleanup.
+        let text = crate::pauses::mark_until(&asr::paragraphs(&segs, c.start), Some(c.start + c.secs.round() as u64)).0;
         if text.trim().is_empty() {
             // Silence: nothing to clean.
             self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), b"")?;
@@ -689,7 +706,8 @@ impl<A: Ai> Ctx<'_, A> {
         }
         // Complete even with parts not cleaned: the text is saved and shown, and the parts left
         // in Whisper's text are found again by `cleanup_pending`.
-        Ok((texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"), true))
+        // A pause across two parts becomes one.
+        Ok((crate::pauses::mark(&texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n")).0, true))
     }
 
     async fn transcribe_chunks(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
@@ -965,6 +983,8 @@ pub struct Outputs {
     pub bookmarks: Vec<crate::bookmarks::Bookmark>,
     /// Earlier versions of the outputs and of the transcripts, newest first.
     pub versions: Vec<crate::versions::Version>,
+    /// source id → pauses Whisper filled with invented words, still to be marked.
+    pub pauses: BTreeMap<String, usize>,
 }
 
 /// Just the study material (`generati/studio.json`), for the review.
@@ -975,8 +995,18 @@ pub fn outputs_study(lesson: &Lesson) -> Option<Study> {
 pub fn outputs(lesson: &Lesson) -> Outputs {
     let read = |rel: &Path| fs::read_to_string(lesson.path.join(rel)).ok();
     let gdir = Path::new(GENERATED_DIR);
+    let extracts: BTreeMap<String, String> = lesson.meta.sources.iter().filter_map(|s| read(&extract_rel(s)).map(|t| (s.id.clone(), t))).collect();
+    let pauses = lesson
+        .meta
+        .sources
+        .iter()
+        .filter(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video))
+        .filter_map(|s| Some((s.id.clone(), crate::pauses::mark(extracts.get(&s.id)?).1)))
+        .filter(|(_, n)| *n > 0)
+        .collect();
     Outputs {
-        extracts: lesson.meta.sources.iter().filter_map(|s| read(&extract_rel(s)).map(|t| (s.id.clone(), t))).collect(),
+        pauses,
+        extracts,
         // While parts wait for the cleanup, their Whisper text is still in `.parti/`.
         raw: lesson.meta.sources.iter().filter_map(|s| read(&raw_rel(s)).or_else(|| whisper_parts(&lesson.path, s)).map(|t| (s.id.clone(), t))).collect(),
         summary: read(&gdir.join("sintesi.md")),
@@ -1017,14 +1047,19 @@ mod tests {
     struct FakeAsr {
         calls: AtomicUsize,
         prompt: Mutex<String>,
+        /// The second part is a break: Whisper fills it with "grazie".
+        thanks: std::sync::atomic::AtomicBool,
     }
 
     impl Asr for FakeAsr {
         fn transcribe(&self, wav: &Path, prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
             assert!(wav.is_file());
-            self.calls.fetch_add(1, Ordering::SeqCst);
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             *self.prompt.lock().unwrap() = prompt.to_string();
             progress(100);
+            if n == 2 && self.thanks.load(Ordering::SeqCst) {
+                return Ok(vec![asr::Segment { start: 1.0, end: 2.0, text: "Grazie.".into() }, asr::Segment { start: 5.0, end: 9.0, text: "grazie grazie grazie".into() }]);
+            }
             Ok(vec![asr::Segment { start: 1.0, end: 4.0, text: "ehm allora il simplesso".into() }])
         }
     }
@@ -1261,6 +1296,41 @@ mod tests {
         assert_eq!(out.summary.unwrap(), "## Simplesso\nCorretta.");
         assert!(out.study.unwrap().flashcard.is_empty());
         assert!(out.info.unwrap().edited.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_break_becomes_a_pause_before_the_cleanup() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        let asr = Arc::new(FakeAsr::default());
+        asr.thanks.store(true, Ordering::SeqCst);
+        run_with(&st, &ai, Some(asr), Options::default()).await.unwrap();
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        let out = outputs(&l);
+        let sid = &l.meta.sources[0].id;
+        assert_eq!(out.extracts[sid], "[00:00:01] il simplesso\n\n[00:00:11] *(pausa fino a 00:00:20)*\n\n[00:00:21] il simplesso");
+        assert!(out.raw[sid].contains("*(pausa fino a 00:00:20)*") && !out.raw[sid].contains("grazie"), "{}", out.raw[sid]);
+        assert!(!ai.prompts.lock().unwrap().iter().any(|p| p.contains("grazie")), "the invented words never reach the model");
+        assert!(out.pauses.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pauses_marked_in_a_lesson_made_before() {
+        let st = setup(&[("reg.wav", None)]);
+        run_with(&st, &Fake::default(), Some(Arc::new(FakeAsr::default())), Options::default()).await.unwrap();
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        let s = &l.meta.sources[0];
+        let old = "[00:00:01] il simplesso\n\n[00:00:11] grazie\n\n[00:00:15] grazie grazie grazie\n\n[00:00:21] il simplesso";
+        fs::write(l.path.join(extract_rel(s)), old).unwrap();
+        fs::write(l.path.join(raw_rel(s)), old).unwrap();
+        assert_eq!(outputs(&l).pauses[&s.id], 1);
+        assert_eq!(mark_pauses(&st.lib, &st.lesson, &s.id).unwrap(), 1);
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        let out = outputs(&l);
+        assert!(out.extracts[&s.id].contains("[00:00:11] *(pausa fino a 00:00:21)*"));
+        assert!(out.raw[&s.id].contains("[00:00:11] *(pausa fino a 00:00:21)*"));
+        assert!(l.meta.sources[0].edited.is_some());
+        assert!(out.pauses.is_empty());
     }
 
     /// Transcription on the computer without Whisper loaded: an error, never the audio to the model.

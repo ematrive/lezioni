@@ -22,6 +22,13 @@ Il segnaposto prende il minuto a cui sei arrivato. I tasti valgono per la regist
 
 Con **Rigenera** la sintesi dà più spazio ai punti importanti e spiega con più calma quelli che non hai capito. Anche le **Domande** li conoscono: puoi chiedere «spiegami i punti che non ho capito». I segnaposti sono nel file `segnaposti.json` della lezione e viaggiano nei pacchetti, come le note.
 
+### Pause
+
+Se la registrazione è rimasta accesa durante un intervallo o un silenzio, Whisper tende a riempire il vuoto con parole inventate (tipicamente «grazie grazie grazie…», o «sottotitoli a cura di…»). L'app le riconosce e le sostituisce con una sola riga grigia: **Pausa 00:12:23 – 00:16:19 (4 min)**, con il minuto cliccabile. Il testo inventato non arriva al modello, quindi non sporca sintesi e domande.
+
+- Nelle lezioni elaborate prima di questa versione, se ci sono pause da sistemare compare il pulsante **N pause da sistemare** nell'intestazione della registrazione: un clic e diventano righe di pausa.
+- A mano: in **Modifica** seleziona i paragrafi da saltare (bastano poche parole, vale il paragrafo intero) e premi **Segna come pausa**, poi **Salva**. Utile anche per chiacchiere fuori lezione o per un pezzo che non ti serve.
+
 ### Il testo di Whisper
 
 Per le registrazioni trascritte sul computer, l'interruttore **Ripulita | Whisper** mostra il testo come l'ha riconosciuto Whisper, prima che il modello lo ripulisse. Serve a controllare un passaggio dubbio: se la versione ripulita dice qualcosa di strano, il testo di Whisper mostra cosa è stato sentito davvero (e il minuto per riascoltarlo).
@@ -42,6 +49,12 @@ Per le registrazioni trascritte sul computer, l'interruttore **Ripulita | Whispe
 ![La proposta accanto al testo attuale](img/ripulitura-pezzo.png)
 
 - **Rielabora anche le fonti** rifà la trascrizione da capo: l'app chiede conferma e conserva la versione corretta in `estratti/versioni` nella cartella della lezione.
+
+## Cerca nella lezione
+
+La lente a destra delle schede (o **⌘F** sul Mac, **Ctrl+F** su Windows) cerca nella scheda aperta: trascrizione, sintesi, studio… Tutte le occorrenze sono evidenziate in giallo, quella attuale in arancione; **Invio** passa alla successiva, **Maiusc+Invio** alla precedente, **Esc** chiude. Maiuscole e accenti non contano. Per cercare in tutte le lezioni c'è il campo in alto a sinistra.
+
+![La ricerca nella lezione](img/cerca-lezione.png)
 
 ## Sintesi
 

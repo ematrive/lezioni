@@ -90,3 +90,6 @@ body.dnd-active * {
 /* Impostazioni → Editor: size and font of the code editors (CodeMirror). */
 .cm-editor { font-size: var(--editor-font-size, inherit); }
 html.editor-font .cm-editor .cm-scroller { font-family: var(--editor-font); }
+.flash { animation: help-flash 2s ease-out; border-radius: 4px; }
+::highlight(find) { background-color: rgb(253 224 71 / 0.6); color: inherit; }
+::highlight(find-current) { background-color: rgb(251 146 60); color: black; }

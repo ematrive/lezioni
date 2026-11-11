@@ -2,6 +2,10 @@
 
 ## Prossima versione
 
+- **Pause**: le parole che Whisper inventa durante un silenzio o un intervallo («grazie grazie grazie…») diventano una riga grigia «Pausa 00:12:23 – 00:16:19» e non arrivano più al modello. Per le lezioni già fatte c'è il pulsante «pause da sistemare»; a mano, *Segna come pausa* nella correzione.
+- **Cerca nella lezione** (⌘F / Ctrl+F): occorrenze evidenziate nella scheda aperta, con successiva e precedente.
+- Gli **appunti a mano** sopra slide e foto (note, evidenziature, frecce) vengono trascritti come *(nota a mano: …)*.
+- Corretto: da un risultato della ricerca o da un riferimento della sintesi la trascrizione ora scorre fino al paragrafo di quel minuto, non solo l'audio.
 - **Parole per tutti i corsi** (Impostazioni): nomi e sigle che tornano in ogni corso, suggeriti a Whisper, alla ripulitura e alla sintesi insieme alle parole del corso.
 - **Glossario del corso** nella pagina del corso: le parole del corso, finalmente in vista e modificabili, e i glossari di tutte le lezioni uniti, con un clic per aggiungere un termine alle parole del corso.
 - Menu **⋯** anche sulle lezioni nell'elenco (Condividi, Mostra la cartella, Elimina).

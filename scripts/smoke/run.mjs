@@ -103,6 +103,17 @@ try {
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Oggi vediamo il metodo del simplesso.").waitFor();
   await p.getByRole("button", { name: "00:12:30" }).waitFor();
+  // The transcript scrolled to that paragraph (not left at the top).
+  await p.waitForTimeout(700);
+  const visible = await p.locator('[data-t="750"]').first().evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight;
+  });
+  if (!visible) throw new Error("la trascrizione non è andata al minuto 12:30");
+  // A break Whisper filled with "grazie": one click and it becomes a grey pause line.
+  await p.getByRole("button", { name: "1 pausa da sistemare" }).click();
+  await p.locator("[data-pause]").getByText(/Pausa/).waitFor();
+  await p.getByText("grazie grazie").waitFor({ state: "detached" });
   await shot("trascrizione");
   // Whisper's text, before the cleanup.
   await p.getByRole("button", { name: "Whisper", exact: true }).click();
@@ -131,6 +142,15 @@ try {
   await shot("correzione");
   await p.getByRole("button", { name: "Aggiungi «TIM» alle parole del corso" }).click();
   await p.getByText(/«TIM» aggiunta alle parole del corso/).waitFor();
+  // A paragraph marked as a pause by hand.
+  await p.locator("[data-editor] textarea").evaluate((t) => {
+    t.focus();
+    const i = t.value.indexOf("[00:00:05]");
+    t.setSelectionRange(i + 12, i + 20);
+    t.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await p.getByRole("button", { name: "Segna come pausa" }).click();
+  if (!(await p.locator("[data-editor] textarea").inputValue()).includes("[00:00:05] *(pausa fino a 00:03:10)*")) throw new Error("pausa a mano non segnata");
   // A piece cleaned again from Whisper's text: select the second paragraph.
   await p.getByText("Seleziona un pezzo del testo").waitFor();
   await p.locator("[data-editor] textarea").evaluate((t) => {
@@ -188,6 +208,15 @@ try {
   await shot("domande");
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.locator("audio[title^='Clicca un minuto']").waitFor();
+
+  // Find in the lesson (⌘F / Ctrl+F): occurrences counted, next one.
+  await p.keyboard.press("Control+f");
+  await p.getByRole("textbox", { name: "Cerca nella lezione" }).fill("pausa");
+  await p.getByText(/^1 di \d+$/).waitFor();
+  await p.keyboard.press("Enter");
+  await p.getByText(/^2 di \d+$/).waitFor();
+  await shot("cerca-lezione");
+  await p.keyboard.press("Escape");
 
   // Course page: review of the whole course (all done today), then what the AI cost.
   await p.getByTitle(/^Pagina del corso/).click();
@@ -251,11 +280,13 @@ try {
   if (!(await p.evaluate(() => window.__printed.includes("<details open")))) throw new Error("PDF: flashcard chiuse");
 
   // Search across the archive, then jump into the transcript.
-  await p.getByPlaceholder("Cerca in tutte le lezioni").fill("simplesso");
+  await p.getByPlaceholder("Cerca in tutte le lezioni").fill("funzione obiettivo");
   await p.getByText(/risultati in tutto l'archivio/).waitFor();
   await shot("ricerca");
   await p.getByText("· registrazione 10-11.m4a · 00:12:30").click();
   await p.locator("audio[title^='Clicca un minuto']").waitFor();
+  await p.waitForTimeout(700);
+  if (!(await p.locator('[data-t="750"]').first().evaluate((b) => b.getBoundingClientRect().top >= 0 && b.getBoundingClientRect().bottom <= window.innerHeight))) throw new Error("dalla ricerca la trascrizione non va al minuto");
 
   // A .lezione dropped on the window opens the import dialog.
   await p.evaluate(() => window.__emit("tauri://drag-drop", { paths: ["/home/studente/Scaricati/Break-even.lezione"], position: { x: 600, y: 300 } }));

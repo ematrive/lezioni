@@ -75,6 +75,9 @@
           return null;
         case "plugin:dialog|ask":
           return true;
+        // ask() with custom labels: the answer is the label of the button pressed (always OK here).
+        case "plugin:dialog|message":
+          return a.buttons?.OkCancelCustom?.[0] ?? a.buttons?.OkCustom ?? (a.buttons === "YesNo" ? "Yes" : "Ok");
         case "plugin:dialog|save":
           return "/home/studente/Scrivania/" + (a.options?.defaultPath ?? "file");
         case "export_write_text":
@@ -249,6 +252,13 @@
           }, 300);
           return null;
         }
+        case "extract_mark_pauses": {
+          const o = outputs[a.lessonId];
+          o.extracts[a.sourceId] = o.extracts[a.sourceId].replace("[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie", "[00:03:10] *(pausa fino a 00:12:30)*");
+          o.pauses = {};
+          find(a.lessonId).sources.find((s) => s.id === a.sourceId).edited = now();
+          return 1;
+        }
         case "review_due":
           return dueCards(a.scope === "lesson" ? [find(a.id)] : lessons.filter((l) => l.courseId === a.id));
         case "review_answer": {
@@ -285,7 +295,8 @@
           setTimeout(() => send({ event: "detail", message: "Whisper: 43% · ripulitura della parte 1" }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
-              extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
+              extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
+              pauses: audio ? { [audio.id]: 1 } : {},
               raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
               summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
               map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },

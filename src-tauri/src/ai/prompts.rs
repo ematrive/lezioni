@@ -56,6 +56,7 @@ Ripuliscila senza riassumere e senza togliere contenuti:\n\
 - togli intercalari, ripetizioni e false partenze (ehm, cioè, allora…);\n\
 - correggi le parole riconosciute male quando il contesto rende chiaro cosa è stato detto (termini tecnici, nomi, formule); non inventare quello che non si capisce;\n\
 - ogni paragrafo inizia con un tempo [hh:mm:ss]: mantienili esattamente come sono. Puoi unire due paragrafi brevi tenendo il tempo del primo, ma non scrivere tempi nuovi;\n\
+- lascia com'è ogni paragrafo *(pausa fino a …)*: è una pausa della lezione;\n\
 - quando cambia argomento metti un titolo Markdown (### Titolo) prima del paragrafo;\n\
 - se dal contesto è chiaro che interviene uno studente, scrivi **Studente:** all'inizio della sua battuta;\n\
 - formule e simboli dettati a voce scrivili in LaTeX ($...$).\n\
@@ -74,6 +75,7 @@ Ripuliscilo senza riassumere e senza togliere contenuti:\n\
 - togli intercalari, ripetizioni e false partenze (ehm, cioè, allora…);\n\
 - correggi le parole riconosciute male quando il contesto rende chiaro cosa è stato detto (termini tecnici, nomi, formule); non inventare quello che non si capisce: se un passaggio resta incomprensibile scrivi [incomprensibile];\n\
 - ogni paragrafo inizia con un tempo [hh:mm:ss]: mantienili esattamente come sono. Puoi unire due paragrafi brevi tenendo il tempo del primo, ma non scrivere tempi nuovi;\n\
+- lascia com'è ogni paragrafo *(pausa fino a …)*: è una pausa della lezione;\n\
 - non mettere titoli: il pezzo sta in mezzo a una sezione;\n\
 - se dal contesto è chiaro che interviene uno studente, scrivi **Studente:** all'inizio della sua battuta;\n\
 - formule e simboli dettati a voce scrivili in LaTeX ($...$).\n\
@@ -84,10 +86,11 @@ Rispondi solo con il pezzo ripulito in Markdown, senza introduzioni.\n\nPezzo:\n
 pub const IMAGE: &str = "Questa è una foto o una pagina di appunti di una lezione (scritti a mano, dal tablet, o una lavagna). \
 Trascrivi tutto il contenuto in Markdown, nell'ordine di lettura: titoli, elenchi, tabelle, formule in LaTeX. \
 Descrivi grafici, schemi e disegni in corsivo tra parentesi, con assi, etichette e relazioni, così che si capiscano senza vederli. \
-Se una parte è illeggibile scrivi [illeggibile]. Rispondi solo con il contenuto, senza introduzioni.";
+Se è una slide o una pagina stampata con sopra appunti a mano, evidenziature o frecce, trascrivi anche quelli, in corsivo tra parentesi: *(nota a mano: …)*. Se una parte è illeggibile scrivi [illeggibile]. Rispondi solo con il contenuto, senza introduzioni.";
 
 pub const PDF: &str = "Questo è un PDF di una lezione (slide, dispense o appunti). Trascrivi il contenuto in Markdown, pagina per pagina, \
 con un titolo ## Pagina N per ogni pagina. Mantieni titoli, elenchi e tabelle; formule in LaTeX; descrivi grafici e schemi in corsivo tra parentesi. \
+Se sopra la pagina ci sono appunti scritti a mano, evidenziature, frecce o sottolineature, trascrivili nel punto in cui sono, in corsivo tra parentesi: *(nota a mano: …)*; per un'evidenziatura scrivi cosa è evidenziato. \
 Se è un testo lungo e già digitale, riportalo fedelmente. Rispondi solo con il contenuto.";
 
 /// `marks`: the student's bookmarks, one per line ("- [F1 00:12:30] importante: nota").

@@ -9,6 +9,7 @@ pub mod course;
 pub mod error;
 pub mod jobs;
 pub mod library;
+pub mod pauses;
 pub mod pipeline;
 pub mod review;
 pub mod search;
@@ -138,6 +139,7 @@ pub fn run() {
             terms_get,
             terms_set,
             course_glossary,
+            extract_mark_pauses,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

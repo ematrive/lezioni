@@ -1,12 +1,13 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open } from "@tauri-apps/plugin-dialog";
-import { ClipboardPaste, ChevronDown, Maximize2, Minimize2, MoreHorizontal, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, ChevronDown, Search, Maximize2, Minimize2, MoreHorizontal, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
 import { ShareDialog } from "../share/ShareDialog";
 import { ChatTab } from "./ChatTab";
 import { JobBar, MapTab, startProcessing, StudyTab, SummaryTab, TranscriptTab, useJob, type Editing, type Seek } from "./Outputs";
 import { Modal } from "../../lib/Modal";
+import { FindBar } from "../../lib/findInPage";
 import { toast } from "../../lib/toast";
 
 const TABS = [
@@ -70,6 +71,21 @@ export function LessonView({
   const [seek, setSeek] = useState<Seek | null>(null);
   const job = useJob(lessonId);
   const [sharing, setSharing] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const contentEl = useCallback(() => content.current, []);
+  // ⌘F / Ctrl+F: find in the lesson.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f" && !document.querySelector(".anim-fade")) {
+        e.preventDefault();
+        setFinding(false);
+        requestAnimationFrame(() => setFinding(true));
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
 
   useEffect(() => {
     if (!focus) return;
@@ -248,7 +264,7 @@ export function LessonView({
       />
       {sharing && course && <ShareDialog course={course} lesson={lesson} onClose={() => setSharing(false)} />}
       {job && <JobBar job={job} />}
-      <nav className="flex gap-1 border-b border-zinc-200 px-4 dark:border-zinc-800">
+      <nav className="flex flex-wrap gap-1 border-b border-zinc-200 px-4 dark:border-zinc-800">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -258,8 +274,17 @@ export function LessonView({
             {t.label}
           </button>
         ))}
+        <div className="ml-auto self-center py-1">
+          {finding ? (
+            <FindBar root={contentEl} resetKey={`${tab}|${outputs ? 1 : 0}`} onClose={() => setFinding(false)} />
+          ) : (
+            <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setFinding(true)} title="Cerca nella lezione (⌘F / Ctrl+F)" aria-label="Cerca nella lezione">
+              <Search className="size-4" />
+            </button>
+          )}
+        </div>
       </nav>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div ref={content} className="min-h-0 flex-1 overflow-auto p-4" data-lesson-content>
         {tab === "sources" ? (
           <Sources lesson={lesson} busy={busy} onPick={pick} onPasteText={() => setTextDraft("")} onChanged={changed} />
         ) : !outputs ? null : tab === "transcript" ? (
