@@ -206,7 +206,7 @@ export function LessonView({
     process(true);
   };
   const processButton = (
-    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={lesson.sources.length ? "Trascrivi, leggi le fonti e genera sintesi, mappa e studio" : "Aggiungi prima le fonti"}>
+    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={!lesson.sources.length ? "Aggiungi prima le fonti" : processed ? "Rifà sintesi, mappa e materiale di studio dalle trascrizioni attuali (comprese le tue correzioni). Le trascrizioni non vengono rifatte: per quello c'è «Rielabora anche le fonti»." : "Trascrivi, leggi le fonti e genera sintesi, mappa e studio"}>
       <Sparkles className="size-4" /> {processed ? "Rigenera" : "Elabora"}
     </button>
   );
@@ -227,14 +227,7 @@ export function LessonView({
   };
 
   const remove = async () => {
-    const ok = await ask(`Spostare nel Cestino la lezione «${lesson.title}» e tutti i suoi file?`, { title: "Elimina lezione", kind: "warning", okLabel: "Sposta nel Cestino", cancelLabel: "Annulla" });
-    if (!ok) return;
-    try {
-      await api.deleteLesson(lesson.id);
-      onDeleted();
-    } catch (e) {
-      toast(toAppError(e).message, "error");
-    }
+    if (await deleteLesson(lesson)) onDeleted();
   };
 
   return (
@@ -553,4 +546,17 @@ function TextDialog({ initial, onClose, onSave }: { initial: string; onClose: ()
       </div>
     </Modal>
   );
+}
+
+/** Asks, then moves a lesson to the Trash; true when it went. */
+export async function deleteLesson(lesson: Lesson): Promise<boolean> {
+  const ok = await ask(`Spostare nel Cestino la lezione «${lesson.title}» e tutti i suoi file?`, { title: "Elimina lezione", kind: "warning", okLabel: "Sposta nel Cestino", cancelLabel: "Annulla" });
+  if (!ok) return false;
+  try {
+    await api.deleteLesson(lesson.id);
+    return true;
+  } catch (e) {
+    toast(toAppError(e).message, "error");
+    return false;
+  }
 }

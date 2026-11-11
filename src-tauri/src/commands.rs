@@ -664,3 +664,22 @@ pub async fn course_summarize(app: AppHandle, state: State<'_, AppState>, course
     });
     Ok(())
 }
+
+// ---------- terms and glossary ----------
+
+/// Terms for all the courses (`parole.txt` in the archive).
+#[tauri::command(async)]
+pub fn terms_get(state: State<'_, AppState>) -> CmdResult<String> {
+    Ok(state.library()?.global_terms())
+}
+
+#[tauri::command(async)]
+pub fn terms_set(state: State<'_, AppState>, terms: String) -> CmdResult<()> {
+    let _w = state.writing();
+    Ok(state.library()?.set_global_terms(&terms)?)
+}
+
+#[tauri::command(async)]
+pub fn course_glossary(state: State<'_, AppState>, course_id: String) -> CmdResult<Vec<crate::course::GlossaryTerm>> {
+    Ok(crate::course::glossary(&state.library()?, &course_id)?)
+}

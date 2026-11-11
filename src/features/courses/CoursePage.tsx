@@ -2,19 +2,20 @@ import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, costLine, courseAi, fmtDate, fmtUsd, toAppError, type Course, type CourseCosts, type CourseSummary } from "../../lib/api";
 import { Markdown } from "../../lib/Markdown";
-import { JobBar, startCourseSummary, useJob } from "../lesson/Outputs";
+import { addCourseTerm, JobBar, startCourseSummary, useJob } from "../lesson/Outputs";
 import { ReviewSession } from "../study/Review";
 import { toast } from "../../lib/toast";
 
 const TABS = [
   { id: "review", label: "Ripasso" },
   { id: "summary", label: "Sintesi del corso" },
+  { id: "glossary", label: "Glossario" },
   { id: "costs", label: "Costi" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
 /** What belongs to the whole course: shown when no lesson is chosen. */
-export function CoursePage({ course, rev, onOpenLesson, onReviewed }: { course: Course; rev: number; onOpenLesson: (id: string) => void; onReviewed?: () => void }) {
+export function CoursePage({ course, rev, onOpenLesson, onReviewed, onCourseChanged }: { course: Course; rev: number; onOpenLesson: (id: string) => void; onReviewed?: () => void; onCourseChanged?: () => void }) {
   const [tab, setTab] = useState<Tab>("review");
   const job = useJob(course.id);
   return (
@@ -46,6 +47,7 @@ export function CoursePage({ course, rev, onOpenLesson, onReviewed }: { course: 
           </div>
         )}
         {tab === "summary" && <SummaryTab course={course} rev={rev} busy={!!job} onOpenLesson={onOpenLesson} />}
+        {tab === "glossary" && <GlossaryTab course={course} rev={rev} onOpenLesson={onOpenLesson} onCourseChanged={onCourseChanged} />}
         {tab === "costs" && <CostsTab course={course} rev={rev} onOpenLesson={onOpenLesson} />}
       </div>
     </div>
@@ -208,6 +210,92 @@ function SummaryTab({ course, rev, busy, onOpenLesson }: { course: Course; rev: 
           </ul>
         </section>
       )}
+    </div>
+  );
+}
+
+/** The course's own words for Whisper and the models, and the glossaries of its lessons. */
+function GlossaryTab({ course, rev, onOpenLesson, onCourseChanged }: { course: Course; rev: number; onOpenLesson: (id: string) => void; onCourseChanged?: () => void }) {
+  const [terms, setTerms] = useState(course.terms);
+  const [items, setItems] = useState<Awaited<ReturnType<typeof api.courseGlossary>> | null>(null);
+  const [filter, setFilter] = useState("");
+  useEffect(() => setTerms(course.terms), [course.terms]);
+  useEffect(() => {
+    let live = true;
+    api
+      .courseGlossary(course.id)
+      .then((g) => live && setItems(g))
+      .catch((e) => toast(toAppError(e).message, "error"));
+    return () => {
+      live = false;
+    };
+  }, [course.id, rev]);
+  const have = new Set(course.terms.split(/[,;\n]/).map((t) => t.trim().toLowerCase()));
+  const f = filter.trim().toLowerCase();
+  const shown = (items ?? []).filter((t) => !f || t.termine.toLowerCase().includes(f) || t.definizione.toLowerCase().includes(f));
+  return (
+    <div className="mx-auto max-w-3xl space-y-8">
+      <section>
+        <label className="mb-1 block font-semibold" htmlFor="course-terms">
+          Parole del corso
+        </label>
+        <textarea
+          id="course-terms"
+          className="field min-h-20 text-sm"
+          placeholder="Termini tecnici e nomi che tornano spesso, scritti giusti e separati da virgole: per esempio ARERA, colpo d'ariete, Gauckler-Strickler"
+          value={terms}
+          onChange={(e) => setTerms(e.target.value)}
+          onBlur={() => {
+            if (terms.trim() === course.terms.trim()) return;
+            api.updateCourse(course.id, course.name, course.teacher, terms).then(
+              () => {
+                toast("Parole del corso salvate: valgono dalle prossime elaborazioni.");
+                onCourseChanged?.();
+              },
+              (e) => toast(toAppError(e).message, "error"),
+            );
+          }}
+        />
+        <p className="mt-1 text-xs text-zinc-500">Le suggeriamo a Whisper, alla ripulitura e alla sintesi delle lezioni di questo corso. Quelle che valgono per tutti i corsi sono nelle Impostazioni.</p>
+      </section>
+      <section>
+        <div className="mb-2 flex items-center gap-3">
+          <h3 className="flex-1 font-semibold">
+            Termini delle lezioni {items && <span className="font-normal text-zinc-400">{items.length}</span>}
+          </h3>
+          {(items?.length ?? 0) > 8 && <input className="field max-w-56" placeholder="Filtra i termini" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        </div>
+        {items && !items.length && <p className="text-sm text-zinc-500">I glossari delle lezioni compaiono qui quando le lezioni sono elaborate.</p>}
+        <dl className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          {shown.map((t) => (
+            <div key={t.termine} className="group grid grid-cols-[minmax(8rem,14rem)_1fr] gap-3 px-3 py-2 text-sm">
+              <dt className="font-medium">
+                <Markdown text={t.termine} inline />
+                {!have.has(t.termine.toLowerCase()) && (
+                  <button
+                    className="ml-2 text-xs font-normal text-sky-700 opacity-0 group-hover:opacity-100 hover:underline dark:text-sky-400"
+                    onClick={() => addCourseTerm(course.id, t.termine).then(() => onCourseChanged?.(), (e) => toast(toAppError(e).message, "error"))}
+                    title="Aggiungi alle parole del corso"
+                  >
+                    + parole del corso
+                  </button>
+                )}
+              </dt>
+              <dd className="text-zinc-700 dark:text-zinc-300">
+                <Markdown text={t.definizione} inline />
+                <span className="ml-2 text-xs text-zinc-400">
+                  {t.lessons.map(([id, title], i) => (
+                    <button key={id} className="hover:underline" onClick={() => onOpenLesson(id)}>
+                      {i > 0 && ", "}
+                      {title}
+                    </button>
+                  ))}
+                </span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 }

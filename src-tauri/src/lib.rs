@@ -135,6 +135,9 @@ pub fn run() {
             review_answer,
             course_summary_get,
             course_summarize,
+            terms_get,
+            terms_set,
+            course_glossary,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

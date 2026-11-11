@@ -2,6 +2,10 @@
 
 ## Prossima versione
 
+- **Parole per tutti i corsi** (Impostazioni): nomi e sigle che tornano in ogni corso, suggeriti a Whisper, alla ripulitura e alla sintesi insieme alle parole del corso.
+- **Glossario del corso** nella pagina del corso: le parole del corso, finalmente in vista e modificabili, e i glossari di tutte le lezioni uniti, con un clic per aggiungere un termine alle parole del corso.
+- Menu **⋯** anche sulle lezioni nell'elenco (Condividi, Mostra la cartella, Elimina).
+- Pulsanti e campi tutti della stessa altezza; il pulsante per nascondere i corsi è accanto alla ricerca.
 - Le azioni di un corso sono nel menu **⋯** (prima le icone coprivano il nome); la colonna dei corsi si può **nascondere**; la lezione aperta può andare **a tutto schermo** (Esc per tornare).
 - Trascrizione: intestazione più ordinata e che non lascia più intravedere il testo che scorre sopra; i pulsanti dei segnaposti sono accanto al lettore e l'elenco dei segnaposti si apre sopra il testo.
 - Le **formule** nelle flashcard, nelle domande d'esame e nel glossario si vedono come formule, non più come `$\alpha$`.

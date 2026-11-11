@@ -62,6 +62,11 @@ export const api = {
   updateCourse: (id: string, name: string, teacher: string, terms: string) => invoke<Course>("course_update", { id, name, teacher, terms }),
   deleteCourse: (id: string) => invoke<void>("course_delete", { id }),
   courseCosts: (courseId: string) => invoke<CourseCosts>("course_costs", { courseId }),
+  /** Terms for all the courses (`parole.txt` in the archive). */
+  globalTerms: () => invoke<string>("terms_get"),
+  setGlobalTerms: (terms: string) => invoke<void>("terms_set", { terms }),
+  /** The glossaries of the lessons of a course, merged; `lessons` = [id, title]. */
+  courseGlossary: (courseId: string) => invoke<{ termine: string; definizione: string; lessons: [string, string][] }[]>("course_glossary", { courseId }),
 
   lessons: (courseId: string) => invoke<Lesson[]>("lessons_list", { courseId }),
   lesson: (id: string) => invoke<Lesson>("lesson_get", { id }),

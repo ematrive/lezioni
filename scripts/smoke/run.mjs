@@ -199,6 +199,13 @@ try {
   await p.getByText("Domande d'esame del corso").waitFor();
   await p.getByRole("button", { name: /1\. Illustra il metodo del simplesso e il caso degenere/ }).click();
   await shot("sintesi-corso");
+  // Glossary of the course: its own words, and the terms of the lessons (one added to the words).
+  await p.getByRole("button", { name: "Glossario", exact: true }).click();
+  await p.getByText("Insieme di m variabili linearmente indipendenti.").waitFor();
+  await p.getByRole("button", { name: "+ parole del corso" }).first().click();
+  await p.getByText(/«Base» aggiunta alle parole del corso/).waitFor();
+  if (!(await p.locator("#course-terms").inputValue()).includes("Base")) throw new Error("parola del corso non aggiunta");
+  await shot("corso-glossario");
   await p.getByRole("button", { name: "Costi", exact: true }).click();
   await p.getByText("spesi con l'AI per questo corso", { exact: false }).waitFor();
   await p.getByRole("cell", { name: "0,03 $" }).first().waitFor();
@@ -216,6 +223,11 @@ try {
   await p.getByRole("button", { name: "Azioni sul corso Ricerca operativa" }).click();
   await p.getByRole("button", { name: "Rinomina e modifica" }).waitFor();
   await shot("corso-menu");
+  await p.keyboard.press("Escape");
+  // Lesson actions in its own "⋯" menu in the list.
+  await p.getByRole("button", { name: "Azioni sulla lezione Simplesso e degenerazione" }).click();
+  await p.getByRole("button", { name: "Condividi…" }).click();
+  await p.getByText("Condividi «Simplesso e degenerazione»").waitFor();
   await p.keyboard.press("Escape");
   await p.getByRole("button", { name: "Nascondi i corsi" }).click();
   if (await p.getByPlaceholder("Cerca in tutte le lezioni").count()) throw new Error("corsi non nascosti");
@@ -267,6 +279,9 @@ try {
   await p.getByRole("button", { name: "Impostazioni" }).click();
   await p.getByText("Gemini (Google)").waitFor();
   await p.getByText("Modello di trascrizione scaricato").waitFor();
+  await p.getByLabel("Parole per tutti i corsi").fill("Politecnico di Milano, ARERA");
+  await p.getByText("Gemini (Google)").click();
+  await p.getByText(/Parole per tutti i corsi salvate/).waitFor();
   await shot("impostazioni");
   // OpenRouter: price list and cost of a lesson under each model.
   await p.getByLabel("OpenRouter (molti modelli)").check();

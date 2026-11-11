@@ -55,8 +55,9 @@ export function CourseList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="relative px-2 pt-3">
-        <Search className="pointer-events-none absolute top-1/2 left-4 mt-1.5 size-4 -translate-y-1/2 text-zinc-400" />
+      <div className="flex items-center gap-1 px-2 pt-3">
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-zinc-400" />
         <input
           className="field pr-7 pl-8"
           placeholder="Cerca in tutte le lezioni"
@@ -65,21 +66,20 @@ export function CourseList({
           onKeyDown={(e) => e.key === "Escape" && onQuery("")}
         />
         {query && (
-          <button className="absolute top-1/2 right-3 mt-1.5 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700" title="Cancella la ricerca" onClick={() => onQuery("")}>
+          <button className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700" title="Cancella la ricerca" onClick={() => onQuery("")}>
             <X className="size-3.5" />
           </button>
         )}
       </div>
+        <button className="shrink-0 rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nascondi la colonna dei corsi" aria-label="Nascondi i corsi" onClick={onHide}>
+          <PanelLeftClose className="size-4" />
+        </button>
+      </div>
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Corsi</span>
-        <span className="flex gap-0.5">
-          <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nuovo corso" onClick={() => setEditing("new")}>
-            <Plus className="size-4" />
-          </button>
-          <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nascondi la colonna dei corsi" aria-label="Nascondi i corsi" onClick={onHide}>
-            <PanelLeftClose className="size-4" />
-          </button>
-        </span>
+        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nuovo corso" onClick={() => setEditing("new")}>
+          <Plus className="size-4" />
+        </button>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto px-2">
         {courses.map((c) => {

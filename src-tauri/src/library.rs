@@ -23,6 +23,8 @@ pub const LESSON_FILE: &str = "lezione.json";
 pub const SOURCES_DIR: &str = "fonti";
 pub const EXTRACTS_DIR: &str = "estratti";
 pub const GENERATED_DIR: &str = "generati";
+/// Terms for all the courses, at the root of the archive.
+pub const TERMS_FILE: &str = "parole.txt";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -244,6 +246,36 @@ impl Library {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    // ---------- terms for all the courses ----------
+
+    /// `<archive>/parole.txt`: names and terms for every course (Whisper, cleanup, summary).
+    pub fn global_terms(&self) -> String {
+        fs::read_to_string(self.root.join(TERMS_FILE)).unwrap_or_default()
+    }
+
+    pub fn set_global_terms(&self, terms: &str) -> Result<()> {
+        let p = self.root.join(TERMS_FILE);
+        let terms = terms.trim();
+        if terms.is_empty() {
+            if p.exists() {
+                fs::remove_file(&p)?;
+            }
+            return Ok(());
+        }
+        let tmp = p.with_extension("tmp");
+        fs::write(&tmp, format!("{terms}\n")).with_context(|| format!("scrittura di {}", p.display()))?;
+        fs::rename(&tmp, &p)?;
+        Ok(())
+    }
+
+    /// The terms for a course's prompts: its own first (Whisper's prompt keeps only ~40 words),
+    /// then those for all the courses, without repeats (ignoring case).
+    pub fn terms_for(&self, course: &CourseMeta) -> String {
+        let mut seen = std::collections::HashSet::new();
+        let all = format!("{}\n{}", course.terms, self.global_terms());
+        all.split([',', ';', '\n']).map(str::trim).filter(|t| !t.is_empty() && seen.insert(t.to_lowercase())).collect::<Vec<_>>().join(", ")
     }
 
     // ---------- courses ----------

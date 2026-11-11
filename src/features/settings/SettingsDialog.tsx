@@ -39,6 +39,7 @@ export function SettingsDialog({ libraryDir, onClose, onChanged }: { libraryDir:
           <p className="mt-1 text-xs text-zinc-500">Per spostare l'archivio, sposta la cartella e poi sceglila qui.</p>
         </div>
         <GeminiSettings />
+        <GlobalTerms />
         <div>
           <span className="label">Aspetto</span>
           <select className="field" value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
@@ -254,7 +255,7 @@ function GeminiKey({ cfg, save }: { cfg: AiSettings; save: Save }) {
             ["fallback", "Di riserva, se Gemini è sovraccarico"],
           ] as const
         ).map(([k, label]) => (
-          <label className="block" key={k}>
+          <label className="flex flex-col justify-end" key={k}>
             <span className="label">{label}</span>
             <input className="field font-mono" placeholder="nessuno" value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} onBlur={() => set(k, draft[k])} />
           </label>
@@ -307,7 +308,7 @@ function OpenRouterSettings({ cfg, save }: { cfg: AiSettings; save: Save }) {
         ).map(([k, label]) => {
           const m = info(draft[k]);
           return (
-            <label className="block" key={k}>
+            <label className="flex flex-col justify-end" key={k}>
               <span className="label">{label}</span>
               <input className="field font-mono" list="openrouter-models" placeholder="nessuno" value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} onBlur={() => set(k, draft[k])} />
               <span className="mt-1 block text-xs text-zinc-500" data-model-price>
@@ -329,5 +330,45 @@ function OpenRouterSettings({ cfg, save }: { cfg: AiSettings; save: Save }) {
         e premi Rigenera: a fine elaborazione l'app dice quanto è costata davvero.
       </p>
     </>
+  );
+}
+
+/** Names and terms that come back in every course: they help Whisper, the cleanup and the summary. */
+function GlobalTerms() {
+  const [terms, setTerms] = useState<string | null>(null);
+  const [saved, setSaved] = useState("");
+  useEffect(() => {
+    api.globalTerms().then((t) => {
+      setTerms(t.trim());
+      setSaved(t.trim());
+    }, () => setTerms(""));
+  }, []);
+  if (terms === null) return null;
+  return (
+    <div>
+      <label className="label" htmlFor="global-terms">
+        Parole per tutti i corsi
+      </label>
+      <textarea
+        id="global-terms"
+        className="field min-h-20 text-sm"
+        placeholder="Per esempio: nomi di docenti, enti, sigle e luoghi che tornano in più corsi, separati da virgole"
+        value={terms}
+        onChange={(e) => setTerms(e.target.value)}
+        onBlur={() => {
+          if (terms.trim() === saved) return;
+          api.setGlobalTerms(terms).then(
+            () => {
+              setSaved(terms.trim());
+              toast("Parole per tutti i corsi salvate: valgono dalle prossime elaborazioni.");
+            },
+            (e) => toast(toAppError(e).message, "error"),
+          );
+        }}
+      />
+      <p className="mt-1 text-xs text-zinc-500">
+        Scritte giuste, aiutano Whisper, la ripulitura e la sintesi in ogni corso. Quelle di un solo corso si scrivono nel corso (pagina del corso → Glossario) e vengono prima di queste. Stanno nel file <code>parole.txt</code> dell'archivio.
+      </p>
+    </div>
   );
 }

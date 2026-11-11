@@ -29,6 +29,40 @@ pub fn lessons_with_summary(lib: &Library, course_id: &str) -> Result<Vec<(Strin
     Ok(out)
 }
 
+/// A term of the glossaries of the lessons, with the lessons it comes from.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlossaryTerm {
+    pub termine: String,
+    pub definizione: String,
+    /// (lesson id, title), oldest first.
+    pub lessons: Vec<(String, String)>,
+}
+
+/// The glossaries of all the lessons of a course, merged (same term ignoring case: the first
+/// definition, all the lessons), in alphabetical order.
+pub fn glossary(lib: &Library, course_id: &str) -> Result<Vec<GlossaryTerm>> {
+    let mut ls = lib.lessons(course_id)?;
+    ls.sort_by_key(|l| (l.meta.date, l.meta.created));
+    let mut by_key: BTreeMap<String, GlossaryTerm> = BTreeMap::new();
+    for l in &ls {
+        let Some(study) = crate::pipeline::outputs_study(l) else { continue };
+        for t in study.glossario {
+            let k = t.termine.trim().to_lowercase();
+            if k.is_empty() {
+                continue;
+            }
+            let e = by_key.entry(k).or_insert_with(|| GlossaryTerm { termine: t.termine.trim().into(), definizione: t.definizione.trim().into(), lessons: vec![] });
+            if !e.lessons.iter().any(|(id, _)| id == &l.meta.id) {
+                e.lessons.push((l.meta.id.clone(), l.meta.title.clone()));
+            }
+        }
+    }
+    let mut out: Vec<GlossaryTerm> = by_key.into_values().collect();
+    out.sort_by_cached_key(|t| t.termine.to_lowercase());
+    Ok(out)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CourseQuestion {
@@ -130,7 +164,7 @@ pub async fn summarize<A: Ai>(ai: &A, model: &str, lib: &Library, course_id: &st
     }
     let req = Request {
         system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::course_summary(&course.meta.name, &course.meta.terms, ls.len(), &text))],
+        parts: vec![Part::Text(prompts::course_summary(&course.meta.name, &lib.terms_for(&course.meta), ls.len(), &text))],
         schema: Some(prompts::course_summary_schema()),
         max_output_tokens: Some(48_000),
         ..Default::default()
@@ -214,6 +248,24 @@ mod tests {
         let info = crate::pipeline::Info { generated: Utc::now(), model: "m".into(), usage: Usage::default(), suggested_title: String::new(), sources: Default::default(), edited: None };
         fs::write(g.join("info.json"), serde_json::to_vec(&info).unwrap()).unwrap();
         l
+    }
+
+    #[test]
+    fn glossaries_of_the_lessons_merged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = Library::open(tmp.path()).unwrap();
+        let c = lib.create_course("Idraulica", "", "").unwrap();
+        let term = |t: &str, d: &str| crate::pipeline::Term { termine: t.into(), definizione: d.into() };
+        for (day, title, terms) in [(3, "Moto vario", vec![term("Colpo d'ariete", "sovrapressione"), term("ARERA", "autorità")]), (10, "Reti", vec![term("colpo d'ariete", "altra"), term("Bacino", "ente")])] {
+            let l = lib.create_lesson(&c.meta.id, title, chrono::NaiveDate::from_ymd_opt(2026, 11, day).unwrap()).unwrap();
+            fs::create_dir_all(l.path.join(GENERATED_DIR)).unwrap();
+            let study = crate::pipeline::Study { glossario: terms, ..Default::default() };
+            fs::write(l.path.join(GENERATED_DIR).join("studio.json"), serde_json::to_vec(&study).unwrap()).unwrap();
+        }
+        let g = glossary(&lib, &c.meta.id).unwrap();
+        assert_eq!(g.iter().map(|t| t.termine.as_str()).collect::<Vec<_>>(), ["ARERA", "Bacino", "Colpo d'ariete"]);
+        assert_eq!(g[2].definizione, "sovrapressione", "the first lesson's definition");
+        assert_eq!(g[2].lessons.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), ["Moto vario", "Reti"]);
     }
 
     #[tokio::test]

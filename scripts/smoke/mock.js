@@ -24,6 +24,7 @@
     const fresh = cards.filter((c) => c.box === null);
     return { cards: [...old, ...fresh.slice(0, 20)], due: old.length, new: fresh.length };
   };
+  let globalTerms = "";
   const courseSummaries = {}; // course id -> summary
   const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
@@ -217,6 +218,17 @@
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
           return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [] };
+        case "terms_get":
+          return globalTerms;
+        case "terms_set":
+          globalTerms = a.terms;
+          return null;
+        case "course_glossary": {
+          const byKey = {};
+          for (const l of lessons.filter((x) => x.courseId === a.courseId))
+            for (const t of outputs[l.id]?.study?.glossario ?? []) (byKey[t.termine.toLowerCase()] ??= { termine: t.termine, definizione: t.definizione, lessons: [] }).lessons.push([l.id, l.title]);
+          return Object.values(byKey).sort((x, y) => x.termine.localeCompare(y.termine));
+        }
         case "course_summary_get": {
           const ls = lessons.filter((l) => l.courseId === a.courseId && outputs[l.id]?.summary);
           return { summary: null, questions: [], info: null, ready: ls.length, changed: 0, ...courseSummaries[a.courseId] };

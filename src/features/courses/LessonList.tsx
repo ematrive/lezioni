@@ -1,4 +1,6 @@
-import { FileAudio, Image, PanelLeftOpen, Paperclip, Plus } from "lucide-react";
+import { FileAudio, FolderOpen, Image, MoreHorizontal, PanelLeftOpen, Paperclip, Plus, Share2, Trash2 } from "lucide-react";
+import { ShareDialog } from "../share/ShareDialog";
+import { deleteLesson } from "../lesson/LessonView";
 import { useEffect, useState } from "react";
 import { api, fmtDate, review, today, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
@@ -12,7 +14,10 @@ export function LessonList({
   onOverview,
   onShowCourses,
   onChanged,
+  onDeleted,
 }: {
+  /** A lesson was moved to the Trash from its menu. */
+  onDeleted: (lessonId: string) => void;
   course: Course;
   rev: number;
   selected: string | null;
@@ -26,6 +31,15 @@ export function LessonList({
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
   const [toReview, setToReview] = useState(0);
+  /** Lesson whose "⋯" menu is open, and the one being shared. */
+  const [menu, setMenu] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<Lesson | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [menu]);
   useEffect(() => {
     let live = true;
     review
@@ -81,9 +95,49 @@ export function LessonList({
           const images = l.sources.filter((s) => s.kind === "image").length;
           const other = l.sources.length - audio - images;
           const sel = l.id === selected;
+          const open = menu === l.id;
+          const item = (label: string, icon: React.ReactNode, f: () => void, danger = false) => (
+            <button
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 ${danger ? "text-red-600" : ""}`}
+              onClick={() => {
+                setMenu(null);
+                f();
+              }}
+            >
+              {icon} {label}
+            </button>
+          );
           return (
-            <li key={l.id}>
-              <button className={`w-full rounded-md px-3 py-2 text-left ${sel ? "bg-sky-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-900"}`} onClick={() => onSelect(l.id)}>
+            <li key={l.id} className="group relative">
+              <button
+                className={`absolute top-1.5 right-1.5 z-10 rounded p-1 ${open || sel ? "block" : "hidden group-hover:block"} ${sel ? "text-white hover:bg-sky-700" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
+                title="Altre azioni sulla lezione"
+                aria-label={`Azioni sulla lezione ${l.title}`}
+                onClick={() => setMenu(open ? null : l.id)}
+              >
+                <MoreHorizontal className="size-4" />
+              </button>
+              {open && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMenu(null)} />
+                  <div className="anim-pop absolute top-9 right-1 z-40 w-52 rounded-md border border-zinc-200 bg-white p-1 text-sm text-zinc-800 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" role="menu">
+                    {item("Condividi…", <Share2 className="size-4" />, () => setSharing(l))}
+                    {item("Mostra la cartella", <FolderOpen className="size-4" />, () => api.reveal(l.path))}
+                    {item(
+                      "Elimina",
+                      <Trash2 className="size-4" />,
+                      async () => {
+                        if (await deleteLesson(l)) {
+                          setLessons((cur) => cur.filter((x) => x.id !== l.id));
+                          onDeleted(l.id);
+                        }
+                      },
+                      true,
+                    )}
+                  </div>
+                </>
+              )}
+              <button className={`w-full rounded-md py-2 pr-9 pl-3 text-left ${sel ? "bg-sky-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-900"}`} onClick={() => onSelect(l.id)}>
                 <div className="truncate font-medium">{l.title}</div>
                 <div className={`mt-0.5 flex items-center gap-3 text-xs ${sel ? "text-sky-100" : "text-zinc-500"}`}>
                   <span>{fmtDate(l.date)}</span>
@@ -97,6 +151,7 @@ export function LessonList({
         })}
         {lessons.length === 0 && <li className="p-3 text-zinc-500">Ancora nessuna lezione in questo corso.</li>}
       </ul>
+      {sharing && <ShareDialog course={course} lesson={sharing} onClose={() => setSharing(null)} />}
       {creating && (
         <NewLesson
           course={course}

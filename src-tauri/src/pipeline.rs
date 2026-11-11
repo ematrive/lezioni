@@ -447,7 +447,7 @@ pub async fn reclean<A: Ai>(ai: &A, model: &str, lib: &crate::library::Library, 
     let course = lib.course(&lesson.course_id)?;
     let req = Request {
         system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::clean_fragment(&course.meta.name, &lesson.meta.title, &course.meta.terms, &piece))],
+        parts: vec![Part::Text(prompts::clean_fragment(&course.meta.name, &lesson.meta.title, &lib.terms_for(&course.meta), &piece))],
         max_output_tokens: Some(32_000),
         thinking: Some("LOW"),
         retries: Some(3),
@@ -636,7 +636,8 @@ impl<A: Ai> Ctx<'_, A> {
     #[allow(clippy::too_many_arguments)]
     async fn transcribe_local(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
         let lesson = self.archive.lesson(lesson_id)?;
-        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (c.meta.name, c.meta.terms)).unwrap_or_default();
+        let lib = self.archive.lib()?;
+        let course = lib.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (lib.terms_for(&c.meta), c.meta.name)).map(|(t, n)| (n, t)).unwrap_or_else(|| (String::new(), lib.global_terms()));
         let context = (course.0, lesson.meta.title.clone(), course.1);
         let prompt = asr_prompt(&context.0, &context.1, &context.2, &lesson.meta.notes);
         let n = chunks.len();
@@ -891,7 +892,8 @@ impl<A: Ai> Ctx<'_, A> {
         self.check()?;
         (self.progress)((total - 1) as f64, total, "Sintesi, mappa e materiale di studio…".into());
         let lesson = self.archive.lesson(lesson_id)?;
-        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (c.meta.name, c.meta.terms)).unwrap_or_default();
+        let lib = self.archive.lib()?;
+        let course = lib.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (lib.terms_for(&c.meta), c.meta.name)).map(|(t, n)| (n, t)).unwrap_or_else(|| (String::new(), lib.global_terms()));
         let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
         let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), |sid| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string()));
         let req = Request {
@@ -1191,11 +1193,13 @@ mod tests {
         let st = setup(&[("reg.wav", None)]);
         let l = st.lib.lesson(&st.lesson).unwrap();
         st.lib.update_course(&l.course_id, "Ricerca operativa", "", "ARERA, colpo d'ariete\nGauckler-Strickler").unwrap();
+        // Terms for all the courses come after the course's own, without repeats.
+        st.lib.set_global_terms("arera\nTIM, Wind").unwrap();
         let ai = Fake::default();
         let asr = Arc::new(FakeAsr::default());
         run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
-        assert!(asr.prompt.lock().unwrap().contains("Termini: ARERA, colpo d'ariete, Gauckler-Strickler."), "{}", asr.prompt.lock().unwrap());
-        let line = "Termini e nomi ricorrenti del corso, scritti correttamente: ARERA, colpo d'ariete, Gauckler-Strickler.";
+        assert!(asr.prompt.lock().unwrap().contains("Termini: ARERA, colpo d'ariete, Gauckler-Strickler, TIM, Wind."), "{}", asr.prompt.lock().unwrap());
+        let line = "Termini e nomi ricorrenti del corso, scritti correttamente: ARERA, colpo d'ariete, Gauckler-Strickler, TIM, Wind.";
         let prompts = ai.prompts.lock().unwrap();
         assert!(prompts.iter().filter(|p| p.contains("Ripuliscila")).all(|p| p.contains(line)));
         assert!(prompts.last().unwrap().contains(line), "summary");

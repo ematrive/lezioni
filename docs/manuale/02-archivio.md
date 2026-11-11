@@ -24,12 +24,13 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 ## Corsi
 
 - **Nuovo corso**: il **+** accanto a *Corsi*. Il docente è facoltativo.
-- **Parole del corso**: nel corso (anche da **Rinomina**) puoi scrivere i termini tecnici e i nomi che tornano spesso, separati da virgole e scritti giusti: per esempio `ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler`. Vengono suggeriti a Whisper, alla ripulitura e alla sintesi, così sbagliano meno; valgono dalle elaborazioni successive. Puoi aggiungerne una anche mentre correggi una trascrizione.
+- **Parole del corso**: nella pagina del corso, scheda **Glossario** (oppure ⋯ → *Rinomina e modifica*), puoi scrivere i termini tecnici e i nomi che tornano spesso, separati da virgole e scritti giusti: per esempio `ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler`. Vengono suggeriti a Whisper, alla ripulitura e alla sintesi, così sbagliano meno; valgono dalle elaborazioni successive. Puoi aggiungerne una anche mentre correggi una trascrizione.
+- **Parole per tutti i corsi**: nomi e sigle che tornano in più corsi (il nome dell'università, enti, docenti) si scrivono una volta sola in **Impostazioni → Parole per tutti i corsi**. Valgono per ogni corso, dopo le sue parole. Stanno nel file `parole.txt` dell'archivio, quindi seguono l'archivio se lo sincronizzi.
 - Il pulsante **⋯** accanto al corso (sempre visibile su quello scelto, sugli altri al passaggio del mouse) apre il menu con **Rinomina e modifica**, **Esporta il corso**, **Mostra la cartella** ed **Elimina**.
 
 ![Il menu di un corso](img/corso-menu.png)
 
-- Il pulsante accanto al **+** in cima all'elenco **nasconde la colonna dei corsi** per lasciare più spazio; lo stesso pulsante in cima all'elenco delle lezioni la fa ricomparire. La ricerca in tutte le lezioni sta in quella colonna.
+- Il pulsante accanto al campo di ricerca **nasconde la colonna dei corsi** per lasciare più spazio; lo stesso pulsante in cima all'elenco delle lezioni la fa ricomparire. La ricerca in tutte le lezioni sta in quella colonna.
 - Cliccando il **nome del corso** in cima all'elenco delle lezioni si apre la **pagina del corso** (vedi sotto). Si apre anche quando scegli un corso e nessuna lezione.
 - Eliminare un corso lo sposta nel **Cestino** con tutte le sue lezioni: si può recuperare da lì.
 
@@ -39,7 +40,7 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 - Il **titolo** si modifica cliccandoci sopra nella pagina della lezione, la **data** dal campo accanto. Il nome della cartella segue titolo e data.
 - Nell'elenco, accanto alla data, le icone contano registrazioni, foto e altri file.
 - Con più di sei lezioni compare un campo per filtrarle.
-- Il pulsante **⋯** in alto nella lezione ha **Mostra la cartella** ed **Elimina la lezione** (va nel Cestino, da cui si recupera).
+- Il pulsante **⋯** accanto a una lezione nell'elenco (o in alto nella lezione aperta) ha **Condividi…**, **Mostra la cartella** ed **Elimina** (va nel Cestino, da cui si recupera).
 - Il pulsante **Tutto schermo** in alto nella lezione (le due frecce) nasconde corsi e lezioni e lascia tutta la finestra alla lezione aperta; **Esc** o lo stesso pulsante tornano indietro. Per avere anche la finestra a schermo intero c'è il pulsante verde della finestra del Mac.
 
 ![La lezione a tutto schermo](img/tutto-schermo.png)
@@ -66,6 +67,12 @@ Una sintesi di **tutto il corso** per preparare l'esame, fatta dalle sintesi del
 ![La sintesi del corso con le domande d'esame](img/sintesi-corso.png)
 
 La sintesi del corso non entra nei pacchetti: chi li riceve la genera dalle proprie lezioni.
+
+### Glossario
+
+In alto le **parole del corso** (vedi sopra), da scrivere o correggere direttamente qui. Sotto, i **termini delle lezioni**: i glossari di tutte le lezioni uniti in ordine alfabetico, con la definizione e le lezioni in cui compaiono (cliccale per aprirle). **+ parole del corso**, accanto a un termine, lo aggiunge alle parole del corso con un clic.
+
+![Il glossario del corso](img/corso-glossario.png)
 
 ### Costi
 

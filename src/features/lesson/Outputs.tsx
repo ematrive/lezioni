@@ -149,7 +149,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const fmtDate = (iso: string) => new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
 
 /** Adds a term to the course's ones (read fresh, so that two adds in a row both stay). */
-async function addCourseTerm(courseId: string, term: string) {
+export async function addCourseTerm(courseId: string, term: string) {
   const c = (await api.courses()).find((x) => x.id === courseId);
   if (!c) return;
   const have = c.terms.split(/[,;\n]/).map((t) => t.trim().toLowerCase());
@@ -365,7 +365,7 @@ function RegenerateHint({ lesson, outputs }: { lesson: Lesson; outputs: Outputs 
   if (!edited && !newMarks(outputs)) return null;
   return (
     <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      {edited ? "Hai corretto la trascrizione" : "Hai aggiunto dei segnaposti"}: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio.
+      {edited ? "Hai corretto la trascrizione" : "Hai aggiunto dei segnaposti"}: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio. Le trascrizioni restano come sono, con le tue correzioni.
     </p>
   );
 }
@@ -379,7 +379,7 @@ const clock = (secs: number) => {
 /** Next to a player: mark the current minute. */
 function MarkButtons({ onMark, onNote }: { onMark: (kind: BookmarkKind) => void; onNote: () => void }) {
   const b = (label: string, key: string, icon: string, f: () => void) => (
-    <button className="btn px-2 py-1" onClick={f} title={`${label} (tasto ${key} mentre ascolti)`} aria-label={label}>
+    <button className="btn btn-sm" onClick={f} title={`${label} (tasto ${key} mentre ascolti)`} aria-label={label}>
       {icon}
     </button>
   );
@@ -438,9 +438,9 @@ function MarkList({
           <span className="font-mono text-xs text-zinc-500">
             {MARK_ICON.nota} {clock(draft.at)}
           </span>
-          <input autoFocus className="field flex-1" placeholder="Cosa vuoi ricordare di questo punto?" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
-          <button className="btn btn-primary py-0.5">Aggiungi</button>
-          <button type="button" className="btn py-0.5" onClick={() => setDraft(null)}>
+          <input autoFocus className="field h-7 flex-1" placeholder="Cosa vuoi ricordare di questo punto?" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
+          <button className="btn btn-primary btn-sm">Aggiungi</button>
+          <button type="button" className="btn btn-sm" onClick={() => setDraft(null)}>
             Annulla
           </button>
         </form>

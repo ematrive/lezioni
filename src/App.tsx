@@ -185,6 +185,11 @@ export default function App() {
             onSelect={setLessonId}
             onOverview={clearLesson}
             onShowCourses={coursesHidden ? () => setCoursesHidden(false) : undefined}
+            onDeleted={(id) => {
+              if (id === lessonId) setLessonId(null);
+              setLessonsRev((r) => r + 1);
+              loadCourses();
+            }}
             onChanged={() => {
               setLessonsRev((r) => r + 1);
               loadCourses();
@@ -223,6 +228,7 @@ export default function App() {
             course={course}
             rev={lessonsRev}
             onReviewed={() => setLessonsRev((r) => r + 1)}
+            onCourseChanged={loadCourses}
             onOpenLesson={(id) => {
               setLessonId(id);
               setFocus({ lessonId: id, tab: "summary", sourceId: null, secs: null, n: Date.now() });
