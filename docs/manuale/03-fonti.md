@@ -38,7 +38,7 @@ Le fonti sono raggruppate per tipo. Le registrazioni si ascoltano direttamente n
 
 ## Appunti a mano su slide e foto
 
-PDF e foto vengono letti dal modello come immagini, pagina per pagina: vede anche quello che hai scritto a mano sopra una slide stampata o una dispensa, le evidenziature e le frecce. Questi appunti finiscono nel testo letto nel punto in cui sono, come *(nota a mano: …)*, e nell'app si vedono **in blu, con una penna** davanti, così li distingui dal testo stampato; per un'evidenziatura viene scritto cosa è evidenziato. Così entrano anche nella sintesi e nelle domande. Una grafia molto difficile può essere letta male: controlla nella scheda Trascrizione, dove ogni fonte ha il suo testo e si corregge con **Modifica**. Con OpenRouter un PDF può pesare fino a 50 MB (provato con 59 pagine di slide annotate, 33 MB: circa mezzo minuto e 3 centesimi).
+PDF e foto vengono letti dal modello come immagini, pagina per pagina: vede anche quello che hai scritto a mano sopra una slide stampata o una dispensa, le evidenziature e le frecce. Questi appunti finiscono nel testo letto nel punto in cui sono, ognuno su una riga sua, e nell'app si vedono **in blu, con una matita** davanti, così li distingui dal testo stampato (nel file Markdown sono scritti come *(nota a mano: …)*); per un'evidenziatura viene scritto cosa è evidenziato. Così entrano anche nella sintesi e nelle domande. Una grafia molto difficile può essere letta male: controlla nella scheda Trascrizione, dove ogni fonte ha il suo testo e si corregge con **Modifica**. Con OpenRouter un PDF può pesare fino a 50 MB (provato con 59 pagine di slide annotate, 33 MB: circa mezzo minuto e 3 centesimi).
 
 ![Appunti a mano su una slide, in blu](img/appunti-a-mano.png)
 

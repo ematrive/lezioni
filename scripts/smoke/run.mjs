@@ -180,8 +180,15 @@ try {
   if ((await p.locator("[data-map-ref]").count()) < 2) throw new Error("mappa: mancano i rimandi");
   await p.getByRole("button", { name: /^Vai a F1 00:12:30: Pivot$/ }).click();
   await p.locator('[data-t="750"]').first().waitFor();
-  // Notes written by hand on the slides, in pen blue.
+  // From one document of the lesson to another: the menu on the name in the header.
+  await p.getByText("In questa lezione:").waitFor();
+  await p.getByTitle("Vai a un altro documento della lezione").first().click();
+  await p.getByRole("menuitem", { name: "slide-cap3.pdf" }).click();
+  await p.waitForTimeout(600);
+  if (!(await p.getByRole("heading", { name: "Pagina 1" }).evaluate((h) => h.getBoundingClientRect().top < window.innerHeight))) throw new Error("salto al documento non riuscito");
+  // Notes written by hand on the slides: pen blue, on their own line, without "nota a mano:".
   await p.locator(".handwritten").getByText(/regola di Bland/).waitFor();
+  if ((await p.locator(".handwritten").first().innerText()).includes("nota a mano")) throw new Error("nota a mano: ancora scritto");
   await p.locator(".handwritten").first().evaluate((e) => e.scrollIntoView({ block: "center" }));
   await p.waitForTimeout(400);
   await shot("appunti-a-mano");

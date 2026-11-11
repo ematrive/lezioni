@@ -1,5 +1,5 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, ChevronDown, ChevronRight, FileDown, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronRight, ChevronUp, FileAudio, FileDown, FileText, FileVideo, Image as ImageIcon, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ai, api, courseAi, costLine, share, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown, MARK_ICON, MARK_LABEL, toSecs } from "../../lib/Markdown";
@@ -518,6 +518,60 @@ function MarkList({
   );
 }
 
+function SourceIcon({ kind }: { kind: Lesson["sources"][number]["kind"] }) {
+  const Icon = kind === "audio" ? FileAudio : kind === "video" ? FileVideo : kind === "image" ? ImageIcon : FileText;
+  return <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />;
+}
+
+/** The name of a document in its header: a menu to jump to the others, and ↑ ↓. */
+function DocSwitcher({ docs, current, onGo }: { docs: Lesson["sources"]; current: number; onGo: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [open]);
+  const s = docs[current];
+  const arrow = "rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800";
+  return (
+    <div className="relative flex min-w-0 flex-1 items-center gap-0.5">
+      <button className="flex min-w-0 items-center gap-1 rounded px-1 font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setOpen(!open)} title="Vai a un altro documento della lezione" aria-haspopup="menu">
+        <SourceIcon kind={s.kind} />
+        <span className="truncate">{s.originalName}</span>
+        <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+      </button>
+      <button className={arrow} disabled={current === 0} onClick={() => onGo(docs[current - 1].id)} title="Documento precedente" aria-label="Documento precedente">
+        <ChevronUp className="size-4" />
+      </button>
+      <button className={arrow} disabled={current === docs.length - 1} onClick={() => onGo(docs[current + 1].id)} title="Documento successivo" aria-label="Documento successivo">
+        <ChevronDown className="size-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="anim-pop absolute top-full left-0 z-40 mt-1 w-72 rounded-md border border-zinc-200 bg-white p-1 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="menu">
+            {docs.map((d, i) => (
+              <button
+                key={d.id}
+                role="menuitem"
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 ${i === current ? "font-semibold" : ""}`}
+                onClick={() => {
+                  setOpen(false);
+                  onGo(d.id);
+                }}
+              >
+                <SourceIcon kind={d.kind} />
+                <span className="truncate">{d.originalName}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookmarks }: { lesson: Lesson; outputs: Outputs; seek: Seek | null; process: React.ReactNode; editing?: Editing; onBookmarks: () => void }) {
   const [view, setView] = useState<Record<string, "clean" | "raw">>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -599,10 +653,22 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
       p.play().catch(() => {});
     }
   };
+  const goTo = (id: string) => sections.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <div className="mx-auto max-w-3xl space-y-10">
       <RegenerateHint lesson={lesson} outputs={outputs} />
-      {withText.map((s) => {
+      {withText.length > 1 && (
+        <nav className="flex flex-wrap items-center gap-1.5 pb-2 text-sm" aria-label="Documenti della lezione">
+          <span className="text-xs text-zinc-500">In questa lezione:</span>
+          {withText.map((s) => (
+            <button key={s.id} className="flex max-w-56 items-center gap-1 rounded-full border border-zinc-300 px-2.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={() => goTo(s.id)} title={`Vai a ${s.originalName}`}>
+              <SourceIcon kind={s.kind} />
+              <span className="truncate">{s.originalName}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {withText.map((s, idx) => {
         const media = s.kind === "audio" || s.kind === "video";
         const raw = outputs.raw[s.id];
         const showRaw = !!raw && view[s.id] === "raw";
@@ -610,9 +676,13 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
           <section key={s.id} ref={(el) => void (sections.current[s.id] = el)} className="scroll-mt-4">
             <div className="sticky -top-4 z-10 -mx-4 -mt-4 mb-3 border-b border-zinc-200 bg-zinc-50 px-4 pt-4 pb-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="min-w-0 flex-1 truncate font-semibold" title={s.originalName}>
-                  {s.originalName}
-                </h3>
+                {withText.length > 1 ? (
+                  <DocSwitcher docs={withText} current={idx} onGo={goTo} />
+                ) : (
+                  <h3 className="min-w-0 flex-1 truncate font-semibold" title={s.originalName}>
+                    {s.originalName}
+                  </h3>
+                )}
                 {s.edited && editingId !== s.id && <span className="text-xs text-zinc-500">corretta a mano il {fmtDate(s.edited)}</span>}
                 {raw && editingId !== s.id && (
                   <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm dark:border-zinc-700" role="group" aria-label="Versione del testo">

@@ -1,6 +1,6 @@
 import "katex/dist/katex.min.css";
 import { Pause, PenLine } from "lucide-react";
-import { useMemo } from "react";
+import { createElement, Fragment, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -64,6 +64,16 @@ function marksByParagraph(text: string, marks: Mark[]): Map<number, Mark[]> {
     if (t !== undefined) out.set(t, [...(out.get(t) ?? []), m]);
   }
   return out;
+}
+
+/** "(nota a mano: …)" shown as "…": the pen says it already (the file keeps the words). */
+function withoutNoteLabel(children: React.ReactNode): React.ReactNode {
+  const kids = Array.isArray(children) ? [...children] : [children];
+  if (typeof kids[0] === "string") kids[0] = kids[0].replace(/^\s*\(\s*nota a mano\s*:?\s*/i, "");
+  const last = kids.length - 1;
+  if (typeof kids[last] === "string") kids[last] = (kids[last] as string).replace(/\)\s*$/, "");
+  // Spread, not an array: the parts have no keys.
+  return createElement(Fragment, null, ...kids);
 }
 
 /** All the text of a hast node. */
@@ -134,8 +144,8 @@ export function Markdown({
           em: ({ node, children }) =>
             /^\(?\s*nota a mano\b/i.test(textOf(node).trim()) ? (
               <em className="handwritten" title="Scritto a mano sulla pagina">
-                <PenLine className="handwritten-pen" aria-hidden />
-                {children}
+                <PenLine className="handwritten-pen" aria-label="Scritto a mano" />
+                {withoutNoteLabel(children)}
               </em>
             ) : (
               <em>{children}</em>

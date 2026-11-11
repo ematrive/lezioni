@@ -2,6 +2,8 @@
 
 ## Prossima versione
 
+- Trascrizione: si passa da un documento all'altro (registrazione, slide, foto) con la riga **In questa lezione**, con il menu sul nome del documento o con le frecce ↑ ↓, senza scorrere tutta la pagina.
+- Gli appunti a mano stanno ognuno su una riga, con la matita e senza la scritta «nota a mano:» ripetuta.
 - **Mappa → trascrizione**: la freccia accanto a un concetto porta al punto della registrazione in cui se ne parla.
 - **Mappa in PDF** (scheda Mappa → Esporta in PDF), disegnata come nell'app su una pagina orizzontale; anche nel PDF della lezione la mappa è ora disegnata invece che un elenco.
 - Gli **appunti a mano** letti dalle slide si vedono in blu, con una penna.

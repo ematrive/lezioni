@@ -6,6 +6,8 @@ La scheda **Trascrizione** mostra il testo di ogni fonte: le registrazioni trasc
 
 Ogni paragrafo inizia con il **minuto** in cui comincia: cliccalo e la registrazione riparte da lì.
 
+Se la lezione ha più documenti (registrazione, slide, foto), in cima c'è la riga **In questa lezione** con un'etichetta per ciascuno: cliccala per andarci. Mentre scorri, il nome del documento in alto apre l'elenco degli altri, e le frecce ↑ ↓ accanto portano al precedente e al successivo.
+
 ![La trascrizione con i minuti cliccabili](img/trascrizione.png)
 
 ### Segnaposti mentre ascolti
