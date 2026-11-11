@@ -16,6 +16,7 @@ Lezioni/
       estratti/    il testo letto da ogni fonte (trascrizioni, appunti), il testo
                    di Whisper (.whisper.md) e le copie delle correzioni (versioni/)
       generati/    sintesi, mappa, flashcard
+    generati/      sintesi del corso
 ```
 
 Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazioni**: per spostare l'archivio, sposta la cartella e poi sceglila lì.
@@ -43,6 +44,19 @@ Raccoglie quello che riguarda il corso intero.
 ### Ripasso
 
 Le flashcard di tutte le lezioni del corso da ripassare oggi, come il ripasso di una lezione (vedi [Studio](05-studiare.md#ripasso-a-intervalli)). Sopra ogni carta c'è la lezione da cui viene: cliccala per aprirla.
+
+### Sintesi del corso
+
+Una sintesi di **tutto il corso** per preparare l'esame, fatta dalle sintesi delle lezioni: è organizzata per argomenti, non lezione per lezione, e collega quello che è stato spiegato in giorni diversi. Sotto ci sono le **domande d'esame del corso**: quelle proposte per le singole lezioni, unite e scelte fra le più ricorrenti, ognuna con la traccia di risposta e le lezioni da ripassare.
+
+- **Genera la sintesi del corso** la crea (serve almeno una lezione elaborata); poi **Rigenera** la rifà, e la precedente resta in `generati/versioni` nella cartella del corso.
+- I riferimenti **L1**, **L2**… indicano le lezioni da cui viene ogni paragrafo, dalla più vecchia: cliccandoli apri la lezione.
+- Quando aggiungi o rielabori lezioni l'app avvisa che la sintesi del corso è superata.
+- Costa poco: dalle sintesi, non dalle trascrizioni, quindi qualche millesimo di dollaro per lezione con i modelli predefiniti.
+
+![La sintesi del corso con le domande d'esame](img/sintesi-corso.png)
+
+La sintesi del corso non entra nei pacchetti: chi li riceve la genera dalle proprie lezioni.
 
 ### Costi
 

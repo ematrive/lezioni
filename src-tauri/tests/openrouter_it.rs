@@ -138,3 +138,42 @@ async fn reclean_piece() {
         }
     }
 }
+
+/// Course summary for real, from lesson outputs saved by `compare_models` (LEZIONI_IT_OUT):
+/// LEZIONI_IT_LESSONS=a.generato.json,b.generato.json (one lesson each, in date order).
+///   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_LESSONS=… \
+///   cargo test --test openrouter_it course_summary -- --nocapture
+#[tokio::test]
+async fn course_summary() {
+    let (Ok(_), Ok(files)) = (std::env::var("LEZIONI_IT_OPENROUTER"), std::env::var("LEZIONI_IT_LESSONS")) else {
+        eprintln!("LEZIONI_IT_OPENROUTER o LEZIONI_IT_LESSONS non impostate: test saltato");
+        return;
+    };
+    let o = lezioni_lib::ai::Provider::OpenRouter(OpenRouter::new(std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY")));
+    let tmp = tempfile::tempdir().unwrap();
+    let lib = lezioni_lib::library::Library::open(tmp.path()).unwrap();
+    let c = lib.create_course(&std::env::var("LEZIONI_IT_COURSE").unwrap_or_else(|_| "Ricerca operativa".into()), "", &std::env::var("LEZIONI_IT_TERMS").unwrap_or_default()).unwrap();
+    for (i, f) in files.split(',').enumerate() {
+        let g: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap();
+        let l = lib.create_lesson(&c.meta.id, g["titolo"].as_str().unwrap_or("Lezione"), chrono::NaiveDate::from_ymd_opt(2026, 10, 1 + i as u32 * 7).unwrap()).unwrap();
+        let d = l.path.join("generati");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("sintesi.md"), g["sintesi"].as_str().unwrap()).unwrap();
+        let study = serde_json::json!({ "glossario": g["glossario"], "flashcard": g["flashcard"], "domandeEsame": g["domande_esame"] });
+        std::fs::write(d.join("studio.json"), study.to_string()).unwrap();
+    }
+    let models = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "anthropic/claude-haiku-5.5".into());
+    for m in models.split(',') {
+        let t = Instant::now();
+        match lezioni_lib::course::summarize(&o, m, &lib, &c.meta.id, &std::sync::Mutex::new(()), &CancellationToken::new()).await {
+            Ok((u, used)) => {
+                let s = lezioni_lib::course::read(&lib, &c.meta.id).unwrap();
+                println!("\n=== {used}: {:.1} s, {} in / {} out, {:.4} $\n{}\n\nDOMANDE:", t.elapsed().as_secs_f64(), u.prompt_token_count, u.candidates_token_count, cost(&u), s.summary.unwrap_or_default());
+                for q in s.questions {
+                    println!("- {} {:?}", q.domanda, q.lezioni);
+                }
+            }
+            Err(e) => println!("\n=== {m}: ERRORE {e:#}"),
+        }
+    }
+}

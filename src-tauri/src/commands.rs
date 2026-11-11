@@ -612,3 +612,55 @@ pub fn review_answer(state: State<'_, AppState>, lesson_id: String, key: String,
     let _w = state.writing();
     Ok(crate::review::answer(&state.library()?, &lesson_id, &key, knew, today())?)
 }
+
+// ---------- course summary ----------
+
+#[tauri::command(async)]
+pub fn course_summary_get(state: State<'_, AppState>, course_id: String) -> CmdResult<crate::course::CourseSummary> {
+    Ok(crate::course::read(&state.library()?, &course_id)?)
+}
+
+/// Starts the course summary in the background (a job under the course id); events on `channel`.
+#[tauri::command]
+pub async fn course_summarize(app: AppHandle, state: State<'_, AppState>, course_id: String, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
+    if state.jobs.busy(&course_id) {
+        return Err(anyhow::anyhow!("la sintesi del corso è già in corso").into());
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let model = settings.effective_models().generate;
+    let ch = channel.clone();
+    let ai = crate::ai::Metered::new(provider(&settings)?.with_notify(Arc::new(move |message| {
+        let _ = ch.send(JobEvent::Detail { message });
+    })));
+    let spent = ai.spent.clone();
+    let lib = state.library()?;
+    let lock = state.write.clone();
+    let cancel = state.jobs.start(&job_id, &course_id);
+    let n = crate::course::lessons_with_summary(&lib, &course_id)?.len();
+    let _ = channel.send(JobEvent::Step { done: 0.0, total: 1, message: format!("Sintesi del corso dalle sintesi di {n} {}…", if n == 1 { "lezione" } else { "lezioni" }) });
+    let _ = channel.send(JobEvent::Detail { message: "In attesa della risposta del modello…".into() });
+    let lib2 = lib.clone();
+    let id2 = course_id.clone();
+    let work = tauri::async_runtime::spawn(async move { crate::course::summarize(&ai, &model, &lib2, &id2, &lock, &cancel).await });
+    tauri::async_runtime::spawn(async move {
+        let ev = match work.await {
+            Ok(Ok((usage, _))) => JobEvent::Done { usage, warnings: vec![] },
+            Ok(Err(e)) => {
+                log::warn!("sintesi del corso: {e:#}");
+                JobEvent::Failed { message: format!("{e:#}") }
+            }
+            Err(e) => JobEvent::Failed { message: format!("errore interno durante la sintesi del corso ({e})") },
+        };
+        let state = app.state::<AppState>();
+        let spent = std::mem::take(&mut *spent.lock().unwrap());
+        if let Ok(c) = lib.course(&course_id) {
+            let _w = state.writing();
+            if let Err(e) = crate::costs::record(&c.path, false, spent.into_iter().map(|(m, u)| crate::costs::Entry::new("sintesi-corso", &m, u))) {
+                log::warn!("costi: {e:#}");
+            }
+        }
+        let _ = channel.send(ev);
+        state.jobs.finish(&job_id);
+    });
+    Ok(())
+}

@@ -90,13 +90,8 @@ fn context(lib: &Library, lesson_id: &str, scope: Scope) -> Result<(String, BTre
             }
         }
         Scope::Course => {
-            let mut ls = lib.lessons(&course.meta.id)?;
-            ls.sort_by_key(|l| l.meta.date);
-            for l in ls {
-                let o = pipeline::outputs(&l);
-                let Some(s) = o.summary else { continue };
-                let code = format!("L{}", refs.len() + 1);
-                text.push_str(&format!("[{code}] Lezione del {}: {}\n{s}\n\n", l.meta.date, l.meta.title));
+            for (code, l, o) in crate::course::lessons_with_summary(lib, &course.meta.id)? {
+                text.push_str(&format!("[{code}] Lezione del {}: {}\n{}\n\n", l.meta.date, l.meta.title, o.summary.unwrap_or_default()));
                 refs.insert(code, l.meta.id.clone());
             }
             if refs.is_empty() {

@@ -24,6 +24,7 @@
     const fresh = cards.filter((c) => c.box === null);
     return { cards: [...old, ...fresh.slice(0, 20)], due: old.length, new: fresh.length };
   };
+  const courseSummaries = {}; // course id -> summary
   const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
@@ -216,6 +217,26 @@
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
           return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [] };
+        case "course_summary_get": {
+          const ls = lessons.filter((l) => l.courseId === a.courseId && outputs[l.id]?.summary);
+          return { summary: null, questions: [], info: null, ready: ls.length, changed: 0, ...courseSummaries[a.courseId] };
+        }
+        case "course_summarize": {
+          const ls = lessons.filter((l) => l.courseId === a.courseId && outputs[l.id]?.summary).sort((x, y) => x.date.localeCompare(y.date));
+          const send = (message) => cbs[a.channel.id]?.({ index: 0, message });
+          setTimeout(() => {
+            courseSummaries[a.courseId] = {
+              summary:
+                "## Programmazione lineare\nUn problema di PL si scrive in **forma standard** $\\max\\, c^T x$ con $Ax = b,\\ x \\ge 0$; le soluzioni di base sono i vertici del poliedro. [L1]\n\n## Il metodo del simplesso\nSi passa da un vertice all'altro con il **pivot**: la variabile entrante ha costo ridotto negativo, la uscente si sceglie con il test del rapporto minimo. Con rapporti uguali la soluzione è **degenere** e serve la regola di Bland. [L1]",
+              questions: [{ domanda: "Illustra il metodo del simplesso e il caso degenere.", traccia: "Forma standard, base ammissibile, pivot, rapporto minimo, regola di Bland.", lezioni: ["L1"] }],
+              info: { generated: now(), model: "anthropic/claude-haiku-5.5", usage: { promptTokenCount: 9000, candidatesTokenCount: 2500, thoughtsTokenCount: 0, cost: 0.006 }, refs: Object.fromEntries(ls.map((l, i) => ["L" + (i + 1), l.id])) },
+              ready: ls.length,
+              changed: 0,
+            };
+            send({ event: "done", usage: { promptTokenCount: 9000, candidatesTokenCount: 2500, thoughtsTokenCount: 0, cost: 0.006 }, warnings: [] });
+          }, 300);
+          return null;
+        }
         case "review_due":
           return dueCards(a.scope === "lesson" ? [find(a.id)] : lessons.filter((l) => l.courseId === a.id));
         case "review_answer": {

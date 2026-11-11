@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { ai, api, courseAi, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
@@ -61,6 +61,30 @@ export async function startProcessing(lesson: Lesson, force: boolean, onFinished
     if (jobs[lesson.id]) setJob(lesson.id, { ...jobs[lesson.id], jobId });
   } catch (e) {
     setJob(lesson.id, null);
+    toast(toAppError(e).message, "error");
+  }
+}
+
+/** The course summary, as a job of the course (same store and bar as the lessons). */
+export async function startCourseSummary(course: Course, onFinished: () => void) {
+  if (jobs[course.id]) return;
+  setJob(course.id, { jobId: null, done: 0, total: 1, message: "Avvio…", since: Date.now() });
+  const onEvent = (e: JobEvent) => {
+    const cur = jobs[course.id] ?? { jobId: null, done: 0, total: 1, message: "", since: Date.now() };
+    if (e.event === "step") setJob(course.id, { ...cur, done: e.done, total: e.total, message: e.message, detail: undefined, since: Date.now() });
+    else if (e.event === "detail") setJob(course.id, { ...cur, detail: e.message });
+    else {
+      setJob(course.id, null);
+      if (e.event === "done") toast(`Sintesi del corso «${course.name}» pronta (${costLine(e.usage)}).`);
+      else if (e.message !== "annullato") toast(e.message, "error");
+      onFinished();
+    }
+  };
+  try {
+    const jobId = await courseAi.summarize(course.id, onEvent);
+    if (jobs[course.id]) setJob(course.id, { ...jobs[course.id], jobId });
+  } catch (e) {
+    setJob(course.id, null);
     toast(toAppError(e).message, "error");
   }
 }

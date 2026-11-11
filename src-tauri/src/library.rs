@@ -125,6 +125,7 @@ pub struct LessonPatch {
     pub notes: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct Library {
     root: PathBuf,
 }

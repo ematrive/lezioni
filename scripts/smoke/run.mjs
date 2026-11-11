@@ -191,6 +191,13 @@ try {
   // Course page: review of the whole course (all done today), then what the AI cost.
   await p.getByTitle(/^Pagina del corso/).click();
   await p.getByText("Niente da ripassare oggi.").waitFor();
+  // Course summary, from the summaries of the lessons; [L1] opens the lesson.
+  await p.getByRole("button", { name: "Sintesi del corso", exact: true }).click();
+  await p.getByRole("button", { name: "Genera la sintesi del corso" }).click();
+  await p.getByText(/Sintesi del corso «Ricerca operativa» pronta/).waitFor();
+  await p.getByText("Domande d'esame del corso").waitFor();
+  await p.getByRole("button", { name: /1\. Illustra il metodo del simplesso e il caso degenere/ }).click();
+  await shot("sintesi-corso");
   await p.getByRole("button", { name: "Costi", exact: true }).click();
   await p.getByText("spesi con l'AI per questo corso", { exact: false }).waitFor();
   await p.getByRole("cell", { name: "0,03 $" }).first().waitFor();

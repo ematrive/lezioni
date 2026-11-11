@@ -127,6 +127,37 @@ fn node(depth: u32) -> Value {
 }
 
 /// Fixed depth instead of `$ref` recursion: root + 3 levels is plenty for a lesson.
+/// Summary of a whole course from the summaries of its lessons ([L1], [L2]…).
+pub fn course_summary(course: &str, terms: &str, lessons: usize, text: &str) -> String {
+    let terms = terms_line(terms);
+    format!(
+        "Corso: {course}\n{terms}\
+Qui sotto ci sono le sintesi delle {lessons} lezioni del corso, in ordine di data, ognuna con un codice [L1], [L2]…, e le domande d'esame proposte per ciascuna.\n\n\
+Produci:\n\
+1. **sintesi**: la sintesi del corso intero in Markdown, per studiare per l'esame. Organizzala per argomenti (titoli ##/###), non lezione per lezione: \
+riunisci quello che è stato spiegato in più lezioni, mostra come gli argomenti si collegano e quali concetti servono per capirne altri. \
+Tieni formule (LaTeX), definizioni e risultati importanti; tralascia aneddoti e dettagli organizzativi. \
+Alla fine di ogni paragrafo indica tra parentesi quadre le lezioni da cui viene, ad esempio [L3] o [L2, L5]; usa solo questi codici. \
+Non riportare note sulle fonti delle singole lezioni (slide mancanti, passaggi incomprensibili della registrazione).\n\
+2. **domande**: 8-15 domande d'esame sul corso intero. Parti dalle domande proposte per le lezioni: unisci quelle simili, preferisci quelle che tornano in più lezioni \
+e quelle che collegano argomenti diversi. Ognuna con una traccia di risposta e i codici delle lezioni da ripassare (\"lezioni\": [\"L2\", \"L5\"]).\n\n\
+LEZIONI:\n\n{text}"
+    )
+}
+
+pub fn course_summary_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "sintesi": { "type": "string" },
+            "domande": { "type": "array", "items": { "type": "object", "properties": {
+                "domanda": { "type": "string" }, "traccia": { "type": "string" }, "lezioni": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["domanda", "traccia", "lezioni"] } }
+        },
+        "required": ["sintesi", "domande"]
+    })
+}
+
 pub fn generate_schema() -> Value {
     json!({
         "type": "object",

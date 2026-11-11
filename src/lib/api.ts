@@ -218,6 +218,27 @@ export interface DueCard {
   box: number | null;
 }
 
+export interface CourseSummary {
+  summary: string | null;
+  questions: { domanda: string; traccia: string; lezioni: string[] }[];
+  info: { generated: string; model: string; usage: Usage; refs: Record<string, string> } | null;
+  /** lessons with a summary now */
+  ready: number;
+  /** lessons added or summarized again since */
+  changed: number;
+}
+
+export const courseAi = {
+  summary: (courseId: string) => invoke<CourseSummary>("course_summary_get", { courseId }),
+  async summarize(courseId: string, onEvent: (e: JobEvent) => void): Promise<string> {
+    const jobId = crypto.randomUUID();
+    const channel = new Channel<JobEvent>();
+    channel.onmessage = onEvent;
+    await invoke("course_summarize", { courseId, jobId, channel });
+    return jobId;
+  },
+};
+
 export const review = {
   /** Cards to review today: seen ones that are due, then at most 20 new ones. */
   due: (scope: "lesson" | "course", id: string) => invoke<{ cards: DueCard[]; due: number; new: number }>("review_due", { scope, id }),

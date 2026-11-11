@@ -5,6 +5,7 @@ pub mod bookmarks;
 pub mod chat;
 pub mod commands;
 pub mod costs;
+pub mod course;
 pub mod error;
 pub mod jobs;
 pub mod library;
@@ -132,6 +133,8 @@ pub fn run() {
             version_restore,
             review_due,
             review_answer,
+            course_summary_get,
+            course_summarize,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
