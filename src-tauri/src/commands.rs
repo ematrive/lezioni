@@ -569,3 +569,17 @@ pub async fn extract_reclean(state: State<'_, AppState>, lesson_id: String, sour
     }
     Ok(Recleaned { text, usage, model })
 }
+
+// ---------- earlier versions ----------
+
+#[tauri::command(async)]
+pub fn version_read(state: State<'_, AppState>, lesson_id: String, area: crate::versions::Area, stamp: String, file: String) -> CmdResult<String> {
+    Ok(crate::versions::read(&state.library()?, &lesson_id, area, &stamp, &file)?)
+}
+
+#[tauri::command(async)]
+pub fn version_restore(state: State<'_, AppState>, lesson_id: String, area: crate::versions::Area, stamp: String, file: Option<String>) -> CmdResult<Lesson> {
+    not_busy(&state, &lesson_id)?;
+    let _w = state.writing();
+    Ok(crate::versions::restore(&state.library()?, &lesson_id, area, &stamp, file.as_deref())?)
+}

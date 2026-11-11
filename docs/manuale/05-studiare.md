@@ -51,6 +51,15 @@ La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, el
 
 Anche la sintesi si corregge con **Modifica**, con lo stesso trova e sostituisci. Con **Rigenera** la versione corretta non si perde: resta in `generati/versioni`.
 
+### Versioni precedenti
+
+Ogni volta che premi **Rigenera**, sintesi, mappa e materiale di studio di prima diventano una **versione precedente**. Lo stesso vale per una trascrizione corretta a mano e poi rifatta con *Rielabora anche le fonti*. Il pulsante **Versioni precedenti** (nella Sintesi, e accanto a ogni trascrizione che ne ha) apre l'elenco per data:
+
+- **Differenze** confronta la versione con quella attuale riga per riga: in rosso quello che c'era allora, in verde quello che c'è adesso. **Testo** la mostra intera.
+- **Ripristina questa versione** la riporta come attuale. Per la sintesi tornano insieme anche la mappa e il materiale di studio di quella versione. Quella che sostituisci non si perde: diventa a sua volta una versione precedente.
+
+![Le differenze tra una versione precedente e quella attuale](img/versioni.png)
+
 ## Mappa
 
 La **Mappa** mostra gli argomenti della lezione ad albero: al centro l'argomento principale, poi i concetti e i sotto-concetti. Clicca un concetto per chiuderne o aprirne i rami.

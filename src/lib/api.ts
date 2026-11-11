@@ -192,6 +192,20 @@ export interface Outputs {
   study: Study | null;
   info: { generated: string; model: string; usage: Usage; suggestedTitle: string; sources: Record<string, string>; edited?: string } | null;
   bookmarks: Bookmark[];
+  /** earlier versions, newest first */
+  versions: Version[];
+}
+
+export interface Version {
+  area: "generati" | "estratti";
+  /** UTC "2026-11-11 14-03-22" */
+  stamp: string;
+  files: string[];
+}
+
+/** When a version was made, from its folder name (UTC). */
+export function versionDate(stamp: string): Date {
+  return new Date(stamp.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2})-(\d{2})-(\d{2}).*$/, "$1T$2:$3:$4Z"));
 }
 
 export type BookmarkKind = "importante" | "dubbio" | "nota";
@@ -231,6 +245,8 @@ export const ai = {
   /** Cleans again the piece from `from` to `to` (seconds; null = the end) with `model` (null = the cleanup model). */
   reclean: (lessonId: string, sourceId: string, from: number, to: number | null, model: string | null) =>
     invoke<{ text: string; usage: Usage; model: string }>("extract_reclean", { lessonId, sourceId, from, to, model }),
+  versionRead: (lessonId: string, area: Version["area"], stamp: string, file: string) => invoke<string>("version_read", { lessonId, area, stamp, file }),
+  versionRestore: (lessonId: string, area: Version["area"], stamp: string, file: string | null) => invoke<Lesson>("version_restore", { lessonId, area, stamp, file }),
   addBookmark: (lessonId: string, sourceId: string, at: number, kind: BookmarkKind, note = "") => invoke<Bookmark[]>("bookmark_add", { lessonId, sourceId, at, kind, note }),
   updateBookmark: (lessonId: string, id: string, kind: BookmarkKind, note: string) => invoke<Bookmark[]>("bookmark_update", { lessonId, id, kind, note }),
   removeBookmark: (lessonId: string, id: string) => invoke<Bookmark[]>("bookmark_remove", { lessonId, id }),

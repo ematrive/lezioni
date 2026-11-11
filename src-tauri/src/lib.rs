@@ -13,6 +13,7 @@ pub mod search;
 pub mod secrets;
 pub mod settings;
 pub mod share;
+pub mod versions;
 
 use std::sync::Mutex;
 
@@ -126,6 +127,8 @@ pub fn run() {
             bookmark_update,
             bookmark_remove,
             extract_reclean,
+            version_read,
+            version_restore,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

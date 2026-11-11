@@ -2,6 +2,7 @@
 
 ## Prossima versione
 
+- **Versioni precedenti** nell'app: le sintesi sostituite da Rigenera e le trascrizioni corrette poi rifatte si possono confrontare con quella attuale (differenze riga per riga) e ripristinare; quella sostituita diventa a sua volta una versione.
 - **Ripulisci di nuovo un pezzo**: nella correzione di una trascrizione selezioni un passaggio venuto male e il modello (anche un altro, scelto dalla tendina) lo ripulisce di nuovo dal testo di Whisper; vedi la proposta accanto al testo attuale e scegli se sostituirlo.
 - **Segnaposti mentre ascolti**: sotto il lettore della registrazione, *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto a cui sei arrivato. Nella trascrizione il paragrafo è evidenziato; con Rigenera la sintesi dà più spazio ai punti importanti e spiega meglio quelli non capiti, e le Domande li conoscono.
 - **Pagina del corso** (clic sul nome del corso sopra le lezioni) con i **costi**: quanto hai speso con l'AI, per mese e per lezione, comprese domande ed elaborazioni interrotte. Nella Sintesi la riga in alto dice anche quanto è costata l'ultima elaborazione.

@@ -106,21 +106,38 @@ impl Archive {
     /// Moves the current outputs to `generati/versioni/<stamp>/`.
     fn archive_outputs(&self, lesson_id: &str) -> Result<()> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        let gdir = self.lesson(lesson_id)?.path.join(GENERATED_DIR);
-        let files: Vec<PathBuf> = match fs::read_dir(&gdir) {
-            Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_file()).collect(),
-            Err(_) => return Ok(()),
-        };
-        if files.is_empty() {
-            return Ok(());
-        }
-        let dest = gdir.join("versioni").join(Utc::now().format("%Y-%m-%d %H-%M-%S").to_string());
-        fs::create_dir_all(&dest)?;
-        for f in files {
-            fs::rename(&f, dest.join(f.file_name().unwrap()))?;
-        }
-        Ok(())
+        archive_generated(&self.lesson(lesson_id)?.path.join(GENERATED_DIR))
     }
+}
+
+/// A new folder `<dir>/versioni/<now>` (UTC, "2026-11-11 14-03-22"; " 2" etc. when taken).
+pub(crate) fn new_version_dir(dir: &Path) -> PathBuf {
+    let stamp = Utc::now().format("%Y-%m-%d %H-%M-%S").to_string();
+    let base = dir.join("versioni");
+    let mut dest = base.join(&stamp);
+    let mut n = 2;
+    while dest.exists() {
+        dest = base.join(format!("{stamp} {n}"));
+        n += 1;
+    }
+    dest
+}
+
+/// Moves the files of a `generati/` folder (lesson or course) to `versioni/<stamp>/`.
+pub(crate) fn archive_generated(gdir: &Path) -> Result<()> {
+    let files: Vec<PathBuf> = match fs::read_dir(gdir) {
+        Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_file() && p.extension().is_none_or(|e| e != "tmp")).collect(),
+        Err(_) => return Ok(()),
+    };
+    if files.is_empty() {
+        return Ok(());
+    }
+    let dest = new_version_dir(gdir);
+    fs::create_dir_all(&dest)?;
+    for f in files {
+        fs::rename(&f, dest.join(f.file_name().unwrap()))?;
+    }
+    Ok(())
 }
 
 /// Parts of a recording transcribed so far (removed when the transcript is complete).
@@ -934,6 +951,8 @@ pub struct Outputs {
     pub info: Option<Info>,
     /// The student's bookmarks (`segnaposti.json`).
     pub bookmarks: Vec<crate::bookmarks::Bookmark>,
+    /// Earlier versions of the outputs and of the transcripts, newest first.
+    pub versions: Vec<crate::versions::Version>,
 }
 
 pub fn outputs(lesson: &Lesson) -> Outputs {
@@ -948,6 +967,7 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         study: read(&gdir.join("studio.json")).and_then(|t| serde_json::from_str(&t).ok()),
         info: read(&gdir.join("info.json")).and_then(|t| serde_json::from_str(&t).ok()),
         bookmarks: crate::bookmarks::read(&lesson.path),
+        versions: crate::versions::list(lesson),
     }
 }
 

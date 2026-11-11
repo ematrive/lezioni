@@ -13,6 +13,9 @@
   const chats = {};
   const costs = {}; // lesson id -> [{ when, total }]
   const marks = {}; // lesson id -> bookmarks
+  // An earlier summary (as after a Rigenera), for the versions dialog.
+  const OLD_SUMMARY = "## Metodo del simplesso\nSi parte da una **base** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$";
+  const versions = {}; // lesson id -> versions
   const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
@@ -204,7 +207,12 @@
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
-          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [] };
+          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [] };
+        case "version_read":
+          return OLD_SUMMARY;
+        case "version_restore":
+          outputs[a.lessonId].summary = OLD_SUMMARY;
+          return find(a.lessonId);
         case "extract_reclean":
           return { text: "[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con i vincoli $Ax \\le b$, come spiega bene il libro di TIM.", usage: { promptTokenCount: 900, candidatesTokenCount: 120, thoughtsTokenCount: 0, cost: 0.0004 }, model: "google/gemini-3.5-flash-lite" };
         case "bookmark_add":
@@ -239,6 +247,7 @@
               },
               info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
             };
+            versions[l.id] = [{ area: "generati", stamp: "2026-11-10 09-15-00", files: ["info.json", "mappa.json", "mappa.mmd", "sintesi.md", "studio.json"] }];
             costs[l.id] = (costs[l.id] ?? []).concat([{ when: now(), total: 0.034 }]);
             send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, warnings: [] });
           };

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
+import { VersionsButton } from "./Versions";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
 
@@ -530,6 +531,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                   </div>
                 )}
                 {editingId !== s.id && !showRaw && <EditButton editing={editing} onClick={() => setEditingId(s.id)} />}
+                {editingId !== s.id && <VersionsButton lesson={lesson} versions={outputs.versions} area="estratti" file={`${s.file}.md`} current={outputs.extracts[s.id]} disabled={!editing} onRestored={(l) => editing?.onSaved(l)} />}
                 {s.edited && <span className="text-xs text-zinc-500">Corretta a mano il {fmtDate(s.edited)}</span>}
                 {media && !s.omitted && editingId !== s.id && <span className="text-xs text-zinc-500">Clicca un tempo per ascoltare da quel punto.</span>}
               </div>
@@ -570,6 +572,7 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
             {outputs.info.edited && <>, corretta a mano il {fmtDate(outputs.info.edited)}</>}. I riferimenti [F1 00:12:30] portano alla trascrizione.
           </p>
         )}
+        {!edit && <VersionsButton lesson={lesson} versions={outputs.versions} area="generati" file="sintesi.md" current={outputs.summary} disabled={!editing} onRestored={() => editing?.onSaved()} />}
         {!edit && <EditButton editing={editing} onClick={() => setEdit(true)} />}
       </div>
       {edit && editing ? (

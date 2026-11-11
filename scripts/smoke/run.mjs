@@ -94,6 +94,11 @@ try {
   await p.getByRole("button", { name: "Sintesi", exact: true }).click();
   await p.getByText("base ammissibile").waitFor();
   await shot("sintesi");
+  // Earlier version of the summary: compared line by line (restored later, after the edits).
+  await p.getByRole("button", { name: "Versioni precedenti (1)" }).click();
+  await p.locator("[data-version]").getByText(/Si parte da una \*\*base\*\* e ci/).waitFor();
+  await shot("versioni");
+  await p.getByRole("button", { name: "Chiudi", exact: true }).click();
   // [F1 00:12:30] jumps to the transcript.
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Oggi vediamo il metodo del simplesso.").waitFor();
