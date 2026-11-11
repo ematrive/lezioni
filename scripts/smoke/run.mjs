@@ -278,7 +278,10 @@ try {
   await p.getByText("Insieme di m variabili linearmente indipendenti.").waitFor();
   await p.getByRole("button", { name: "+ parole del corso" }).first().click();
   await p.getByText(/«Base» aggiunta alle parole del corso/).waitFor();
-  if (!(await p.locator("#course-terms").inputValue()).includes("Base")) throw new Error("parola del corso non aggiunta");
+  // The course list reloads after the save: wait for the field to show it (slower on CI).
+  await p.waitForFunction(() => document.querySelector("#course-terms")?.value.includes("Base"), null, { timeout: 10000 }).catch(() => {
+    throw new Error("parola del corso non aggiunta");
+  });
   await shot("corso-glossario");
   await p.getByRole("button", { name: "Costi", exact: true }).click();
   await p.getByText("spesi con l'AI per questo corso", { exact: false }).waitFor();
