@@ -103,7 +103,7 @@ export function FindBar({ root, onClose, resetKey }: { root: () => HTMLElement |
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-zinc-400" />
         <input
           ref={input}
-          className="field h-8 w-36 pl-7 text-sm"
+          className="field h-8 w-56 pl-7 text-sm"
           placeholder="Cerca nella lezione"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -120,9 +120,11 @@ export function FindBar({ root, onClose, resetKey }: { root: () => HTMLElement |
           aria-label="Cerca nella lezione"
         />
       </div>
-      <span className="w-12 text-center text-xs text-zinc-500 tabular-nums" aria-live="polite">
-        {query.trim().length < 2 ? "" : ranges.length ? `${current + 1} di ${ranges.length}` : "nessuno"}
-      </span>
+      {query.trim().length >= 2 && (
+        <span className="px-1 text-xs whitespace-nowrap text-zinc-500 tabular-nums" aria-live="polite">
+          {ranges.length ? `${current + 1} di ${ranges.length}` : "nessuno"}
+        </span>
+      )}
       <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800" disabled={!ranges.length} onClick={() => step(-1)} title="Precedente (Maiusc+Invio)" aria-label="Precedente">
         <ChevronUp className="size-4" />
       </button>

@@ -928,24 +928,48 @@ impl<A: Ai> Ctx<'_, A> {
         // Some models now and then answer with the schema's skeleton (every field empty): Haiku 5.5
         // about once in 7 with reasoning on (measured on OpenRouter, Nov 2026). Ask again, at most 3
         // times in all, and never replace the saved outputs with an empty summary.
+        // After two empty answers, or one cut off (Haiku once wrote 39k tokens on a long lesson
+        // and was truncated), the last try goes to the fallback model, when there is one.
+        let fallback = Some(self.models.fallback.trim()).filter(|f| !f.is_empty() && *f != self.models.generate);
+        let mut model = self.models.generate.clone();
         let mut attempt = 0;
         let (a, g) = loop {
             attempt += 1;
-            let a = self.ai.generate(&self.models.generate, &req, self.cancel).await?;
+            let a = self.ai.generate(&model, &req, self.cancel).await?;
             self.note_fallback(&a);
             report.usage.add(&a.usage);
+            let last = attempt == 3 || Some(model.as_str()) == fallback;
             if a.finish == "MAX_TOKENS" {
-                bail!("la risposta del modello è stata troncata: prova con meno fonti o con un modello con più spazio di risposta");
+                let tail: String = a.text.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
+                log::warn!("sintesi troncata ({model}, {} caratteri); fine della risposta: …{tail}", a.text.chars().count());
+                match fallback {
+                    Some(f) if !last => {
+                        report.warnings.push(format!("La risposta di {model} era troppo lunga ed è stata troncata: sintesi fatta con il modello di riserva {f}"));
+                        model = f.to_string();
+                        attempt = 2;
+                        (self.detail)(format!("Risposta troncata, nuovo tentativo con {f}…"));
+                        continue;
+                    }
+                    _ => bail!("la risposta del modello è stata troncata: prova con meno fonti o scegli un altro modello per la sintesi nelle Impostazioni"),
+                }
             }
             let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
             if !g.sintesi.trim().is_empty() {
                 break (a, g);
             }
-            log::warn!("sintesi vuota (tentativo {attempt})");
-            if attempt == 3 {
+            log::warn!("sintesi vuota ({model}, tentativo {attempt})");
+            if last {
                 bail!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni");
             }
-            (self.detail)("Sintesi vuota, nuovo tentativo…".into());
+            if attempt == 2
+                && let Some(f) = fallback
+            {
+                report.warnings.push(format!("{model} ha risposto due volte con una sintesi vuota: sintesi fatta con il modello di riserva {f}"));
+                model = f.to_string();
+                (self.detail)(format!("Sintesi vuota, nuovo tentativo con {f}…"));
+            } else {
+                (self.detail)("Sintesi vuota, nuovo tentativo…".into());
+            }
         };
 
         self.archive.archive_outputs(lesson_id)?;
@@ -957,7 +981,7 @@ impl<A: Ai> Ctx<'_, A> {
         self.archive.write(lesson_id, &gdir.join("studio.json"), &serde_json::to_vec_pretty(&study)?)?;
         let info = Info {
             generated: Utc::now(),
-            model: if a.model.is_empty() { self.models.generate.clone() } else { a.model.clone() },
+            model: if a.model.is_empty() { model.clone() } else { a.model.clone() },
             usage: report.usage.clone(),
             suggested_title: g.titolo,
             sources: extracts.iter().map(|(code, s, _)| (code.clone(), s.id.clone())).collect(),
@@ -1043,6 +1067,10 @@ mod tests {
         fail_cleanup: std::sync::atomic::AtomicBool,
         /// How many summary answers come back as the empty skeleton (seen with Haiku).
         empty_summaries: AtomicUsize,
+        /// The next N summaries are cut off (MAX_TOKENS).
+        truncate_summaries: AtomicUsize,
+        /// Model asked for each summary.
+        summary_models: Mutex<Vec<String>>,
     }
 
     /// Fake Whisper: one sentence per part, 1 s after its start.
@@ -1068,7 +1096,15 @@ mod tests {
     }
 
     impl Ai for Fake {
-        async fn generate(&self, _model: &str, req: &Request, _c: &CancellationToken) -> Result<Answer> {
+        async fn generate(&self, model: &str, req: &Request, _c: &CancellationToken) -> Result<Answer> {
+            if req.schema.is_some() {
+                self.summary_models.lock().unwrap().push(model.to_string());
+                if self.truncate_summaries.load(Ordering::SeqCst) > 0 {
+                    self.truncate_summaries.fetch_sub(1, Ordering::SeqCst);
+                    let usage = Usage { prompt_token_count: 100, candidates_token_count: 10, thoughts_token_count: 0, cost: None };
+                    return Ok(Answer { text: "{\"sintesi\":\"## Dighe dighe dighe".into(), usage, finish: "MAX_TOKENS".into(), model: String::new() });
+                }
+            }
             let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             if *self.fail_call.lock().unwrap() == Some(n) {
                 bail!("quota esaurita (HTTP 429)");
@@ -1491,13 +1527,30 @@ mod tests {
         let st = setup(&[("lavagna.jpg", Some(b"img"))]);
         let ai = Fake { empty_summaries: AtomicUsize::new(2), ..Default::default() };
         run(&st, &ai, Options::default()).await.unwrap();
-        let first = outputs(&st.lib.lesson(&st.lesson).unwrap()).summary.unwrap();
+        let out = outputs(&st.lib.lesson(&st.lesson).unwrap());
+        let first = out.summary.unwrap();
         assert!(first.contains("Simplesso"), "third answer used: {first}");
+        // The third try went to the fallback model.
+        assert_eq!(*ai.summary_models.lock().unwrap(), ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+        assert_eq!(out.info.unwrap().model, "gemini-3.5-flash-lite");
 
         ai.empty_summaries.store(3, Ordering::SeqCst);
         let e = run(&st, &ai, Options::default()).await.unwrap_err();
         assert!(e.to_string().contains("sintesi vuota"), "{e}");
         assert_eq!(outputs(&st.lib.lesson(&st.lesson).unwrap()).summary.unwrap(), first, "saved summary kept");
+    }
+
+    #[tokio::test]
+    async fn a_summary_cut_off_is_made_again_with_the_fallback_model() {
+        let st = setup(&[("lavagna.jpg", Some(b"img"))]);
+        let ai = Fake { truncate_summaries: AtomicUsize::new(1), ..Default::default() };
+        let r = run(&st, &ai, Options::default()).await.unwrap();
+        assert_eq!(*ai.summary_models.lock().unwrap(), ["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+        assert!(r.warnings.iter().any(|w| w.contains("troncata") && w.contains("gemini-3.5-flash-lite")), "{:?}", r.warnings);
+        assert!(outputs(&st.lib.lesson(&st.lesson).unwrap()).summary.unwrap().contains("Simplesso"));
+        // Cut off by the fallback model too: an error, nothing saved over.
+        ai.truncate_summaries.store(2, Ordering::SeqCst);
+        assert!(run(&st, &ai, Options::default()).await.unwrap_err().to_string().contains("troncata"));
     }
 
     #[tokio::test]

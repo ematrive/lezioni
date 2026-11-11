@@ -2,6 +2,8 @@
 
 ## Prossima versione
 
+- Se il modello della sintesi risponde due volte vuoto o scrive una risposta così lunga da essere troncata, l'app riprova con il **modello di riserva** invece di fermarsi con un errore, e lo segnala; nel log resta la fine della risposta troncata.
+- Il campo «Cerca nella lezione» non è più tagliato.
 - Trascrizione: si passa da un documento all'altro (registrazione, slide, foto) con la riga **In questa lezione**, con il menu sul nome del documento o con le frecce ↑ ↓, senza scorrere tutta la pagina.
 - Gli appunti a mano stanno ognuno su una riga, con la matita e senza la scritta «nota a mano:» ripetuta.
 - **Mappa → trascrizione**: la freccia accanto a un concetto porta al punto della registrazione in cui se ne parla.
