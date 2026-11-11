@@ -4,7 +4,7 @@
 
 - Node 24 e pnpm (versione in `package.json`, `packageManager`);
 - Rust stabile;
-- `cmake` e un compilatore C++ per whisper.cpp (su Mac: `xcode-select --install` e `brew install cmake`). I binding di `whisper-rs-sys` sono quelli inclusi nel crate (`WHISPER_DONT_GENERATE_BINDINGS` in `src-tauri/.cargo/config.toml`), quindi non serve libclang;
+- `cmake` e un compilatore C++ per whisper.cpp (su Mac: `xcode-select --install` e `brew install cmake`). I binding di `whisper-rs-sys` sono quelli inclusi nel crate (`WHISPER_DONT_GENERATE_BINDINGS` in `src-tauri/.cargo/config.toml`), quindi non serve libclang. Non valgono per Windows (dimensioni delle strutture diverse con MSVC): lì la CI e il rilascio tolgono quella riga e li generano con bindgen e libclang (`LIBCLANG_PATH`); per compilare su Windows serve LLVM;
 - su Linux le librerie di Tauri: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`.
 
 ```bash

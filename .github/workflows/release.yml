@@ -43,12 +43,15 @@ jobs:
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
-      # whisper-rs-sys makes its Rust bindings with bindgen, which needs libclang: without it it
-      # falls back to bindings made on Linux, whose struct sizes are wrong for MSVC (E0080).
-      - name: libclang per whisper-rs (Windows)
+      # src-tauri/.cargo/config.toml makes whisper-rs-sys use the bindings bundled in the crate
+      # (made on Linux: fine for Linux and macOS, wrong struct sizes for MSVC, error E0080). On
+      # Windows they are made with bindgen instead, which needs libclang (installed on the runner).
+      - name: Binding di whisper-rs generati per Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+        run: |
+          (Get-Content src-tauri/.cargo/config.toml) | Where-Object { $_ -notmatch 'WHISPER_DONT_GENERATE_BINDINGS' } | Set-Content src-tauri/.cargo/config.toml
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
