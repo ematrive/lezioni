@@ -205,6 +205,8 @@
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
           return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [] };
+        case "extract_reclean":
+          return { text: "[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con i vincoli $Ax \\le b$, come spiega bene il libro di TIM.", usage: { promptTokenCount: 900, candidatesTokenCount: 120, thoughtsTokenCount: 0, cost: 0.0004 }, model: "google/gemini-3.5-flash-lite" };
         case "bookmark_add":
           (marks[a.lessonId] ??= []).push({ id: id(), sourceId: a.sourceId, at: a.at, kind: a.kind, note: a.note, created: now() });
           return sortMarks(a.lessonId);

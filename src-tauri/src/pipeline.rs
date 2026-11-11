@@ -389,6 +389,63 @@ fn plausible_cleanup(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
     words(cleaned) * 2 >= words(raw) && ct.len() * 2 >= rt.len() && ct.iter().all(|&t| t + 5 >= start && t <= end + 5)
 }
 
+/// A piece cleaned again keeps at least half the words and one time, all inside the piece.
+/// Looser than `plausible_cleanup`: merging 3 short paragraphs into 1 is fine for a piece.
+fn plausible_fragment(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
+    let words = |t: &str| t.split_whitespace().count();
+    let ct = times(cleaned);
+    words(cleaned) * 2 >= words(raw) && !ct.is_empty() && ct.iter().all(|&t| t + 5 >= start && t <= end + 5)
+}
+
+/// The paragraphs of a timed text (each starts with `[hh:mm:ss]`) from `from` up to `to`
+/// (excluded; None = to the end).
+fn paragraphs_between(text: &str, from: u64, to: Option<u64>) -> String {
+    text.split("\n\n")
+        .map(str::trim)
+        .filter(|p| match times(p.lines().next().unwrap_or("")).first() {
+            Some(&t) => t >= from && to.is_none_or(|to| t < to),
+            None => false,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// Cleans again, with `model`, the piece of Whisper's text of a recording from `from` up to
+/// `to`. Nothing is saved: the user sees the result and decides. Returns (text, usage, model).
+#[allow(clippy::too_many_arguments)]
+pub async fn reclean<A: Ai>(ai: &A, model: &str, lib: &crate::library::Library, lesson_id: &str, source_id: &str, from: u64, to: Option<u64>, cancel: &CancellationToken) -> Result<(String, Usage, String)> {
+    let lesson = lib.lesson(lesson_id)?;
+    let s = lesson.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+    let raw = fs::read_to_string(lesson.path.join(raw_rel(s)))
+        .ok()
+        .or_else(|| whisper_parts(&lesson.path, s))
+        .ok_or_else(|| anyhow!("questa trascrizione non ha il testo di Whisper (le lezioni elaborate prima della versione 0.8 non lo conservano): rifalla con «Rielabora anche le fonti»"))?;
+    let piece = paragraphs_between(&raw, from, to);
+    if piece.trim().is_empty() {
+        bail!("nel testo di Whisper non c'è niente fra {} e {}", hms(from), to.map(hms).unwrap_or_else(|| "la fine".into()));
+    }
+    let course = lib.course(&lesson.course_id)?;
+    let req = Request {
+        system: Some(prompts::SYSTEM.into()),
+        parts: vec![Part::Text(prompts::clean_fragment(&course.meta.name, &lesson.meta.title, &course.meta.terms, &piece))],
+        max_output_tokens: Some(32_000),
+        thinking: Some("LOW"),
+        retries: Some(3),
+        ..Default::default()
+    };
+    let a = ai.generate(model, &req, cancel).await?;
+    let used = if a.model.is_empty() { model.to_string() } else { a.model.clone() };
+    if a.finish == "MAX_TOKENS" {
+        bail!("la risposta del modello è stata troncata: scegli un pezzo più corto");
+    }
+    let t = fix_headings(a.text.trim());
+    let end = to.unwrap_or_else(|| times(&piece).last().copied().unwrap_or(from) + 60);
+    if !plausible_fragment(&piece, &t, from, end) {
+        bail!("la nuova ripulitura ha perso parte del testo o dei minuti: riprova, o scegli un altro modello");
+    }
+    Ok((t, a.usage, used))
+}
+
 /// Result of the cleanup of one part (its text is Whisper's when it failed).
 struct Cleaned {
     text: String,
@@ -950,6 +1007,8 @@ mod tests {
                     bail!("errore di Gemini (HTTP 503): high demand");
                 }
                 raw.replace("ehm allora ", "")
+            } else if let Some(raw) = prompt.split("Pezzo:\n").nth(1) {
+                raw.replace("ehm allora ", "")
             } else if req.schema.is_some() && self.empty_summaries.load(Ordering::SeqCst) > 0 {
                 self.empty_summaries.fetch_sub(1, Ordering::SeqCst);
                 r#"{"titolo":"","sintesi":"","mappa":{"etichetta":""},"glossario":[],"flashcard":[],"domande_esame":[]}"#.into()
@@ -1100,6 +1159,39 @@ mod tests {
         let prompts = ai.prompts.lock().unwrap();
         assert!(prompts.iter().filter(|p| p.contains("Ripuliscila")).all(|p| p.contains(line)));
         assert!(prompts.last().unwrap().contains(line), "summary");
+    }
+
+    #[tokio::test]
+    async fn a_piece_is_cleaned_again_from_whispers_text() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        let sid = st.lib.lesson(&st.lesson).unwrap().meta.sources[0].id.clone();
+        // No Whisper text yet.
+        assert!(reclean(&ai, "m", &st.lib, &st.lesson, &sid, 0, None, &CancellationToken::new()).await.unwrap_err().to_string().contains("Rielabora anche le fonti"));
+        run_with(&st, &ai, Some(Arc::new(FakeAsr::default())), Options::default()).await.unwrap();
+        let raw = outputs(&st.lib.lesson(&st.lesson).unwrap()).raw[&sid].clone();
+        let ts = super::times(&raw);
+        assert!(ts.len() >= 2, "{raw}");
+        let n = ai.prompts.lock().unwrap().len();
+        let (t, _, model) = reclean(&ai, "altro-modello", &st.lib, &st.lesson, &sid, ts[1], None, &CancellationToken::new()).await.unwrap();
+        assert_eq!(model, "altro-modello");
+        assert!(!t.is_empty());
+        let prompts = ai.prompts.lock().unwrap();
+        assert_eq!(prompts.len(), n + 1);
+        let p = &prompts[n];
+        assert!(p.contains("Pezzo:") && p.contains(&hms(ts[1])) && !p.contains(&format!("[{}]", hms(ts[0]))), "{p}");
+    }
+
+    #[test]
+    fn pieces_and_their_check() {
+        let raw = "[00:00:05] a b\n\n[00:01:00] c d e\n\n[00:02:00] f";
+        assert_eq!(paragraphs_between(raw, 60, Some(120)), "[00:01:00] c d e");
+        assert_eq!(paragraphs_between(raw, 60, None), "[00:01:00] c d e\n\n[00:02:00] f");
+        // Three paragraphs merged into one: fine for a piece.
+        assert!(plausible_fragment(raw, "[00:00:05] a b c d e f", 0, 120));
+        assert!(!plausible_fragment(raw, "a b c d e f", 0, 120), "no time");
+        assert!(!plausible_fragment(raw, "[00:09:00] a b c d e f", 0, 120), "time outside");
+        assert!(!plausible_fragment(raw, "[00:00:05] a", 0, 120), "words lost");
     }
 
     #[tokio::test]

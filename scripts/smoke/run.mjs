@@ -126,6 +126,19 @@ try {
   await shot("correzione");
   await p.getByRole("button", { name: "Aggiungi «TIM» alle parole del corso" }).click();
   await p.getByText(/«TIM» aggiunta alle parole del corso/).waitFor();
+  // A piece cleaned again from Whisper's text: select the second paragraph.
+  await p.getByText("Seleziona un pezzo del testo").waitFor();
+  await p.locator("[data-editor] textarea").evaluate((t) => {
+    t.focus();
+    const i = t.value.indexOf("[00:12:30]");
+    t.setSelectionRange(i + 12, i + 40);
+    t.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await p.getByRole("button", { name: "Ripulisci di nuovo la selezione" }).click();
+  await p.locator("[data-proposal]").getByText(/con i vincoli/).waitFor();
+  await shot("ripulitura-pezzo");
+  await p.getByRole("button", { name: "Sostituisci", exact: true }).click();
+  if (!(await p.locator("[data-editor] textarea").inputValue()).includes("con i vincoli")) throw new Error("pezzo non sostituito");
   await p.getByRole("button", { name: "Salva", exact: true }).click();
   await p.getByText(/libro di TIM/).waitFor();
   await p.getByText(/Corretta a mano il/).waitFor();

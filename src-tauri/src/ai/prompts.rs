@@ -63,6 +63,24 @@ Rispondi solo con la trascrizione ripulita in Markdown, senza introduzioni.\n\nT
     )
 }
 
+/// Cleanup again of a piece of Whisper's text, chosen by the user in the middle of a transcript:
+/// no headings (the piece sits inside a section), same rules on times and terms.
+pub fn clean_fragment(course: &str, title: &str, terms: &str, raw: &str) -> String {
+    let terms = terms_line(terms);
+    format!(
+        "Questo è un pezzo della trascrizione automatica (fatta da un riconoscimento vocale) di una lezione universitaria del corso «{course}», argomento «{title}». \
+Lo studente lo vuole ripulito di nuovo perché la versione precedente aveva errori.\n{terms}\
+Ripuliscilo senza riassumere e senza togliere contenuti:\n\
+- togli intercalari, ripetizioni e false partenze (ehm, cioè, allora…);\n\
+- correggi le parole riconosciute male quando il contesto rende chiaro cosa è stato detto (termini tecnici, nomi, formule); non inventare quello che non si capisce: se un passaggio resta incomprensibile scrivi [incomprensibile];\n\
+- ogni paragrafo inizia con un tempo [hh:mm:ss]: mantienili esattamente come sono. Puoi unire due paragrafi brevi tenendo il tempo del primo, ma non scrivere tempi nuovi;\n\
+- non mettere titoli: il pezzo sta in mezzo a una sezione;\n\
+- se dal contesto è chiaro che interviene uno studente, scrivi **Studente:** all'inizio della sua battuta;\n\
+- formule e simboli dettati a voce scrivili in LaTeX ($...$).\n\
+Rispondi solo con il pezzo ripulito in Markdown, senza introduzioni.\n\nPezzo:\n{raw}"
+    )
+}
+
 pub const IMAGE: &str = "Questa è una foto o una pagina di appunti di una lezione (scritti a mano, dal tablet, o una lavagna). \
 Trascrivi tutto il contenuto in Markdown, nell'ordine di lettura: titoli, elenchi, tabelle, formule in LaTeX. \
 Descrivi grafici, schemi e disegni in corsivo tra parentesi, con assi, etichette e relazioni, così che si capiscano senza vederli. \

@@ -135,9 +135,122 @@ async function addCourseTerm(courseId: string, term: string) {
   toast(`«${term}» aggiunta alle parole del corso: varrà dalle prossime elaborazioni.`);
 }
 
-/** Markdown text editor with find and replace (all occurrences, ignoring case). */
-export function TextEditor({ initial, course, onSave, onCancel }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void }) {
+/** The paragraphs of a timed transcript touched by a selection: where they are in the text and
+ *  their times (`to` = time of the next paragraph, null at the end). Headings just before the
+ *  next paragraph stay out. */
+export function pieceAt(text: string, selStart: number, selEnd: number): { start: number; end: number; from: number; to: number | null } | null {
+  const marks = [...text.matchAll(/^\[(\d{2}):(\d{2}):(\d{2})\]/gm)].map((m) => ({ pos: m.index ?? 0, secs: Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) }));
+  if (!marks.length) return null;
+  let a = 0;
+  marks.forEach((m, i) => m.pos <= selStart && (a = i));
+  let b = a;
+  marks.forEach((m, i) => m.pos < Math.max(selEnd, selStart + 1) && i > b && (b = i));
+  const next = marks[b + 1];
+  let end = next ? next.pos : text.length;
+  const tail = text.slice(marks[b].pos, end).replace(/(\n+#{1,6} [^\n]*)*\s*$/, "");
+  end = marks[b].pos + tail.length;
+  return { start: marks[a].pos, end, from: marks[a].secs, to: next ? next.secs : null };
+}
+
+/** Choice of the model for a cleanup again: the ones of Settings, and OpenRouter's list. */
+function useModelChoices(): string[] {
+  const [models, setModels] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    ai.settings()
+      .then(async (s) => {
+        const set = s.provider === "openrouter" ? s.openrouter : s.models;
+        const own = [set.transcribe, set.generate, set.fallback];
+        const more = s.provider === "openrouter" ? (await ai.openrouterModels().catch(() => [])).filter((m) => m.input > 0).map((m) => m.id) : [];
+        if (live) setModels([...new Set([...own, ...more])]);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return models;
+}
+
+/** Selection in a transcript → "clean this piece again", then replace or keep. */
+function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: string; sourceId: string; text: string; sel: [number, number]; onReplace: (start: number, end: number, piece: string) => void }) {
+  const models = useModelChoices();
+  const [model, setModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [proposal, setProposal] = useState<{ start: number; end: number; text: string; note: string } | null>(null);
+  const piece = sel[1] > sel[0] ? pieceAt(text, sel[0], sel[1]) : null;
+  const go = async () => {
+    if (!piece) return;
+    setBusy(true);
+    try {
+      const r = await ai.reclean(lessonId, sourceId, piece.from, piece.to, model || null);
+      setProposal({ start: piece.start, end: piece.end, text: r.text, note: `${r.model}, ${costLine(r.usage)}` });
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (proposal)
+    return (
+      <div className="space-y-2 rounded-md border border-sky-300 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/40">
+        <p className="text-sm">
+          Nuova ripulitura dal testo di Whisper <span className="text-xs text-zinc-500">({proposal.note})</span>
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs text-zinc-500">Ora</p>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs dark:bg-zinc-900">{text.slice(proposal.start, proposal.end)}</pre>
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-zinc-500">Proposta</p>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs dark:bg-zinc-900" data-proposal>
+              {proposal.text}
+            </pre>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn" onClick={() => setProposal(null)}>
+            Tieni com'era
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              onReplace(proposal.start, proposal.end, proposal.text);
+              setProposal(null);
+            }}
+          >
+            Sostituisci
+          </button>
+        </div>
+      </div>
+    );
+  if (!piece) return <p className="text-xs text-zinc-500">Seleziona un pezzo del testo per farlo ripulire di nuovo dal testo di Whisper, anche con un altro modello.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <button className="btn" disabled={busy} onClick={go}>
+        <Sparkles className="size-4" /> {busy ? "Ripulitura…" : "Ripulisci di nuovo la selezione"}
+      </button>
+      <label className="flex items-center gap-1 text-xs text-zinc-500">
+        con
+        <select className="field max-w-72 py-0.5 text-sm" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Modello">
+          <option value="">il modello della ripulitura</option>
+          {models.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** Markdown text editor with find and replace (all occurrences, ignoring case). With `reclean`,
+ *  a selected piece of a transcript can be cleaned again from Whisper's text. */
+export function TextEditor({ initial, course, onSave, onCancel, reclean }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string } }) {
   const [text, setText] = useState(initial);
+  const [sel, setSel] = useState<[number, number]>([0, 0]);
   const [find, setFind] = useState("");
   const [repl, setRepl] = useState("");
   const [replaced, setReplaced] = useState<string | null>(null);
@@ -182,7 +295,15 @@ export function TextEditor({ initial, course, onSave, onCancel }: { initial: str
           </button>
         )}
       </div>
-      <textarea className="field min-h-[60vh] font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} />
+      {reclean && <Reclean lessonId={reclean.lessonId} sourceId={reclean.sourceId} text={text} sel={sel} onReplace={(a, b, piece) => setText(text.slice(0, a) + piece + text.slice(b))} />}
+      <textarea
+        className="field min-h-[60vh] font-mono text-sm"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onSelect={(e) => setSel([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])}
+        onMouseUp={(e) => setSel([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])}
+        onKeyUp={(e) => setSel([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])}
+      />
       <div className="flex justify-end gap-2">
         <button className="btn" onClick={onCancel}>
           Annulla
@@ -417,6 +538,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
               <TextEditor
                 initial={outputs.extracts[s.id]}
                 course={editing.course}
+                reclean={raw ? { lessonId: lesson.id, sourceId: s.id } : undefined}
                 onCancel={() => setEditingId(null)}
                 onSave={async (text) => {
                   const l = await ai.saveExtract(lesson.id, s.id, text);

@@ -228,6 +228,9 @@ export const ai = {
   saveExtract: (lessonId: string, sourceId: string, text: string) => invoke<Lesson>("extract_save", { lessonId, sourceId, text }),
   saveSummary: (lessonId: string, text: string) => invoke<void>("summary_save", { lessonId, text }),
   saveStudy: (lessonId: string, study: Study) => invoke<void>("study_save", { lessonId, study }),
+  /** Cleans again the piece from `from` to `to` (seconds; null = the end) with `model` (null = the cleanup model). */
+  reclean: (lessonId: string, sourceId: string, from: number, to: number | null, model: string | null) =>
+    invoke<{ text: string; usage: Usage; model: string }>("extract_reclean", { lessonId, sourceId, from, to, model }),
   addBookmark: (lessonId: string, sourceId: string, at: number, kind: BookmarkKind, note = "") => invoke<Bookmark[]>("bookmark_add", { lessonId, sourceId, at, kind, note }),
   updateBookmark: (lessonId: string, id: string, kind: BookmarkKind, note: string) => invoke<Bookmark[]>("bookmark_update", { lessonId, id, kind, note }),
   removeBookmark: (lessonId: string, id: string) => invoke<Bookmark[]>("bookmark_remove", { lessonId, id }),

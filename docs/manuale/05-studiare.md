@@ -37,6 +37,10 @@ Per le registrazioni trascritte sul computer, l'interruttore **Ripulita | Whispe
 - Dopo una sostituzione puoi **aggiungere la parola alle parole del corso** (vedi [Corsi](02-archivio.md#corsi)): così le prossime lezioni la riconoscono già giusta.
 - **Salva** conserva la correzione; la fonte mostra «Corretta a mano». La correzione vale per la ricerca, le domande, le esportazioni e i pacchetti.
 - Sintesi, mappa e studio non cambiano da soli: premi **Rigenera** per rifarli con il testo corretto (l'app lo ricorda con un avviso).
+- **Ripulisci di nuovo un pezzo**: se un passaggio è venuto male, selezionalo nel testo (bastano poche parole: vale il paragrafo intero) e premi **Ripulisci di nuovo la selezione**. Il modello rifà la ripulitura di quei paragrafi partendo dal testo di Whisper; puoi scegliere un altro modello dalla tendina. Vedi il testo attuale e la proposta affiancati e scegli **Sostituisci** o **Tieni com'era**; poi **Salva** come per ogni correzione. Costa una frazione di centesimo e serve il testo di Whisper (le lezioni elaborate prima di questa versione ce l'hanno solo dopo *Rielabora anche le fonti*).
+
+![La proposta accanto al testo attuale](img/ripulitura-pezzo.png)
+
 - **Rielabora anche le fonti** rifà la trascrizione da capo: l'app chiede conferma e conserva la versione corretta in `estratti/versioni` nella cartella della lezione.
 
 ## Sintesi

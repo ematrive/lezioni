@@ -106,3 +106,35 @@ async fn compare_models() {
     }
     eprintln!("\n{}", table.join("\n"));
 }
+
+/// Cleanup again of a piece (the "Ripulisci di nuovo la selezione" of the editor), for each
+/// model: LEZIONI_IT_RECLEAN=from-to in seconds (to may be empty: up to the end).
+///   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_TEXT=whisper.md LEZIONI_IT_RECLEAN=0-100 \
+///   cargo test --test openrouter_it reclean_piece -- --nocapture
+#[tokio::test]
+async fn reclean_piece() {
+    let (Ok(_), Ok(range)) = (std::env::var("LEZIONI_IT_OPENROUTER"), std::env::var("LEZIONI_IT_RECLEAN")) else {
+        eprintln!("LEZIONI_IT_OPENROUTER o LEZIONI_IT_RECLEAN non impostate: test saltato");
+        return;
+    };
+    let (from, to) = range.split_once('-').expect("LEZIONI_IT_RECLEAN=da-a");
+    let (from, to): (u64, Option<u64>) = (from.parse().unwrap(), if to.is_empty() { None } else { Some(to.parse().unwrap()) });
+    let o = lezioni_lib::ai::Provider::OpenRouter(OpenRouter::new(std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY")));
+    let raw = std::env::var("LEZIONI_IT_TEXT").map(|p| std::fs::read_to_string(p).unwrap()).unwrap_or_else(|_| RAW.into());
+    let tmp = tempfile::tempdir().unwrap();
+    let lib = lezioni_lib::library::Library::open(tmp.path()).unwrap();
+    let c = lib.create_course(&std::env::var("LEZIONI_IT_COURSE").unwrap_or_else(|_| "Ricerca operativa".into()), "", &std::env::var("LEZIONI_IT_TERMS").unwrap_or_default()).unwrap();
+    let l = lib.create_lesson(&c.meta.id, &std::env::var("LEZIONI_IT_TITLE").unwrap_or_else(|_| "Metodo del simplesso".into()), chrono::NaiveDate::from_ymd_opt(2026, 11, 10).unwrap()).unwrap();
+    let l = lib.add_bytes(&l.meta.id, "lezione.m4a", b"x").unwrap();
+    let s = &l.meta.sources[0];
+    std::fs::create_dir_all(l.path.join("estratti")).unwrap();
+    std::fs::write(l.path.join("estratti").join(format!("{}.whisper.md", s.file)), &raw).unwrap();
+    let models = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite,anthropic/claude-haiku-5.5".into());
+    for m in models.split(',') {
+        let t = Instant::now();
+        match lezioni_lib::pipeline::reclean(&o, m, &lib, &l.meta.id, &s.id, from, to, &CancellationToken::new()).await {
+            Ok((text, u, used)) => println!("\n=== {used}: {:.1} s, {} in / {} out, {:.4} $\n{text}", t.elapsed().as_secs_f64(), u.prompt_token_count, u.candidates_token_count, cost(&u)),
+            Err(e) => println!("\n=== {m}: ERRORE {e:#}"),
+        }
+    }
+}

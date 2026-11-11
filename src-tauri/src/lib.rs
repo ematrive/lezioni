@@ -125,6 +125,7 @@ pub fn run() {
             bookmark_add,
             bookmark_update,
             bookmark_remove,
+            extract_reclean,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

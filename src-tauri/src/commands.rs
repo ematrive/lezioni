@@ -542,3 +542,30 @@ pub fn bookmark_remove(state: State<'_, AppState>, lesson_id: String, id: String
     let _w = state.writing();
     Ok(crate::bookmarks::remove(&state.library()?, &lesson_id, &id)?)
 }
+
+// ---------- cleanup of a piece ----------
+
+#[derive(Serialize)]
+pub struct Recleaned {
+    text: String,
+    usage: crate::ai::Usage,
+    model: String,
+}
+
+/// Cleans again a piece of a transcript from Whisper's text; the UI shows it before replacing.
+#[tauri::command]
+pub async fn extract_reclean(state: State<'_, AppState>, lesson_id: String, source_id: String, from: u64, to: Option<u64>, model: Option<String>) -> CmdResult<Recleaned> {
+    not_busy(&state, &lesson_id)?;
+    let settings = state.settings.lock().unwrap().clone();
+    let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| settings.effective_models().transcribe);
+    let ai = provider(&settings)?;
+    let lib = state.library()?;
+    let (text, usage, model) = pipeline::reclean(&ai, &model, &lib, &lesson_id, &source_id, from, to, &tokio_util::sync::CancellationToken::new()).await?;
+    {
+        let _w = state.writing();
+        if let Err(e) = crate::costs::record_lesson(&lib, &lesson_id, "ripulitura", [(model.clone(), usage.clone())].into()) {
+            log::warn!("costi: {e:#}");
+        }
+    }
+    Ok(Recleaned { text, usage, model })
+}
