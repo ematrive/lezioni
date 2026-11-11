@@ -38,12 +38,14 @@ systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0 -p CPUQuota=150% -
 |---|---|
 | `cd src-tauri && cargo test` | Archivio, divisione dell'audio, pipeline con un modello finto (parti, ripresa dopo errori, testi troncati, fonti escluse), ricerca, pacchetti (andata e ritorno, duplicati, percorsi malevoli, sostituzione fallita), Markdown, Anki, chat |
 | `cargo test --test decode` | Divisione di m4a/AAC, mp3, ogg e dell'audio di mp4 creati con ffmpeg (saltato se ffmpeg manca); opus deve fallire |
-| `LEZIONI_IT_WHISPER=/percorso/ggml-tiny-q5_1.bin cargo test --test whisper_it -- --nocapture` | Whisper vero su un tono o su `LEZIONI_IT_AUDIO`: stampa i paragrafi e il tempo impiegato. Il modello `tiny` (32 MB) basta per provare il codice; la qualità vera è quella di large-v3-turbo |
-| `LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_PDF=slide.pdf cargo test --test openrouter_it -- --nocapture` | OpenRouter vero: ripulitura, lettura di un PDF e sintesi con prompt e schema veri per ogni modello di `LEZIONI_IT_MODELS` (separati da virgola), con tempi e costi. Spende qualche centesimo |
+| `LEZIONI_IT_WHISPER=/percorso/ggml-tiny-q5_1.bin cargo test --test whisper_it -- --nocapture` | Whisper vero su un tono o su `LEZIONI_IT_AUDIO`: stampa i paragrafi e il tempo impiegato. `LEZIONI_IT_PROMPT` è il prompt iniziale (come lo costruisce l'app da corso e titolo), `LEZIONI_IT_RAW=1` stampa anche i segmenti grezzi. Il modello `tiny` (32 MB) basta per provare il codice; la qualità vera è quella di large-v3-turbo |
+| `LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_PDF=slide.pdf cargo test --test openrouter_it -- --nocapture` | OpenRouter vero: ripulitura, lettura di un PDF e sintesi con prompt e schema veri per ogni modello di `LEZIONI_IT_MODELS` (separati da virgola), con tempi e costi. `LEZIONI_IT_TEXT` (un testo di Whisper), `LEZIONI_IT_COURSE` e `LEZIONI_IT_TITLE` per una lezione vera; `LEZIONI_IT_OUT=cartella` salva ripulitura, PDF, sintesi e richiesta. Spende qualche centesimo |
 | `LEZIONI_IT=1 GEMINI_API_KEY=… cargo test --test gemini_it -- --nocapture` | L'API vera di Gemini: upload, countTokens, trascrizione di una parte, output JSON con lo schema vero. `LEZIONI_IT_AUDIO=/percorso/reg.m4a` per una registrazione vera, `LEZIONI_IT_MODEL` per un altro modello. Consuma un po' di quota |
 | `pnpm build` | TypeScript e build dell'interfaccia |
 | `pnpm test:ui` | Tutta l'interfaccia nel browser (Playwright) con il backend finto `scripts/smoke/mock.js`: prima apertura, corsi e lezioni, trascina e incolla, elaborazione, schede, domande, esportazione HTML e PDF, ricerca, importazione. Screenshot in `scripts/smoke/out` |
 | `pnpm docs:check` | Ogni immagine citata dal manuale esiste e ogni immagine è usata |
+
+Per le prove con una lezione vera, audio e PDF vanno in `training/`, esclusa da git: sono registrazioni del docente e non si versionano.
 
 GitHub Actions (`.github/workflows/ci.yml`) esegue build, `cargo test` e `pnpm test:ui` a ogni push su `main`.
 

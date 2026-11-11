@@ -1,5 +1,10 @@
 # Novità
 
+## Prossima versione
+
+- Se il modello risponde con una sintesi vuota (succede ogni tanto con Claude Haiku), l'app la richiede fino a tre volte e non sostituisce mai la sintesi salvata con una vuota.
+- I messaggi durante l'elaborazione non nominano più Gemini quando si usa OpenRouter.
+
 ## 0.7.0
 
 - **OpenRouter** come alternativa a Gemini (Impostazioni → Servizio AI): una chiave per centinaia di modelli, pagati a consumo. Accanto a ogni modello l'app mostra il prezzo, se legge immagini e PDF e quanto costerebbe una lezione; a fine elaborazione dice il **costo reale**. Predefiniti: Gemini 3.5 Flash-Lite per ripulire e leggere, Claude Haiku 5.5 per la sintesi. Solo fornitori che non usano i dati per addestrare i modelli.

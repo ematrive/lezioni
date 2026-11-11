@@ -1,6 +1,7 @@
 //! Whisper on the computer, with a real model. Skipped unless LEZIONI_IT_WHISPER points to a
 //! ggml model file (e.g. ggml-tiny-q5_1.bin for a quick run). LEZIONI_IT_AUDIO: a recording
 //! (default: a generated tone, which must give no text).
+//! (LEZIONI_IT_PROMPT: the initial prompt, as the app builds it from course and title.)
 //!   LEZIONI_IT_WHISPER=/path/ggml-tiny-q5_1.bin LEZIONI_IT_AUDIO=lezione.m4a cargo test --test whisper_it -- --nocapture
 use lezioni_lib::asr::{self, Asr, Whisper};
 use lezioni_lib::audio;
@@ -29,9 +30,15 @@ fn whisper_transcribes() {
     let cancel = CancellationToken::new();
     let parts = audio::split(&input, &dir.path().join("parti"), 20 * 60, &cancel).unwrap();
     let w = Whisper::load(std::path::Path::new(&model)).unwrap();
+    let prompt = std::env::var("LEZIONI_IT_PROMPT").unwrap_or_else(|_| "Lezione universitaria di Ricerca operativa.".into());
     for c in &parts {
         let t = std::time::Instant::now();
-        let segs = w.transcribe(&c.path, "Lezione universitaria di Ricerca operativa.", &cancel, &|p| eprint!("{p}% ")).unwrap();
+        let segs = w.transcribe(&c.path, &prompt, &cancel, &|p| eprint!("{p}% ")).unwrap();
+        if std::env::var("LEZIONI_IT_RAW").is_ok() {
+            for s in &segs {
+                eprintln!("{:7.1}-{:7.1} {}", s.start, s.end, s.text);
+            }
+        }
         eprintln!("\nparte da {} s: {:.1} s di audio in {:.1} s", c.start, c.secs, t.elapsed().as_secs_f64());
         println!("{}", asr::paragraphs(&segs, c.start));
     }

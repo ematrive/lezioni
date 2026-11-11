@@ -22,7 +22,7 @@
 
 **La registrazione viene inviata intera e costa di più.** Succede con i formati che l'app non sa dividere (per esempio opus). Converti la registrazione in m4a o mp3 e aggiungila di nuovo.
 
-**Un file Word o PowerPoint viene saltato.** Gemini non legge i file di Office: esportalo in PDF e aggiungi il PDF.
+**Un file Word o PowerPoint viene saltato.** Gemini e OpenRouter non leggono i file di Office: esportalo in PDF e aggiungi il PDF.
 
 **La trascrizione ha un pezzo incompleto.** L'app lo segnala e non salva il testo incompleto: rielabora la lezione con **Rielabora anche le fonti**.
 

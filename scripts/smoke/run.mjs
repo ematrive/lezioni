@@ -87,7 +87,7 @@ try {
   // Processing with Gemini (fake): progress bar, then the four tabs.
   await p.getByRole("button", { name: "Elabora", exact: true }).first().click();
   await p.getByText(/Trascrizione sul computer di registrazione/).waitFor();
-  await p.getByText(/Whisper: 43% · Gemini ripulisce la parte 1 · 0:0/).waitFor();
+  await p.getByText(/Whisper: 43% · ripulitura della parte 1 · 0:0/).waitFor();
   await shot("elaborazione");
   await p.evaluate(() => window.__finishJob());
   await p.getByText(/elaborata: .*costo: 0,03 \$/).waitFor();

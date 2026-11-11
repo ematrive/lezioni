@@ -352,7 +352,7 @@ impl<A: Ai> Ctx<'_, A> {
     /// One request on a media part: (text, complete). `[SILENZIO]` becomes empty.
     async fn ask_media(&self, part: Part, prompt: String, usage: &mut Usage) -> Result<(String, bool)> {
         let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![part, Part::Text(prompt)], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
-        (self.detail)("In attesa della risposta di Gemini…".into());
+        (self.detail)("In attesa della risposta del modello…".into());
         let a = self.ai.generate(&self.models.transcribe, &req, self.cancel).await?;
         self.note_fallback(&a);
         usage.add(&a.usage);
@@ -399,7 +399,7 @@ impl<A: Ai> Ctx<'_, A> {
             tokio::select! {
                 r = &mut job => return r?,
                 Some(v) = rx.recv() => {
-                    let other = cleaning.lock().unwrap().map(|j| format!(" · Gemini ripulisce la parte {}", j + 1)).unwrap_or_default();
+                    let other = cleaning.lock().unwrap().map(|j| format!(" · ripulitura della parte {}", j + 1)).unwrap_or_default();
                     (self.detail)(format!("Whisper: {v}%{other}"));
                 }
             }
@@ -459,7 +459,7 @@ impl<A: Ai> Ctx<'_, A> {
                     Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("risposta troncata".into())), unreachable: false })
                 } else if !plausible_cleanup(&raw, &t, start, end) {
                     log::warn!("ripulitura scartata per {} parte {}: {} parole e {} tempi contro {} e {}", s.original_name, i + 1, t.split_whitespace().count(), times(&t).len(), raw.split_whitespace().count(), times(&raw).len());
-                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("la risposta di Gemini aveva perso parti del testo o dei minuti".into())), unreachable: false })
+                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("la ripulitura aveva perso parti del testo o dei minuti".into())), unreachable: false })
                 } else {
                     self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), t.as_bytes())?;
                     Ok(Cleaned { text: t, usage: a.usage, warning: None, unreachable: false })
@@ -497,7 +497,7 @@ impl<A: Ai> Ctx<'_, A> {
                 }
                 *cleaning.lock().unwrap() = Some(j);
                 if i == n {
-                    (self.detail)(format!("Gemini ripulisce la parte {} di {n}…", j + 1));
+                    (self.detail)(format!("Ripulitura della parte {} di {n}…", j + 1));
                 }
                 let r = self.clean_part(lesson_id, s, chunks, j, raw, &context).await;
                 *cleaning.lock().unwrap() = None;
@@ -521,7 +521,7 @@ impl<A: Ai> Ctx<'_, A> {
             }
         }
         if skipped > 0 {
-            warnings.push(format!("{}: Gemini non risponde, {skipped} parti restano con il testo di Whisper; verranno ripulite alla prossima elaborazione", s.original_name));
+            warnings.push(format!("{}: il servizio AI non risponde, {skipped} parti restano con il testo di Whisper; verranno ripulite alla prossima elaborazione", s.original_name));
         }
         // Complete even with parts not cleaned: the text is saved and shown, and the parts left
         // in Whisper's text are found again by `cleanup_pending`.
@@ -616,7 +616,7 @@ impl<A: Ai> Ctx<'_, A> {
                 self.read_with_model(&path, m, prompts::PDF, usage).await?
             }
             (SourceKind::Document, _) => {
-                warnings.push(format!("{label}: Gemini non legge i file di Office, esportalo in PDF e aggiungi il PDF"));
+                warnings.push(format!("{label}: i file di Office non si possono leggere, esportalo in PDF e aggiungi il PDF"));
                 return Ok(None);
             }
             _ => {
@@ -629,7 +629,7 @@ impl<A: Ai> Ctx<'_, A> {
     fn fallback_warning(&self, report: &mut Report) {
         let f = self.fallbacks.lock().unwrap();
         if f.0 > 0 {
-            report.warnings.push(format!("Gemini era sovraccarico: {} richieste fatte con il modello di riserva {}", f.0, f.1));
+            report.warnings.push(format!("Il modello era sovraccarico: {} richieste fatte con il modello di riserva {}", f.0, f.1));
         }
     }
 
@@ -723,14 +723,29 @@ impl<A: Ai> Ctx<'_, A> {
             max_output_tokens: Some(48_000),
             ..Default::default()
         };
-        (self.detail)("In attesa della risposta di Gemini…".into());
-        let a = self.ai.generate(&self.models.generate, &req, self.cancel).await?;
-        self.note_fallback(&a);
-        report.usage.add(&a.usage);
-        if a.finish == "MAX_TOKENS" {
-            bail!("la risposta di Gemini è stata troncata: prova con meno fonti o con un modello con più spazio di risposta");
-        }
-        let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!("risposta di Gemini non valida: {e}"))?;
+        (self.detail)("In attesa della risposta del modello…".into());
+        // Some models now and then answer with the schema's skeleton (every field empty): Haiku 5.5
+        // about once in 7 with reasoning on (measured on OpenRouter, Nov 2026). Ask again, at most 3
+        // times in all, and never replace the saved outputs with an empty summary.
+        let mut attempt = 0;
+        let (a, g) = loop {
+            attempt += 1;
+            let a = self.ai.generate(&self.models.generate, &req, self.cancel).await?;
+            self.note_fallback(&a);
+            report.usage.add(&a.usage);
+            if a.finish == "MAX_TOKENS" {
+                bail!("la risposta del modello è stata troncata: prova con meno fonti o con un modello con più spazio di risposta");
+            }
+            let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
+            if !g.sintesi.trim().is_empty() {
+                break (a, g);
+            }
+            log::warn!("sintesi vuota (tentativo {attempt})");
+            if attempt == 3 {
+                bail!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni");
+            }
+            (self.detail)("Sintesi vuota, nuovo tentativo…".into());
+        };
 
         self.archive.archive_outputs(lesson_id)?;
         let gdir = Path::new(GENERATED_DIR);
@@ -797,6 +812,8 @@ mod tests {
         whole_secs: u64,
         /// The cleanup of Whisper's text fails (Gemini overloaded).
         fail_cleanup: std::sync::atomic::AtomicBool,
+        /// How many summary answers come back as the empty skeleton (seen with Haiku).
+        empty_summaries: AtomicUsize,
     }
 
     /// Fake Whisper: one sentence per part, 1 s after its start.
@@ -829,6 +846,9 @@ mod tests {
                     bail!("errore di Gemini (HTTP 503): high demand");
                 }
                 raw.replace("ehm allora ", "")
+            } else if req.schema.is_some() && self.empty_summaries.load(Ordering::SeqCst) > 0 {
+                self.empty_summaries.fetch_sub(1, Ordering::SeqCst);
+                r#"{"titolo":"","sintesi":"","mappa":{"etichetta":""},"glossario":[],"flashcard":[],"domande_esame":[]}"#.into()
             } else if req.schema.is_some() {
                 serde_json::json!({
                     "titolo": "Il simplesso",
@@ -1052,6 +1072,20 @@ mod tests {
         let l = st.lib.lesson(&st.lesson).unwrap();
         assert!(outputs(&l).extracts.is_empty(), "not saved");
         assert!(outputs(&l).summary.is_some(), "but used for this summary");
+    }
+
+    #[tokio::test]
+    async fn empty_summary_is_asked_again_and_never_saved() {
+        let st = setup(&[("lavagna.jpg", Some(b"img"))]);
+        let ai = Fake { empty_summaries: AtomicUsize::new(2), ..Default::default() };
+        run(&st, &ai, Options::default()).await.unwrap();
+        let first = outputs(&st.lib.lesson(&st.lesson).unwrap()).summary.unwrap();
+        assert!(first.contains("Simplesso"), "third answer used: {first}");
+
+        ai.empty_summaries.store(3, Ordering::SeqCst);
+        let e = run(&st, &ai, Options::default()).await.unwrap_err();
+        assert!(e.to_string().contains("sintesi vuota"), "{e}");
+        assert_eq!(outputs(&st.lib.lesson(&st.lesson).unwrap()).summary.unwrap(), first, "saved summary kept");
     }
 
     #[tokio::test]

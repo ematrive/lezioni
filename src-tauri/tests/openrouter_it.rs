@@ -2,6 +2,7 @@
 //! prompts and schema, for each model. Prints time and cost. Spends a few cents.
 //!   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_PDF=slide.pdf \
 //!   [LEZIONI_IT_MODELS=google/gemini-3.5-flash-lite,anthropic/claude-haiku-5.5] \
+//!   [LEZIONI_IT_TEXT=whisper.md LEZIONI_IT_COURSE=Fisica LEZIONI_IT_TITLE="Moto vario"] \
 //!   cargo test --test openrouter_it -- --nocapture
 use std::time::Instant;
 
@@ -30,6 +31,9 @@ async fn compare_models() {
     let key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY");
     let pdf = std::env::var("LEZIONI_IT_PDF").ok().map(|p| std::fs::read(p).unwrap());
     let models = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite,anthropic/claude-haiku-5.5,openai/gpt-5-nano,deepseek/deepseek-v4-flash".into());
+    let raw = std::env::var("LEZIONI_IT_TEXT").map(|p| std::fs::read_to_string(p).unwrap()).unwrap_or_else(|_| RAW.into());
+    let course = std::env::var("LEZIONI_IT_COURSE").unwrap_or_else(|_| "Ricerca operativa".into());
+    let title = std::env::var("LEZIONI_IT_TITLE").unwrap_or_else(|_| "Metodo del simplesso".into());
     let o = OpenRouter::new(key);
     let cancel = CancellationToken::new();
     let mut table = Vec::new();
@@ -37,7 +41,7 @@ async fn compare_models() {
         eprintln!("\n===== {model}");
         // 1. Cleanup of Whisper's text.
         let t = Instant::now();
-        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompts::clean_transcript(1, 1, "Ricerca operativa", "Metodo del simplesso", RAW))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompts::clean_transcript(1, 1, &course, &title, &raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
         let clean = match o.generate(model, &req, &cancel).await {
             Ok(a) => a,
             Err(e) => {
@@ -67,17 +71,29 @@ async fn compare_models() {
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Metodo del simplesso", "2026-11-10", "", &sources))],
+            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()
         };
+        if let Ok(dir) = std::env::var("LEZIONI_IT_OUT") {
+            let Part::Text(prompt) = &req.parts[0] else { unreachable!() };
+            let dump = serde_json::json!({ "system": prompts::SYSTEM, "prompt": prompt, "schema": prompts::generate_schema() });
+            std::fs::write(format!("{dir}/{}.richiesta.json", model.replace('/', "_")), dump.to_string()).unwrap();
+        }
         let t = Instant::now();
         let (ts, cs, ok) = match o.generate(model, &req, &cancel).await {
             Ok(a) => {
                 let v: Result<serde_json::Value, _> = serde_json::from_str(&a.text);
                 let ok = v.as_ref().map(|v| ["titolo", "sintesi", "mappa", "glossario", "flashcard", "domande_esame"].iter().all(|k| v.get(k).is_some())).unwrap_or(false);
+                eprintln!("uso: {:?}, fine: {}, modello: {}", a.usage, a.finish, a.model);
                 eprintln!("--- sintesi ({:.0} s, {:.5} $, JSON valido: {ok}):\n{}", t.elapsed().as_secs_f64(), cost(&a.usage), v.as_ref().ok().and_then(|v| v["sintesi"].as_str()).unwrap_or(&a.text));
+                if let Ok(dir) = std::env::var("LEZIONI_IT_OUT") {
+                    let name = model.replace('/', "_");
+                    std::fs::write(format!("{dir}/{name}.ripulitura.md"), &clean.text).unwrap();
+                    std::fs::write(format!("{dir}/{name}.pdf.md"), &pdf_text).unwrap();
+                    std::fs::write(format!("{dir}/{name}.generato.json"), &a.text).unwrap();
+                }
                 (t.elapsed().as_secs_f64(), cost(&a.usage), ok)
             }
             Err(e) => {
