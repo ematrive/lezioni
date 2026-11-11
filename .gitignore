@@ -32,3 +32,6 @@ scripts/smoke/out/
 *.key
 .env
 .env.*
+
+# Local test material (audio, PDF), never committed
+training/
