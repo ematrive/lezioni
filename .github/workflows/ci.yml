@@ -87,4 +87,8 @@ jobs:
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Backend (Rust, Windows)
         working-directory: src-tauri
-        run: cargo test --lib
+        shell: pwsh
+        run: |
+          # whisper-rs-sys says why bindgen failed only with -vv (warnings of dependencies are hidden).
+          cargo build --lib -vv 2>&1 | Select-String -Pattern "Unable to generate|bundled bindings|libclang|whisper-rs-sys.*warning" | Select-Object -First 20
+          cargo test --lib
