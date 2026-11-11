@@ -1,5 +1,5 @@
 import "katex/dist/katex.min.css";
-import { Pause } from "lucide-react";
+import { Pause, PenLine } from "lucide-react";
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -130,6 +130,16 @@ export function Markdown({
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
+          // Notes written by hand on a slide or a photo: in pen blue, with a pen.
+          em: ({ node, children }) =>
+            /^\(?\s*nota a mano\b/i.test(textOf(node).trim()) ? (
+              <em className="handwritten" title="Scritto a mano sulla pagina">
+                <PenLine className="handwritten-pen" aria-hidden />
+                {children}
+              </em>
+            ) : (
+              <em>{children}</em>
+            ),
           p: ({ node, children }) => {
             if (inline) return <>{children}</>;
             const pause = source ? pauseOf(node) : null;

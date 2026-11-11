@@ -18,3 +18,6 @@
 .dark .prose-lezioni em, .dark .prose-lezioni blockquote { color: rgb(161 161 170); }
 .prose-lezioni .katex-display { overflow-x: auto; overflow-y: hidden; }
 [data-card] .prose-lezioni { font-size: inherit; }
+.handwritten, .prose-lezioni em.handwritten { color: rgb(29 78 216); }
+.dark .handwritten, .dark .prose-lezioni em.handwritten { color: rgb(147 197 253); }
+.handwritten-pen { display: inline; width: 0.95em; height: 0.95em; margin-right: 0.2em; vertical-align: -0.1em; }

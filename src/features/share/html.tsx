@@ -43,7 +43,39 @@ function Outline({ node }: { node: MapNode }) {
   );
 }
 
-function LessonDoc({ lesson, outputs, parts, course }: ExportLesson & { parts: ExportParts; course: Course }) {
+/** The concept map drawn as in the app: boxes joined by lines, colours by level (static CSS). */
+export function MapTree({ node, depth = 0 }: { node: MapNode; depth?: number }) {
+  const kids = node.figli ?? [];
+  return (
+    <div className="mt-node">
+      <span className={`mt-box mt-d${Math.min(depth, 3)}`}>{node.etichetta}</span>
+      {kids.length > 0 && (
+        <div className="mt-kids">
+          {kids.map((k, i) => (
+            <div key={i} className="mt-kid">
+              <MapTree node={k} depth={depth + 1} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MAP_CSS = `
+.mt-node { display: flex; align-items: center; }
+.mt-box { flex-shrink: 0; max-width: 220px; padding: 5px 11px; border-radius: 8px; font-size: 13px; line-height: 1.3; break-inside: avoid; }
+.mt-d0 { background: #0284c7; color: #fff; font-weight: 700; font-size: 15px; }
+.mt-d1 { background: #e0f2fe; color: #0c4a6e; font-weight: 600; }
+.mt-d2 { background: #fff; border: 1px solid #d4d4d8; }
+.mt-d3 { color: #52525b; }
+.mt-kids { display: flex; flex-direction: column; gap: 6px; margin-left: 22px; padding: 3px 0 3px 14px; border-left: 2px solid #7dd3fc; }
+.mt-kid { position: relative; break-inside: avoid; }
+.mt-kid::before { content: ""; position: absolute; top: 50%; left: -14px; width: 14px; border-top: 2px solid #7dd3fc; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+`;
+
+function LessonDoc({ lesson, outputs, parts, course, drawMap }: ExportLesson & { parts: ExportParts; course: Course; drawMap?: boolean }) {
   const codes = Object.entries(outputs.info?.sources ?? {});
   const name = (id: string) => lesson.sources.find((s) => s.id === id)?.originalName ?? "";
   const transcripts = lesson.sources.filter((s) => outputs.extracts[s.id] !== undefined);
@@ -77,9 +109,15 @@ function LessonDoc({ lesson, outputs, parts, course }: ExportLesson & { parts: E
       {parts.map && outputs.map && (
         <section>
           <h2 className="part">Mappa concettuale</h2>
-          <ul className="outline">
-            <Outline node={outputs.map} />
-          </ul>
+          {drawMap ? (
+            <div className="map-drawn">
+              <MapTree node={outputs.map} />
+            </div>
+          ) : (
+            <ul className="outline">
+              <Outline node={outputs.map} />
+            </ul>
+          )}
         </section>
       )}
       {parts.study && outputs.study && (
@@ -170,7 +208,7 @@ export function buildHtml(course: Course, lessons: ExportLesson[], parts: Export
   const body = renderToStaticMarkup(
     <main>
       {lessons.map((l) => (
-        <LessonDoc key={l.lesson.id} {...l} parts={parts} course={course} />
+        <LessonDoc key={l.lesson.id} {...l} parts={parts} course={course} drawMap={forPrint} />
       ))}
       <footer>Creato con Lezioni · {new Date().toLocaleDateString("it-IT")}</footer>
     </main>,
@@ -181,6 +219,34 @@ export function buildHtml(course: Course, lessons: ExportLesson[], parts: Export
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <style>${inlineKatexFonts(katexCss)}</style>
-<style>${proseCss}${PAGE_CSS}</style>
+<style>${proseCss}${PAGE_CSS}${MAP_CSS}</style>
 </head><body>${html}</body></html>`;
+}
+
+/** Just the concept map of a lesson, on a landscape page, for printing to PDF. */
+export function buildMapHtml(course: Course, lesson: Lesson, map: MapNode): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const body = renderToStaticMarkup(
+    <main className="map-page">
+      <header>
+        <p className="course">
+          {course.name}
+          {course.teacher ? ` · ${course.teacher}` : ""}
+        </p>
+        <h1>{lesson.title}</h1>
+        <p className="date">Mappa concettuale · {fmtDate(lesson.date)}</p>
+      </header>
+      <MapTree node={map} />
+      <footer>Creato con Lezioni · {new Date().toLocaleDateString("it-IT")}</footer>
+    </main>,
+  );
+  return `<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(`Mappa · ${lesson.title}`)}</title>
+<style>${PAGE_CSS}${MAP_CSS}
+main.map-page { max-width: none; padding: 24px 32px; }
+main.map-page header h1 { font-size: 22px; }
+@media print { @page { size: A4 landscape; margin: 12mm; } main.map-page { padding: 0; } }
+</style>
+</head><body>${body}</body></html>`;
 }

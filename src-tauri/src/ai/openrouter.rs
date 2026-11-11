@@ -20,7 +20,8 @@ const BASE: &str = "https://openrouter.ai";
 const RETRIES: u32 = 6;
 const CALL_TIMEOUT: Duration = Duration::from_secs(600);
 /// Images and PDFs travel inside the request: keep it reasonable.
-pub const INLINE_MAX: u64 = 30 * 1024 * 1024;
+/// Checked with a 33 MB PDF (44 MB in base64) of 59 pages, Nov 2026.
+pub const INLINE_MAX: u64 = 50 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct OpenRouter {

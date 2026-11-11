@@ -77,6 +77,9 @@ Ogni volta che premi **Rigenera**, sintesi, mappa e materiale di studio di prima
 
 La **Mappa** mostra gli argomenti della lezione ad albero: al centro l'argomento principale, poi i concetti e i sotto-concetti. Clicca un concetto per chiuderne o aprirne i rami.
 
+- La **freccia** accanto a un concetto porta al punto della trascrizione in cui se ne parla, con la registrazione già lì (o alla fonte, per slide e appunti). Le mappe fatte da questa versione hanno il riferimento per ogni concetto; per quelle di prima l'app lo cerca nella sintesi, quindi la freccia può mancare su qualche concetto: con **Rigenera** compare dappertutto.
+- **Esporta in PDF** apre la mappa da sola, disegnata come nell'app su una pagina orizzontale: nella finestra di stampa scegli «Salva come PDF».
+
 ![La mappa concettuale](img/mappa.png)
 
 ## Studio

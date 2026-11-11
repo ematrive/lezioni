@@ -1,8 +1,9 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import { ChevronDown, ChevronRight, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronRight, FileDown, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, api, courseAi, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
-import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
+import { ai, api, courseAi, costLine, share, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { Markdown, MARK_ICON, MARK_LABEL, toSecs } from "../../lib/Markdown";
+import { buildMapHtml } from "../share/html";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
 import { FlashCard, ReviewSession } from "../study/Review";
@@ -746,9 +747,41 @@ const DEPTH_STYLE = [
   "text-zinc-600 dark:text-zinc-400",
 ];
 
-function TreeNode({ node, depth }: { node: MapNode; depth: number }) {
+const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
+/** The reference of a map node: its own (`rif`, new maps), or the first one of the summary's
+ *  paragraph that talks about it (maps made before). As a link: `#t=F1@750` or `#f=F3`. */
+function nodeRef(node: MapNode, summary: string | null): { href: string; label: string } | null {
+  const toHref = (r: string) => {
+    const m = r.trim().match(/^\[?(F\d+)(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/);
+    if (!m) return null;
+    return { href: m[2] ? `#t=${m[1]}@${toSecs(m[2])}` : `#f=${m[1]}`, label: m[2] ? `${m[1]} ${m[2]}` : m[1] };
+  };
+  if (node.rif) return toHref(node.rif);
+  if (!summary) return null;
+  const label = fold(node.etichetta);
+  const words = label.split(/\W+/u).filter((w) => w.length > 3);
+  const paras = summary.split(/\n\s*\n/).filter((p) => /\[F\d+/.test(p));
+  const score = (p: string) => {
+    const f = fold(p);
+    if (f.includes(label)) return 100;
+    return words.filter((w) => f.includes(w)).length;
+  };
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const p of paras) {
+    const sc = score(p);
+    if (sc > bestScore) [best, bestScore] = [p, sc];
+  }
+  const enough = bestScore === 100 || (words.length > 0 && bestScore >= Math.max(2, Math.ceil((words.length * 2) / 3)));
+  const ref = enough && best ? best.match(/\[(F\d+(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/) : null;
+  return ref ? toHref(ref[1]) : null;
+}
+
+function TreeNode({ node, depth, summary, onRef }: { node: MapNode; depth: number; summary: string | null; onRef: (href: string) => void }) {
   const [open, setOpen] = useState(true);
   const kids = node.figli ?? [];
+  const ref = nodeRef(node, summary);
   return (
     <div className="flex items-center">
       <button
@@ -759,11 +792,16 @@ function TreeNode({ node, depth }: { node: MapNode; depth: number }) {
         <span className="max-w-64">{node.etichetta}</span>
         {kids.length > 0 && !open && <span className="ml-1 text-xs opacity-70">+{kids.length}</span>}
       </button>
+      {ref && (
+        <button className="ml-1 shrink-0 rounded p-0.5 text-sky-600 hover:bg-sky-100 dark:text-sky-400 dark:hover:bg-sky-950" onClick={() => onRef(ref.href)} title={`Vai al punto della trascrizione (${ref.label})`} aria-label={`Vai a ${ref.label}: ${node.etichetta}`} data-map-ref>
+          <ArrowUpRight className="size-3.5" />
+        </button>
+      )}
       {kids.length > 0 && open && (
         <div className="relative ml-6 flex flex-col gap-2 border-l-2 border-sky-300 py-1 pl-4 dark:border-sky-800">
           {kids.map((k, i) => (
             <div key={i} className="relative before:absolute before:top-1/2 before:-left-4 before:w-4 before:border-t-2 before:border-sky-300 dark:before:border-sky-800">
-              <TreeNode node={k} depth={depth + 1} />
+              <TreeNode node={k} depth={depth + 1} summary={summary} onRef={onRef} />
             </div>
           ))}
         </div>
@@ -772,11 +810,28 @@ function TreeNode({ node, depth }: { node: MapNode; depth: number }) {
   );
 }
 
-export function MapTab({ outputs, process }: { outputs: Outputs; process: React.ReactNode }) {
+export function MapTab({ lesson, course, outputs, process, onRef }: { lesson: Lesson; course: Course | null; outputs: Outputs; process: React.ReactNode; onRef: (href: string) => void }) {
   if (!outputs.map) return <Placeholder text="La mappa concettuale degli argomenti della lezione." action={process} />;
+  const map = outputs.map;
   return (
     <div className="overflow-auto pb-6 select-text">
-      <TreeNode node={outputs.map} depth={0} />
+      <div className="mb-3 flex items-center gap-3">
+        <p className="flex-1 text-xs text-zinc-500">Clicca un concetto per chiuderlo o aprirlo; la freccia accanto porta al punto della trascrizione in cui se ne parla.</p>
+        {course && (
+          <button
+            className="btn"
+            onClick={() =>
+              share.print(`mappa-${lesson.title}`.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase(), buildMapHtml(course, lesson, map)).then(
+                () => toast("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF»."),
+                (e) => toast(toAppError(e).message, "error"),
+              )
+            }
+          >
+            <FileDown className="size-4" /> Esporta in PDF
+          </button>
+        )}
+      </div>
+      <TreeNode node={map} depth={0} summary={outputs.summary} onRef={onRef} />
     </div>
   );
 }

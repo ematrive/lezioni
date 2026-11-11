@@ -256,6 +256,9 @@ pub fn hms(secs: u64) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MapNode {
     pub etichetta: String,
+    /// Where the sources talk about it, as in the summary: "F1 00:12:30" or "F3".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rif: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub figli: Vec<MapNode>,
 }
@@ -1259,6 +1262,18 @@ mod tests {
         assert_eq!(prompts.len(), n + 1);
         let p = &prompts[n];
         assert!(p.contains("Pezzo:") && p.contains(&hms(ts[1])) && !p.contains(&format!("[{}]", hms(ts[0]))), "{p}");
+    }
+
+    #[test]
+    fn map_nodes_with_and_without_references() {
+        let old: MapNode = serde_json::from_str(r#"{"etichetta":"Dighe","figli":[{"etichetta":"Speroni"}]}"#).unwrap();
+        assert_eq!(old.figli[0].rif, "");
+        let new: MapNode = serde_json::from_str(r#"{"etichetta":"Dighe","rif":"F1 00:12:30"}"#).unwrap();
+        assert_eq!(new.rif, "F1 00:12:30");
+        assert!(!serde_json::to_string(&old).unwrap().contains("rif"), "nothing written when there is none");
+        let schema = prompts::generate_schema();
+        assert_eq!(schema["properties"]["mappa"]["properties"]["rif"]["type"], "string");
+        assert_eq!(schema["properties"]["mappa"]["required"], serde_json::json!(["etichetta"]));
     }
 
     #[test]

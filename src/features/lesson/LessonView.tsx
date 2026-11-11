@@ -301,7 +301,7 @@ export function LessonView({
             }}
           />
         ) : tab === "map" ? (
-          <MapTab outputs={outputs} process={processButton} />
+          <MapTab lesson={lesson} course={course} outputs={outputs} process={processButton} onRef={onSummaryRef} />
         ) : (
           <StudyTab lesson={lesson} outputs={outputs} process={processButton} editing={editing} />
         )}

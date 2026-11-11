@@ -291,15 +291,17 @@
             return (message) => cbs[a.channel.id]?.({ index: i++, message });
           })();
           const audio = l.sources.find((s) => s.kind === "audio");
+          const pdf = l.sources.find((s) => s.kind === "pdf");
           setTimeout(() => send({ event: "step", done: 0.33, total: 3, message: "Trascrizione sul computer di registrazione.m4a, parte 2 di 3: 00:20:00–00:40:00 di 00:52:10" }), 50);
           setTimeout(() => send({ event: "detail", message: "Whisper: 43% · ripulitura della parte 1" }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
               extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
               pauses: audio ? { [audio.id]: 1 } : {},
+              ...(pdf && { pdfText: { [pdf.id]: "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*" } }),
               raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
               summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
-              map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
+              map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
               study: {
                 glossario: [{ termine: "Base", definizione: "Insieme di m variabili linearmente indipendenti." }],
                 flashcard: [{ domanda: "Cos'è il test del rapporto minimo?", risposta: "Sceglie la variabile uscente mantenendo l'ammissibilità: $\\min_i b_i / a_{ij}$ con $a_{ij} > 0$." }],
@@ -308,6 +310,8 @@
               info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
             };
             versions[l.id] = [{ area: "generati", stamp: "2026-11-10 09-15-00", files: ["info.json", "mappa.json", "mappa.mmd", "sintesi.md", "studio.json"] }];
+            Object.assign(outputs[l.id].extracts, outputs[l.id].pdfText ?? {});
+            delete outputs[l.id].pdfText;
             costs[l.id] = (costs[l.id] ?? []).concat([{ when: now(), total: 0.034 }]);
             send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, warnings: [] });
           };

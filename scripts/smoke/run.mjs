@@ -135,7 +135,7 @@ try {
   await p.getByText(/Hai corretto la trascrizione|Hai aggiunto dei segnaposti/).first().waitFor();
   await shot("segnaposti");
   // Correction by hand with find and replace; the term goes to the course's ones.
-  await p.getByRole("button", { name: "Modifica", exact: true }).click();
+  await p.getByRole("button", { name: "Modifica", exact: true }).first().click();
   await p.getByPlaceholder("Trova").fill("team");
   await p.getByPlaceholder("Sostituisci con").fill("TIM");
   await p.getByRole("button", { name: "Sostituisci tutte (1)" }).click();
@@ -171,6 +171,20 @@ try {
   await p.getByRole("button", { name: "Mappa", exact: true }).click();
   await p.getByText("Rapporto minimo").waitFor();
   await shot("mappa");
+  // The map alone as a PDF (landscape, drawn as in the app).
+  await p.getByRole("button", { name: "Esporta in PDF" }).click();
+  await p.getByText(/Salva come PDF/).first().waitFor();
+  if (!(await p.evaluate(() => window.__printed.includes("mt-box") && window.__printed.includes("landscape") && window.__printed.includes("Rapporto minimo")))) throw new Error("PDF della mappa incompleto");
+  if (!manual) writeFileSync(`${out}/mappa.html`, await p.evaluate(() => window.__printed));
+  // A concept to the point of the transcript: one with its own reference, one found in the summary.
+  if ((await p.locator("[data-map-ref]").count()) < 2) throw new Error("mappa: mancano i rimandi");
+  await p.getByRole("button", { name: /^Vai a F1 00:12:30: Pivot$/ }).click();
+  await p.locator('[data-t="750"]').first().waitFor();
+  // Notes written by hand on the slides, in pen blue.
+  await p.locator(".handwritten").getByText(/regola di Bland/).waitFor();
+  await p.locator(".handwritten").first().evaluate((e) => e.scrollIntoView({ block: "center" }));
+  await p.waitForTimeout(400);
+  await shot("appunti-a-mano");
   await p.getByRole("button", { name: "Studio", exact: true }).click();
   await p.getByText("Cos'è il test del rapporto minimo?").click();
   await p.getByText(/mantenendo l'ammissibilità/).waitFor();

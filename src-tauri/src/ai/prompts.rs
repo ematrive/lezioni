@@ -112,7 +112,7 @@ Collegale tra loro: gli appunti e le slide spesso spiegano o correggono ciò che
 Produci:\n\
 1. **sintesi**: una sintesi completa e ordinata della lezione in Markdown (titoli ##/###, elenchi, formule LaTeX, esempi svolti se ci sono). \
 Deve permettere di studiare senza riascoltare la lezione. Alla fine di ogni paragrafo indica le fonti tra parentesi quadre, con il minuto per la registrazione, ad esempio [F1 00:12:30] o [F3].\n\
-2. **mappa**: una mappa concettuale ad albero: radice = argomento della lezione, poi i concetti principali, poi i sotto-concetti. Etichette brevi (massimo 6 parole).\n\
+2. **mappa**: una mappa concettuale ad albero: radice = argomento della lezione, poi i concetti principali, poi i sotto-concetti. Etichette brevi (massimo 6 parole). Per ogni nodo, in rif, il punto delle fonti dove se ne parla, come nella sintesi ma senza parentesi: F1 00:12:30 oppure F3.\n\
 3. **glossario**: i termini tecnici con una definizione breve.\n\
 4. **flashcard**: 10-20 domande e risposte brevi per il ripasso.\n\
 5. **domande_esame**: 4-8 domande come all'esame (teoria ed esercizi), ciascuna con una traccia di risposta.\n\
@@ -122,7 +122,7 @@ FONTI:\n\n{sources}"
 }
 
 fn node(depth: u32) -> Value {
-    let mut props = json!({ "etichetta": { "type": "string" } });
+    let mut props = json!({ "etichetta": { "type": "string" }, "rif": { "type": "string" } });
     if depth > 0 {
         props["figli"] = json!({ "type": "array", "items": node(depth - 1) });
     }

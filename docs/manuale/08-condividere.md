@@ -7,7 +7,7 @@
 | Formato | Per chi | Cosa contiene |
 |---|---|---|
 | **Pacchetto .lezione** | Chi usa Lezioni | La lezione completa: fonti, trascrizioni, sintesi, mappa, studio. Si apre con un doppio clic e non serve rielaborarla |
-| **PDF** | Chiunque | Una dispensa con sintesi, mappa, flashcard, domande e glossario, e a scelta le trascrizioni in appendice |
+| **PDF** | Chiunque | Una dispensa con sintesi, mappa (disegnata come nell'app), flashcard, domande e glossario, e a scelta le trascrizioni in appendice. La sola mappa si esporta in PDF anche dalla scheda Mappa |
 | **Pagina web** | Chiunque | Lo stesso contenuto in un file `.html` che si apre in qualsiasi browser, anche dal telefono e senza internet, con le flashcard cliccabili |
 | **Markdown** | Chi usa Obsidian o NotebookLM | Una cartella per lezione con Sintesi, Mappa, Studio e Trascrizioni in file `.md` |
 | **Flashcard per Anki** | Chi ripassa con Anki | Un file di testo da importare in Anki con *File → Importa* |

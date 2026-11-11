@@ -178,6 +178,8 @@ export interface Usage {
 
 export interface MapNode {
   etichetta: string;
+  /** where the sources talk about it: "F1 00:12:30" or "F3" (maps made from Nov 2026) */
+  rif?: string;
   figli?: MapNode[];
 }
 

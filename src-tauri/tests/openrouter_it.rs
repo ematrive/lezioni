@@ -57,7 +57,7 @@ async fn compare_models() {
         let (mut tp, mut cp) = (0.0, 0.0);
         if let Some(p) = &pdf {
             let t = Instant::now();
-            let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Inline { mime: "application/pdf".into(), data: p.clone() }, Part::Text(prompts::PDF.into())], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+            let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Inline { mime: "application/pdf".into(), data: p.clone() }, Part::Text(prompts::PDF.into())], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
             match o.generate(model, &req, &cancel).await {
                 Ok(a) => {
                     tp = t.elapsed().as_secs_f64();

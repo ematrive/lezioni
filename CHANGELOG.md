@@ -2,6 +2,10 @@
 
 ## Prossima versione
 
+- **Mappa → trascrizione**: la freccia accanto a un concetto porta al punto della registrazione in cui se ne parla.
+- **Mappa in PDF** (scheda Mappa → Esporta in PDF), disegnata come nell'app su una pagina orizzontale; anche nel PDF della lezione la mappa è ora disegnata invece che un elenco.
+- Gli **appunti a mano** letti dalle slide si vedono in blu, con una penna.
+- Con OpenRouter i PDF possono pesare fino a **50 MB** (prima 30): un PDF di 59 pagine di slide annotate (33 MB) veniva rifiutato.
 - **Pause**: le parole che Whisper inventa durante un silenzio o un intervallo («grazie grazie grazie…») diventano una riga grigia «Pausa 00:12:23 – 00:16:19» e non arrivano più al modello. Per le lezioni già fatte c'è il pulsante «pause da sistemare»; a mano, *Segna come pausa* nella correzione.
 - **Cerca nella lezione** (⌘F / Ctrl+F): occorrenze evidenziate nella scheda aperta, con successiva e precedente.
 - Gli **appunti a mano** sopra slide e foto (note, evidenziature, frecce) vengono trascritti come *(nota a mano: …)*.
