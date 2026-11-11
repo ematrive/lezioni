@@ -1,5 +1,9 @@
 # Novità
 
+## 1.0.1
+
+- Installer per **Windows**: nella 1.0.0 mancava perché la compilazione su Windows non riusciva. Su Mac e Linux non cambia niente.
+
 ## 1.0.0
 
 ### Trascrizione
