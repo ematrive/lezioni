@@ -17,3 +17,4 @@
 .prose-lezioni em { color: rgb(82 82 91); }
 .dark .prose-lezioni em, .dark .prose-lezioni blockquote { color: rgb(161 161 170); }
 .prose-lezioni .katex-display { overflow-x: auto; overflow-y: hidden; }
+[data-card] .prose-lezioni { font-size: inherit; }

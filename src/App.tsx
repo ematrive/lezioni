@@ -18,6 +18,7 @@ import { checkForUpdate } from "./lib/update";
 
 const LAST_COURSE = "lezioni:course";
 const LAST_LESSON = "lezioni:lesson";
+const COURSES_HIDDEN = "lezioni:courses-hidden";
 
 function remembered(k: string): string | null {
   try {
@@ -51,6 +52,9 @@ export default function App() {
   const [packages, setPackages] = useState<string[]>([]);
   const [exporting, setExporting] = useState<Course | null>(null);
   const [guide, setGuide] = useState(false);
+  const [coursesHidden, setCoursesHidden] = useState(() => remembered(COURSES_HIDDEN) === "1");
+  /** The open lesson takes the whole window (both lists hidden). */
+  const [fullLesson, setFullLesson] = useState(false);
   const closeGuide = useCallback(() => setGuide(false), []);
   const coursePane = usePaneSize("courses", { def: 230, min: 170, max: 420 });
   const lessonPane = usePaneSize("lessons", { def: 300, min: 220, max: 520 });
@@ -87,6 +91,21 @@ export default function App() {
 
   useEffect(() => remember(LAST_COURSE, courseId), [courseId]);
   useEffect(() => remember(LAST_LESSON, lessonId), [lessonId]);
+  useEffect(() => remember(COURSES_HIDDEN, coursesHidden ? "1" : null), [coursesHidden]);
+  useEffect(() => {
+    if (!lessonId) setFullLesson(false);
+  }, [lessonId]);
+  // Esc leaves the full window lesson, unless a dialog is open or the user is typing.
+  useEffect(() => {
+    if (!fullLesson) return;
+    const k = (e: KeyboardEvent) => {
+      const t = e.target;
+      const typing = t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+      if (e.key === "Escape" && !typing && !document.querySelector(".anim-fade")) setFullLesson(false);
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [fullLesson]);
 
   // Packages: opened with the app (double click), or dropped anywhere on the window.
   const ready = !!settings?.libraryDir;
@@ -132,6 +151,7 @@ export default function App() {
 
   return (
     <div className="flex h-full">
+      {!coursesHidden && !fullLesson && (
       <aside className="relative shrink-0 border-r border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-900/60" style={{ width: coursePane.size }}>
         <CourseList
           courses={courses}
@@ -148,9 +168,12 @@ export default function App() {
           onImport={importNext}
           onExport={setExporting}
           onHelp={() => setGuide(true)}
+          onHide={() => setCoursesHidden(true)}
         />
         {coursePane.handle}
       </aside>
+      )}
+      {!fullLesson && (
       <section className="relative shrink-0 border-r border-zinc-200 dark:border-zinc-800" style={{ width: lessonPane.size }}>
         {query.trim().length >= 2 ? (
           <SearchResults query={query} onOpen={openHit} />
@@ -161,6 +184,7 @@ export default function App() {
             selected={lessonId}
             onSelect={setLessonId}
             onOverview={clearLesson}
+            onShowCourses={coursesHidden ? () => setCoursesHidden(false) : undefined}
             onChanged={() => {
               setLessonsRev((r) => r + 1);
               loadCourses();
@@ -171,6 +195,7 @@ export default function App() {
         )}
         {lessonPane.handle}
       </section>
+      )}
       <main className="min-w-0 flex-1">
         {lessonId ? (
           <LessonView
@@ -179,6 +204,8 @@ export default function App() {
             course={courses.find((c) => c.id === courseId) ?? null}
             focus={focus?.lessonId === lessonId ? focus : null}
             onMissing={clearLesson}
+            full={fullLesson}
+            onFull={setFullLesson}
             onOpenLesson={(id) => {
               setLessonId(id);
               setFocus({ lessonId: id, tab: "summary", sourceId: null, secs: null, n: Date.now() });

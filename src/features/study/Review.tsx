@@ -1,6 +1,7 @@
 import { Check, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { review, toAppError, type DueCard } from "../../lib/api";
+import { Markdown } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 
 /** Shuffled, but cards seen before stay ahead of the new ones. */
@@ -86,13 +87,7 @@ export function ReviewSession({ scope, id, showLesson, onOpenLesson, onDone }: {
           )}
         </p>
       )}
-      <button
-        className={`flex min-h-44 w-full items-center justify-center rounded-xl border-2 p-6 text-center text-lg transition-colors ${flipped ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40" : "border-sky-300 bg-white dark:border-sky-800 dark:bg-zinc-900"}`}
-        onClick={() => setFlipped(!flipped)}
-        title="Clicca per girare"
-      >
-        <span className="select-text">{flipped ? card.risposta : card.domanda}</span>
-      </button>
+      <FlashCard text={flipped ? card.risposta : card.domanda} flipped={flipped} onFlip={() => setFlipped(!flipped)} />
       <div className="mt-3 flex justify-center gap-2">
         {!flipped ? (
           <button className="btn btn-primary" onClick={() => setFlipped(true)}>
@@ -108,6 +103,34 @@ export function ReviewSession({ scope, id, showLesson, onOpenLesson, onDone }: {
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** A flashcard: question or answer (Markdown, with formulas); click, Enter or Space turns it. */
+export function FlashCard({ text, flipped, onFlip }: { text: string; flipped: boolean; onFlip: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`flex min-h-44 w-full cursor-pointer items-center justify-center rounded-xl border-2 p-6 text-center text-lg transition-colors ${flipped ? "border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40" : "border-sky-300 bg-white dark:border-sky-800 dark:bg-zinc-900"}`}
+      onClick={(e) => {
+        // Selecting text to copy it does not turn the card.
+        if (!window.getSelection()?.toString()) onFlip();
+        e.currentTarget.blur();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onFlip();
+        }
+      }}
+      title="Clicca per girare"
+      data-card
+    >
+      <div className="max-w-full">
+        <Markdown text={text} />
       </div>
     </div>
   );

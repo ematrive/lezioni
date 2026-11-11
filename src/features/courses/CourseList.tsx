@@ -1,6 +1,6 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import { BookOpen, CircleHelp, Download, FolderOpen, Pencil, Plus, Search, Settings, Share2, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { BookOpen, CircleHelp, Download, FolderOpen, MoreHorizontal, PanelLeftClose, Pencil, Plus, Search, Settings, Share2, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api, toAppError, type Course } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
@@ -16,8 +16,11 @@ export function CourseList({
   onImport,
   onExport,
   onHelp,
+  onHide,
 }: {
   onHelp: () => void;
+  /** Collapse the column of the courses. */
+  onHide: () => void;
   courses: Course[];
   selected: string | null;
   onSelect: (id: string) => void;
@@ -30,6 +33,14 @@ export function CourseList({
 }) {
   /** null = closed, "new" = create, otherwise the course being edited. */
   const [editing, setEditing] = useState<Course | "new" | null>(null);
+  /** Course whose "⋯" menu is open. */
+  const [menu, setMenu] = useState<string | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [menu]);
 
   const remove = async (c: Course) => {
     const ok = await ask(`Spostare nel Cestino il corso «${c.name}» con le sue ${c.lessons} lezioni e tutti i file?`, { title: "Elimina corso", kind: "warning", okLabel: "Sposta nel Cestino", cancelLabel: "Annulla" });
@@ -61,38 +72,69 @@ export function CourseList({
       </div>
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Corsi</span>
-        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nuovo corso" onClick={() => setEditing("new")}>
-          <Plus className="size-4" />
-        </button>
+        <span className="flex gap-0.5">
+          <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nuovo corso" onClick={() => setEditing("new")}>
+            <Plus className="size-4" />
+          </button>
+          <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nascondi la colonna dei corsi" aria-label="Nascondi i corsi" onClick={onHide}>
+            <PanelLeftClose className="size-4" />
+          </button>
+        </span>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto px-2">
-        {courses.map((c) => (
-          <li key={c.id} className="group relative">
+        {courses.map((c) => {
+          const sel = c.id === selected;
+          const open = menu === c.id;
+          const item = (label: string, icon: React.ReactNode, f: () => void, danger = false) => (
             <button
-              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${c.id === selected ? "bg-sky-600 text-white" : "hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
-              onClick={() => onSelect(c.id)}
-              onDoubleClick={() => setEditing(c)}
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 ${danger ? "text-red-600" : ""}`}
+              onClick={() => {
+                setMenu(null);
+                f();
+              }}
             >
-              <BookOpen className="size-4 shrink-0 opacity-70" />
-              <span className="min-w-0 flex-1 truncate">{c.name}</span>
-              <span className={`text-xs ${c.id === selected ? "text-sky-100" : "text-zinc-400"} group-hover:hidden`}>{c.lessons}</span>
+              {icon} {label}
             </button>
-            <span className="absolute top-1 right-1 hidden gap-0.5 group-hover:flex">
-              <IconBtn title="Rinomina" onClick={() => setEditing(c)} active={c.id === selected}>
-                <Pencil className="size-3.5" />
-              </IconBtn>
-              <IconBtn title="Esporta il corso" onClick={() => onExport(c)} active={c.id === selected}>
-                <Share2 className="size-3.5" />
-              </IconBtn>
-              <IconBtn title="Mostra la cartella" onClick={() => api.reveal(c.path)} active={c.id === selected}>
-                <FolderOpen className="size-3.5" />
-              </IconBtn>
-              <IconBtn title="Elimina" onClick={() => remove(c)} active={c.id === selected}>
-                <Trash2 className="size-3.5" />
-              </IconBtn>
-            </span>
-          </li>
-        ))}
+          );
+          return (
+            <li key={c.id} className="group relative">
+              <button
+                className={`flex w-full items-center gap-2 rounded-md py-1.5 pr-8 pl-2 text-left ${sel ? "bg-sky-600 text-white" : "hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
+                onClick={() => onSelect(c.id)}
+                onDoubleClick={() => setEditing(c)}
+                title={c.name}
+              >
+                <BookOpen className="size-4 shrink-0 opacity-70" />
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              </button>
+              <span className="absolute inset-y-0 right-1 flex items-center">
+                <span className={`px-1.5 text-xs ${sel ? "text-sky-100" : "text-zinc-400"} ${open || sel ? "hidden" : "group-hover:hidden"}`}>{c.lessons}</span>
+                <button
+                  className={`rounded p-1 ${open || sel ? "flex" : "hidden group-hover:flex"} ${sel ? "text-white hover:bg-sky-700" : "text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-700"}`}
+                  title="Altre azioni sul corso"
+                  aria-label={`Azioni sul corso ${c.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenu(open ? null : c.id);
+                  }}
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+              </span>
+              {open && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMenu(null)} />
+                  <div className="anim-pop absolute top-full right-0 z-40 mt-1 w-52 rounded-md border border-zinc-200 bg-white p-1 text-sm text-zinc-800 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" role="menu">
+                    {item("Rinomina e modifica", <Pencil className="size-4" />, () => setEditing(c))}
+                    {item("Esporta il corso", <Share2 className="size-4" />, () => onExport(c))}
+                    {item("Mostra la cartella", <FolderOpen className="size-4" />, () => api.reveal(c.path))}
+                    {item("Elimina", <Trash2 className="size-4" />, () => remove(c), true)}
+                  </div>
+                </>
+              )}
+            </li>
+          );
+        })}
         {courses.length === 0 && (
           <li className="px-2 py-4 text-zinc-500">
             Nessun corso.{" "}
@@ -129,20 +171,6 @@ export function CourseList({
   );
 }
 
-function IconBtn({ title, onClick, active, children }: { title: string; onClick: () => void; active: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className={`rounded p-1 ${active ? "text-white hover:bg-sky-700" : "text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-700"}`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onClose: () => void; onSaved: (c: Course) => void }) {
   const [name, setName] = useState(course?.name ?? "");

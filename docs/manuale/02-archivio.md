@@ -25,7 +25,11 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 
 - **Nuovo corso**: il **+** accanto a *Corsi*. Il docente è facoltativo.
 - **Parole del corso**: nel corso (anche da **Rinomina**) puoi scrivere i termini tecnici e i nomi che tornano spesso, separati da virgole e scritti giusti: per esempio `ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler`. Vengono suggeriti a Whisper, alla ripulitura e alla sintesi, così sbagliano meno; valgono dalle elaborazioni successive. Puoi aggiungerne una anche mentre correggi una trascrizione.
-- Passando col mouse su un corso compaiono **Rinomina**, **Esporta il corso**, **Mostra la cartella** ed **Elimina**.
+- Il pulsante **⋯** accanto al corso (sempre visibile su quello scelto, sugli altri al passaggio del mouse) apre il menu con **Rinomina e modifica**, **Esporta il corso**, **Mostra la cartella** ed **Elimina**.
+
+![Il menu di un corso](img/corso-menu.png)
+
+- Il pulsante accanto al **+** in cima all'elenco **nasconde la colonna dei corsi** per lasciare più spazio; lo stesso pulsante in cima all'elenco delle lezioni la fa ricomparire. La ricerca in tutte le lezioni sta in quella colonna.
 - Cliccando il **nome del corso** in cima all'elenco delle lezioni si apre la **pagina del corso** (vedi sotto). Si apre anche quando scegli un corso e nessuna lezione.
 - Eliminare un corso lo sposta nel **Cestino** con tutte le sue lezioni: si può recuperare da lì.
 
@@ -35,6 +39,11 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 - Il **titolo** si modifica cliccandoci sopra nella pagina della lezione, la **data** dal campo accanto. Il nome della cartella segue titolo e data.
 - Nell'elenco, accanto alla data, le icone contano registrazioni, foto e altri file.
 - Con più di sei lezioni compare un campo per filtrarle.
+- Il pulsante **⋯** in alto nella lezione ha **Mostra la cartella** ed **Elimina la lezione** (va nel Cestino, da cui si recupera).
+- Il pulsante **Tutto schermo** in alto nella lezione (le due frecce) nasconde corsi e lezioni e lascia tutta la finestra alla lezione aperta; **Esc** o lo stesso pulsante tornano indietro. Per avere anche la finestra a schermo intero c'è il pulsante verde della finestra del Mac.
+
+![La lezione a tutto schermo](img/tutto-schermo.png)
+
 - In fondo alla scheda **Fonti** ci sono le **note sulla lezione**: argomenti, cose da rivedere, compiti. Vengono usate anche per la sintesi.
 
 ## La pagina del corso

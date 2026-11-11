@@ -1,10 +1,27 @@
-import { FileAudio, Image, Paperclip, Plus } from "lucide-react";
+import { FileAudio, Image, PanelLeftOpen, Paperclip, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, fmtDate, review, today, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
 
-export function LessonList({ course, rev, selected, onSelect, onOverview, onChanged }: { course: Course; rev: number; selected: string | null; onSelect: (id: string) => void; onOverview: () => void; onChanged: () => void }) {
+export function LessonList({
+  course,
+  rev,
+  selected,
+  onSelect,
+  onOverview,
+  onShowCourses,
+  onChanged,
+}: {
+  course: Course;
+  rev: number;
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onOverview: () => void;
+  /** Set when the column of the courses is hidden: shows it again. */
+  onShowCourses?: () => void;
+  onChanged: () => void;
+}) {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
@@ -38,15 +55,24 @@ export function LessonList({ course, rev, selected, onSelect, onOverview, onChan
     <div className="flex h-full flex-col">
       <div className="space-y-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
         <div className="flex items-center justify-between gap-2">
-          <button className={`min-w-0 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title="Pagina del corso: ripasso, sintesi del corso, costi">
+          {onShowCourses && (
+            <button className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Mostra la colonna dei corsi" aria-label="Mostra i corsi" onClick={onShowCourses}>
+              <PanelLeftOpen className="size-4" />
+            </button>
+          )}
+          <button className={`min-w-0 flex-1 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title="Pagina del corso: ripasso, sintesi del corso, costi">
             <h2 className="truncate text-base font-semibold">{course.name}</h2>
             {course.teacher && <p className="truncate text-xs text-zinc-500">{course.teacher}</p>}
-            {toReview > 0 && <p className="text-xs text-sky-700 dark:text-sky-400">{toReview} flashcard da ripassare oggi</p>}
           </button>
           <button className="btn btn-primary shrink-0" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Lezione
           </button>
         </div>
+        {toReview > 0 && (
+          <button className="block w-full rounded px-1 text-left text-xs text-sky-700 hover:underline dark:text-sky-400" onClick={onOverview} title="Apri il ripasso del corso">
+            {toReview} flashcard da ripassare oggi →
+          </button>
+        )}
         {lessons.length > 6 && <input className="field" placeholder="Filtra le lezioni" value={filter} onChange={(e) => setFilter(e.target.value)} />}
       </div>
       <ul className="min-h-0 flex-1 overflow-auto p-2">

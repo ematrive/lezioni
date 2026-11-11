@@ -146,7 +146,7 @@ try {
   if (!(await p.locator("[data-editor] textarea").inputValue()).includes("con i vincoli")) throw new Error("pezzo non sostituito");
   await p.getByRole("button", { name: "Salva", exact: true }).click();
   await p.getByText(/libro di TIM/).waitFor();
-  await p.getByText(/Corretta a mano il/).waitFor();
+  await p.getByText(/corretta a mano il/).waitFor();
   await p.getByText(/premi Rigenera per aggiornare sintesi/).waitFor();
   await p.getByRole("button", { name: "Mappa", exact: true }).click();
   await p.getByText("Rapporto minimo").waitFor();
@@ -154,6 +154,7 @@ try {
   await p.getByRole("button", { name: "Studio", exact: true }).click();
   await p.getByText("Cos'è il test del rapporto minimo?").click();
   await p.getByText(/mantenendo l'ammissibilità/).waitFor();
+  if (!(await p.locator("[data-card] .katex").count())) throw new Error("flashcard: formula non resa");
   await shot("studio");
   // Own flashcard, added by hand.
   await p.getByRole("button", { name: "Modifica flashcard e glossario" }).click();
@@ -186,7 +187,7 @@ try {
   await p.getByText("sceglie la variabile uscente").waitFor();
   await shot("domande");
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
-  await p.getByText("Clicca un tempo per ascoltare da quel punto.").waitFor();
+  await p.locator("audio[title^='Clicca un minuto']").waitFor();
 
   // Course page: review of the whole course (all done today), then what the AI cost.
   await p.getByTitle(/^Pagina del corso/).click();
@@ -204,6 +205,22 @@ try {
   await shot("corso-costi");
   await p.getByRole("button", { name: "Simplesso e degenerazione" }).last().click();
   await p.getByText("base ammissibile").waitFor();
+
+  // The lesson on the whole window, Esc to come back.
+  await p.getByRole("button", { name: "Tutto schermo" }).click();
+  if (await p.getByPlaceholder("Cerca in tutte le lezioni").count()) throw new Error("tutto schermo: colonne ancora visibili");
+  await shot("tutto-schermo");
+  await p.keyboard.press("Escape");
+  await p.getByPlaceholder("Cerca in tutte le lezioni").waitFor();
+  // Course actions in the "⋯" menu; the column of the courses folds away.
+  await p.getByRole("button", { name: "Azioni sul corso Ricerca operativa" }).click();
+  await p.getByRole("button", { name: "Rinomina e modifica" }).waitFor();
+  await shot("corso-menu");
+  await p.keyboard.press("Escape");
+  await p.getByRole("button", { name: "Nascondi i corsi" }).click();
+  if (await p.getByPlaceholder("Cerca in tutte le lezioni").count()) throw new Error("corsi non nascosti");
+  await p.getByRole("button", { name: "Mostra i corsi" }).click();
+  await p.getByPlaceholder("Cerca in tutte le lezioni").waitFor();
 
   // Share as a web page: the HTML is built in the UI, with the summary and embedded KaTeX fonts.
   await p.getByRole("button", { name: "Condividi" }).click();
@@ -226,7 +243,7 @@ try {
   await p.getByText(/risultati in tutto l'archivio/).waitFor();
   await shot("ricerca");
   await p.getByText("· registrazione 10-11.m4a · 00:12:30").click();
-  await p.getByText("Clicca un tempo per ascoltare da quel punto.").waitFor();
+  await p.locator("audio[title^='Clicca un minuto']").waitFor();
 
   // A .lezione dropped on the window opens the import dialog.
   await p.evaluate(() => window.__emit("tauri://drag-drop", { paths: ["/home/studente/Scaricati/Break-even.lezione"], position: { x: 600, y: 300 } }));

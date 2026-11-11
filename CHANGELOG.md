@@ -2,12 +2,15 @@
 
 ## Prossima versione
 
+- Le azioni di un corso sono nel menu **⋯** (prima le icone coprivano il nome); la colonna dei corsi si può **nascondere**; la lezione aperta può andare **a tutto schermo** (Esc per tornare).
+- Trascrizione: intestazione più ordinata e che non lascia più intravedere il testo che scorre sopra; i pulsanti dei segnaposti sono accanto al lettore e l'elenco dei segnaposti si apre sopra il testo.
+- Le **formule** nelle flashcard, nelle domande d'esame e nel glossario si vedono come formule, non più come `$\alpha$`.
 - Corretto: con OpenRouter, rielaborare una lezione dopo una ripulitura non riuscita provava a inviare l'audio al modello (errore «parte-01.wav è troppo grande per OpenRouter»). Ora riprende dal testo di Whisper già salvato, e l'audio non viene mai inviato.
 - **Sintesi del corso** nella pagina del corso: tutto il corso organizzato per argomenti, fatto dalle sintesi delle lezioni, con le **domande d'esame** più ricorrenti e i link alle lezioni da ripassare. Avvisa quando ci sono lezioni nuove.
 - **Ripasso a intervalli** delle flashcard: dopo aver girato la carta dici se la sapevi; quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni, quelle che non sai tornano subito. Si fa per una lezione (Studio → Ripasso) o per tutto il corso (pagina del corso), al massimo 20 carte nuove per volta.
 - **Versioni precedenti** nell'app: le sintesi sostituite da Rigenera e le trascrizioni corrette poi rifatte si possono confrontare con quella attuale (differenze riga per riga) e ripristinare; quella sostituita diventa a sua volta una versione.
 - **Ripulisci di nuovo un pezzo**: nella correzione di una trascrizione selezioni un passaggio venuto male e il modello (anche un altro, scelto dalla tendina) lo ripulisce di nuovo dal testo di Whisper; vedi la proposta accanto al testo attuale e scegli se sostituirlo.
-- **Segnaposti mentre ascolti**: sotto il lettore della registrazione, *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto a cui sei arrivato. Nella trascrizione il paragrafo è evidenziato; con Rigenera la sintesi dà più spazio ai punti importanti e spiega meglio quelli non capiti, e le Domande li conoscono.
+- **Segnaposti mentre ascolti**: accanto al lettore della registrazione, *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto a cui sei arrivato. Nella trascrizione il paragrafo è evidenziato; con Rigenera la sintesi dà più spazio ai punti importanti e spiega meglio quelli non capiti, e le Domande li conoscono.
 - **Pagina del corso** (clic sul nome del corso sopra le lezioni) con i **costi**: quanto hai speso con l'AI, per mese e per lezione, comprese domande ed elaborazioni interrotte. Nella Sintesi la riga in alto dice anche quanto è costata l'ultima elaborazione.
 - **Testo di Whisper**: nella Trascrizione l'interruttore *Ripulita | Whisper* mostra il testo come l'ha riconosciuto Whisper, prima della ripulitura.
 - **Correzioni a mano**: trascrizioni e testi letti, sintesi, flashcard, domande d'esame e glossario si possono correggere con **Modifica**. Nei testi c'è **Trova e sostituisci** per correggere in un colpo una parola sbagliata. Con **Rigenera** la sintesi usa le correzioni; con *Rielabora anche le fonti* l'app chiede conferma e conserva la versione corretta.

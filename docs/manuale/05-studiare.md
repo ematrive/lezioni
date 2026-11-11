@@ -10,15 +10,15 @@ Ogni paragrafo inizia con il **minuto** in cui comincia: cliccalo e la registraz
 
 ### Segnaposti mentre ascolti
 
-Mentre riascolti una registrazione puoi segnare i punti che contano. Sotto il lettore:
+Mentre riascolti una registrazione puoi segnare i punti che contano, con i tre pulsanti accanto al lettore:
 
 - **★ Importante** (tasto **I**): un punto da ricordare.
 - **? Non ho capito** (tasto **D**): un passaggio da chiarire.
 - **✎ Nota** (tasto **N**): un punto con una nota tua, per esempio «chiedere al ricevimento».
 
-Il segnaposto prende il minuto a cui sei arrivato. I tasti valgono per la registrazione che stai ascoltando, quando non stai scrivendo in un campo di testo. Nella trascrizione il paragrafo di quel minuto è evidenziato con l'icona; sotto il lettore c'è l'elenco dei segnaposti, dove clicchi il minuto per riascoltare, clicchi il testo per scrivere o cambiare la nota, e il cestino per eliminarlo.
+Il segnaposto prende il minuto a cui sei arrivato. I tasti valgono per la registrazione che stai ascoltando, quando non stai scrivendo in un campo di testo. Nella trascrizione il paragrafo di quel minuto è evidenziato con l'icona. Sopra il testo, la riga **N segnaposti** apre l'elenco: clicchi il minuto per riascoltare, il testo per scrivere o cambiare la nota, il cestino per eliminarlo.
 
-![Segnaposti sotto il lettore e nel testo](img/segnaposti.png)
+![Segnaposti accanto al lettore e nel testo](img/segnaposti.png)
 
 Con **Rigenera** la sintesi dà più spazio ai punti importanti e spiega con più calma quelli che non hai capito. Anche le **Domande** li conoscono: puoi chiedere «spiegami i punti che non ho capito». I segnaposti sono nel file `segnaposti.json` della lezione e viaggiano nei pacchetti, come le note.
 

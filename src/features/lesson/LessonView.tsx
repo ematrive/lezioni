@@ -1,6 +1,6 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open } from "@tauri-apps/plugin-dialog";
-import { ClipboardPaste, ChevronDown, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, ChevronDown, Maximize2, Minimize2, MoreHorizontal, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
 import { ShareDialog } from "../share/ShareDialog";
@@ -47,7 +47,12 @@ export function LessonView({
   onDeleted,
   onMissing,
   onOpenLesson,
+  full,
+  onFull,
 }: {
+  /** The lesson takes the whole window. */
+  full?: boolean;
+  onFull?: (full: boolean) => void;
   onOpenLesson: (lessonId: string) => void;
   lessonId: string;
   course: Course | null;
@@ -240,6 +245,11 @@ export function LessonView({
             <button className="btn" disabled={!course} onClick={() => setSharing(true)} title="Condividi: pacchetto, PDF, pagina web, Markdown, Anki">
               <Share2 className="size-4" /> Condividi
             </button>
+            {onFull && (
+              <button className="btn" onClick={() => onFull(!full)} title={full ? "Esci dal tutto schermo (Esc)" : "Tutto schermo: nasconde corsi e lezioni"} aria-label={full ? "Esci dal tutto schermo" : "Tutto schermo"}>
+                {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+              </button>
+            )}
           </>
         }
       />
@@ -332,6 +342,7 @@ function ProcessMenu({ main, disabled, onForce }: { main: React.ReactNode; disab
 
 function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onChanged: (l: Lesson) => void; onDelete: () => void; actions: React.ReactNode }) {
   const [title, setTitle] = useState(lesson.title);
+  const [menu, setMenu] = useState(false);
   useEffect(() => setTitle(lesson.title), [lesson.title]);
   const save = async (patch: { title?: string; date?: string }) => {
     try {
@@ -344,7 +355,7 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
   return (
     <header className="flex flex-wrap items-center gap-3 px-4 pt-4 pb-3">
       <input
-        className="min-w-64 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-xl font-semibold outline-none hover:border-zinc-300 focus:border-sky-500 dark:hover:border-zinc-700"
+        className="min-w-40 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-xl font-semibold outline-none hover:border-zinc-300 focus:border-sky-500 dark:hover:border-zinc-700"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onBlur={() => title.trim() !== lesson.title && (title.trim() ? save({ title }) : setTitle(lesson.title))}
@@ -353,12 +364,36 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
       />
       {actions}
       <input className="field w-auto" type="date" value={lesson.date} onChange={(e) => e.target.value && save({ date: e.target.value })} title="Data della lezione" />
-      <button className="btn" title="Mostra la cartella della lezione" onClick={() => api.reveal(lesson.path)}>
-        <FolderOpen className="size-4" />
-      </button>
-      <button className="btn btn-danger" title="Elimina la lezione" onClick={onDelete}>
-        <Trash2 className="size-4" />
-      </button>
+      <div className="relative">
+        <button className="btn px-2" title="Altre azioni sulla lezione" aria-label="Altre azioni sulla lezione" onClick={() => setMenu(!menu)}>
+          <MoreHorizontal className="size-4" />
+        </button>
+        {menu && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
+            <div className="anim-pop absolute top-full right-0 z-40 mt-1 w-56 rounded-md border border-zinc-200 bg-white p-1 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="menu">
+              <button
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  setMenu(false);
+                  api.reveal(lesson.path);
+                }}
+              >
+                <FolderOpen className="size-4" /> Mostra la cartella
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  setMenu(false);
+                  onDelete();
+                }}
+              >
+                <Trash2 className="size-4" /> Elimina la lezione
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </header>
   );
 }

@@ -87,7 +87,10 @@ export function Markdown({
   imgSrc,
   onLink,
   marks,
+  inline,
 }: {
+  /** A short text inside a line (a flashcard question, a glossary term): no paragraphs. */
+  inline?: boolean;
   text: string;
   /** Bookmarks of the recording: their paragraphs are highlighted. */
   marks?: Mark[];
@@ -100,13 +103,15 @@ export function Markdown({
   onLink?: (href: string) => void;
 }) {
   const byParagraph = useMemo(() => (marks?.length ? marksByParagraph(text, marks) : null), [text, marks]);
+  const Wrap = inline ? "span" : "div";
   return (
-    <div className="prose-lezioni select-text">
+    <Wrap className={inline ? "select-text" : "prose-lezioni select-text"}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           p: ({ node, children }) => {
+            if (inline) return <>{children}</>;
             const t = byParagraph ? firstTime(node) : null;
             const ms = t === null ? undefined : byParagraph?.get(t);
             if (!ms) return <p>{children}</p>;
@@ -144,6 +149,6 @@ export function Markdown({
       >
         {linkRefs(text, source)}
       </ReactMarkdown>
-    </div>
+    </Wrap>
   );
 }
