@@ -2,6 +2,7 @@
 
 ## Prossima versione
 
+- **Ripasso a intervalli** delle flashcard: dopo aver girato la carta dici se la sapevi; quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni, quelle che non sai tornano subito. Si fa per una lezione (Studio → Ripasso) o per tutto il corso (pagina del corso), al massimo 20 carte nuove per volta.
 - **Versioni precedenti** nell'app: le sintesi sostituite da Rigenera e le trascrizioni corrette poi rifatte si possono confrontare con quella attuale (differenze riga per riga) e ripristinare; quella sostituita diventa a sua volta una versione.
 - **Ripulisci di nuovo un pezzo**: nella correzione di una trascrizione selezioni un passaggio venuto male e il modello (anche un altro, scelto dalla tendina) lo ripulisce di nuovo dal testo di Whisper; vedi la proposta accanto al testo attuale e scegli se sostituirlo.
 - **Segnaposti mentre ascolti**: sotto il lettore della registrazione, *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto a cui sei arrivato. Nella trascrizione il paragrafo è evidenziato; con Rigenera la sintesi dà più spazio ai punti importanti e spiega meglio quelli non capiti, e le Domande li conoscono.

@@ -68,11 +68,24 @@ La **Mappa** mostra gli argomenti della lezione ad albero: al centro l'argomento
 
 ## Studio
 
-- **Flashcard**: clicca la carta per vedere la risposta, poi *Successiva*. **Mescola** cambia l'ordine.
+- **Flashcard**: in **Sfoglia** clicca la carta per vedere la risposta, poi *Successiva*; **Mescola** cambia l'ordine. In **Ripasso** vedi solo le carte da ripassare oggi (vedi sotto).
 - **Domande d'esame**: domande come all'esame; clicca una domanda per vedere la traccia di risposta.
 - **Glossario**: i termini tecnici della lezione, in ordine alfabetico.
 
 ![Flashcard, domande d'esame e glossario](img/studio.png)
+
+### Ripasso a intervalli
+
+In **Ripasso** l'app ti propone le flashcard da ripassare oggi. Pensa alla risposta, premi **Mostra la risposta** e poi dì com'è andata:
+
+- **La sapevo**: la carta torna fra 1 giorno, poi fra 3, 7, 14 e 30 se continui a saperla.
+- **Non la sapevo**: la carta torna in fondo alla sessione di oggi e il conto riparte da capo.
+
+Le carte mai viste entrano al massimo **20 per volta**, così un corso intero non parte con centinaia di carte; finita la sessione, *Altre carte nuove* ne propone altre. Lo stesso ripasso, con le carte di **tutte le lezioni** del corso, è nella **pagina del corso** (clic sul nome del corso sopra le lezioni), e sotto il nome del corso compare quante carte ci sono da ripassare oggi. Ogni carta indica la lezione da cui viene.
+
+![Il ripasso: dopo aver girato la carta](img/ripasso.png)
+
+Con *Rigenera* le carte che restano uguali (stessa domanda) conservano il loro punto nel ripasso. I progressi sono nel file `ripasso.json` della lezione e non entrano nei pacchetti che condividi.
 
 **Modifica flashcard e glossario** trasforma flashcard, domande d'esame e glossario in un elenco di campi: correggi il testo, elimina le voci sbagliate con il cestino o aggiungine di tue con **Aggiungi**, poi **Salva**. Le voci lasciate vuote non vengono salvate.
 

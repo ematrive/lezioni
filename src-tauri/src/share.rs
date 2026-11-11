@@ -121,6 +121,8 @@ pub fn export_package(lib: &Library, lesson_ids: &[String], include: Include, de
                 || rel == Path::new(crate::chat::CHAT_FILE)
                 // Private too: what this person spent.
                 || rel == Path::new(crate::costs::COSTS_FILE)
+                // And how well this person knows the flashcards.
+                || rel == Path::new(crate::review::REVIEW_FILE)
                 || left_out.iter().any(|o| o == rel)
                 || rel.starts_with(Path::new(EXTRACTS_DIR).join(".parti"))
                 || rel.starts_with(Path::new(GENERATED_DIR).join("versioni"))
@@ -477,12 +479,13 @@ mod tests {
         lib.update_lesson(&l.meta.id, crate::library::LessonPatch { notes: Some("non capisco niente".into()), ..Default::default() }).unwrap();
         fs::write(l.path.join(crate::chat::CHAT_FILE), "[]").unwrap();
         fs::write(l.path.join(crate::costs::COSTS_FILE), "[]").unwrap();
+        fs::write(l.path.join(crate::review::REVIEW_FILE), "{}").unwrap();
         fs::write(l.path.join(crate::bookmarks::BOOKMARKS_FILE), "[]").unwrap();
         let pkg = a.path().join("p.lezione");
         export_package(&lib, std::slice::from_ref(&l.meta.id), Include { media: false, files: true, notes: false }, &pkg).unwrap();
         let mut z = open_zip(&pkg).unwrap();
         let names: Vec<String> = z.file_names().map(str::to_string).collect();
-        assert!(!names.iter().any(|n| n.ends_with("chat.json") || n.ends_with("costi.json")), "{names:?}");
+        assert!(!names.iter().any(|n| n.ends_with("chat.json") || n.ends_with("costi.json") || n.ends_with("ripasso.json")), "{names:?}");
         // The bookmarks are notes of the student, like the notes when chosen: they travel.
         assert!(names.iter().any(|n| n.ends_with("segnaposti.json")), "{names:?}");
         let meta: LessonMeta = serde_json::from_slice(&read_entry(&mut z, "lezioni/01/lezione.json").unwrap()).unwrap();

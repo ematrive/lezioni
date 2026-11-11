@@ -16,6 +16,14 @@
   // An earlier summary (as after a Rigenera), for the versions dialog.
   const OLD_SUMMARY = "## Metodo del simplesso\nSi parte da una **base** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$";
   const versions = {}; // lesson id -> versions
+  const reviewed = {}; // "lesson|question" -> { box, due }
+  const dueCards = (ls) => {
+    const day = now().slice(0, 10);
+    const cards = ls.flatMap((l) => (outputs[l.id]?.study?.flashcard ?? []).map((c) => ({ lessonId: l.id, lessonTitle: l.title, key: c.domanda, domanda: c.domanda, risposta: c.risposta, box: reviewed[l.id + "|" + c.domanda]?.box ?? null })));
+    const old = cards.filter((c) => c.box !== null && reviewed[c.lessonId + "|" + c.key].due <= day);
+    const fresh = cards.filter((c) => c.box === null);
+    return { cards: [...old, ...fresh.slice(0, 20)], due: old.length, new: fresh.length };
+  };
   const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
@@ -208,6 +216,14 @@
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
           return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [] };
+        case "review_due":
+          return dueCards(a.scope === "lesson" ? [find(a.id)] : lessons.filter((l) => l.courseId === a.id));
+        case "review_answer": {
+          const k = a.lessonId + "|" + a.key;
+          const box = a.knew ? Math.min((reviewed[k]?.box ?? 0) + 1, 5) : 0;
+          const due = new Date(Date.now() + [0, 1, 3, 7, 14, 30][box] * 864e5).toISOString().slice(0, 10);
+          return (reviewed[k] = { box, due, seen: 1, wrong: a.knew ? 0 : 1 });
+        }
         case "version_read":
           return OLD_SUMMARY;
         case "version_restore":

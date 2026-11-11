@@ -583,3 +583,32 @@ pub fn version_restore(state: State<'_, AppState>, lesson_id: String, area: crat
     let _w = state.writing();
     Ok(crate::versions::restore(&state.library()?, &lesson_id, area, &stamp, file.as_deref())?)
 }
+
+// ---------- spaced review ----------
+
+#[derive(serde::Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewScope {
+    Lesson,
+    Course,
+}
+
+fn today() -> NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+/// The flashcards to review today, in a lesson or in a whole course.
+#[tauri::command(async)]
+pub fn review_due(state: State<'_, AppState>, scope: ReviewScope, id: String) -> CmdResult<crate::review::Due> {
+    let lib = state.library()?;
+    Ok(match scope {
+        ReviewScope::Lesson => crate::review::due_lesson(&lib, &id, today())?,
+        ReviewScope::Course => crate::review::due_course(&lib, &id, today())?,
+    })
+}
+
+#[tauri::command(async)]
+pub fn review_answer(state: State<'_, AppState>, lesson_id: String, key: String, knew: bool) -> CmdResult<crate::review::CardState> {
+    let _w = state.writing();
+    Ok(crate::review::answer(&state.library()?, &lesson_id, &key, knew, today())?)
+}

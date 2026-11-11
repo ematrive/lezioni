@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { api, fmtDate, fmtUsd, toAppError, type Course, type CourseCosts } from "../../lib/api";
+import { ReviewSession } from "../study/Review";
 
-const TABS = [{ id: "costs", label: "Costi" }] as const;
+const TABS = [
+  { id: "review", label: "Ripasso" },
+  { id: "costs", label: "Costi" },
+] as const;
 type Tab = (typeof TABS)[number]["id"];
 
 /** What belongs to the whole course: shown when no lesson is chosen. */
-export function CoursePage({ course, rev, onOpenLesson }: { course: Course; rev: number; onOpenLesson: (id: string) => void }) {
-  const [tab, setTab] = useState<Tab>("costs");
+export function CoursePage({ course, rev, onOpenLesson, onReviewed }: { course: Course; rev: number; onOpenLesson: (id: string) => void; onReviewed?: () => void }) {
+  const [tab, setTab] = useState<Tab>("review");
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -27,7 +31,15 @@ export function CoursePage({ course, rev, onOpenLesson }: { course: Course; rev:
           </button>
         ))}
       </nav>
-      <div className="min-h-0 flex-1 overflow-auto p-4">{tab === "costs" && <CostsTab course={course} rev={rev} onOpenLesson={onOpenLesson} />}</div>
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {tab === "review" && (
+          <div className="mx-auto max-w-2xl">
+            <p className="mb-4 text-sm text-zinc-500">Le flashcard di tutte le lezioni del corso da ripassare oggi. Quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni; quelle che non sai tornano subito.</p>
+            <ReviewSession scope="course" id={course.id} showLesson onOpenLesson={onOpenLesson} onDone={onReviewed} />
+          </div>
+        )}
+        {tab === "costs" && <CostsTab course={course} rev={rev} onOpenLesson={onOpenLesson} />}
+      </div>
     </div>
   );
 }

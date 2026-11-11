@@ -195,6 +195,7 @@ export default function App() {
             key={course.id}
             course={course}
             rev={lessonsRev}
+            onReviewed={() => setLessonsRev((r) => r + 1)}
             onOpenLesson={(id) => {
               setLessonId(id);
               setFocus({ lessonId: id, tab: "summary", sourceId: null, secs: null, n: Date.now() });

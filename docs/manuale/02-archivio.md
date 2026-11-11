@@ -40,6 +40,10 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 
 Raccoglie quello che riguarda il corso intero.
 
+### Ripasso
+
+Le flashcard di tutte le lezioni del corso da ripassare oggi, come il ripasso di una lezione (vedi [Studio](05-studiare.md#ripasso-a-intervalli)). Sopra ogni carta c'è la lezione da cui viene: cliccala per aprirla.
+
 ### Costi
 
 Quanto hai speso con l'AI per il corso: il totale, mese per mese e lezione per lezione. Contano le elaborazioni (anche quelle interrotte o finite con un errore, per la parte già fatta), le domande e le ripuliture. Cliccando una lezione la apri.

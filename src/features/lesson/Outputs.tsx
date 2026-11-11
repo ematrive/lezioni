@@ -4,6 +4,7 @@ import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type J
 import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
+import { ReviewSession } from "../study/Review";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
 
@@ -657,14 +658,44 @@ export function StudyTab({ lesson, outputs, process, editing }: { lesson: Lesson
       <div className="flex justify-end">
         <EditButton editing={editing} onClick={() => setEdit(true)} label="Modifica flashcard e glossario" />
       </div>
-      <Flashcards cards={outputs.study.flashcard} />
+      <Flashcards cards={outputs.study.flashcard} lessonId={lesson.id} />
       <Exam items={outputs.study.domandeEsame} />
       <Glossary items={outputs.study.glossario} />
     </div>
   );
 }
 
-function Flashcards({ cards }: { cards: Study["flashcard"] }) {
+function Flashcards({ cards, lessonId }: { cards: Study["flashcard"]; lessonId: string }) {
+  const [mode, setMode] = useState<"browse" | "review">("browse");
+  if (!cards.length) return null;
+  const modes = (
+    <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm font-normal dark:border-zinc-700" role="group" aria-label="Modalità">
+      {(["browse", "review"] as const).map((m) => (
+        <button
+          key={m}
+          className={`rounded px-2 py-0.5 ${mode === m ? "bg-sky-600 text-white" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
+          onClick={() => setMode(m)}
+          title={m === "review" ? "Solo le carte da ripassare oggi; quelle che sai tornano dopo 1, 3, 7, 14, 30 giorni" : "Tutte le carte, in ordine"}
+        >
+          {m === "browse" ? "Sfoglia" : "Ripasso"}
+        </button>
+      ))}
+    </div>
+  );
+  if (mode === "review")
+    return (
+      <section>
+        <h3 className="mb-3 flex items-center justify-between font-semibold">
+          <span>Flashcard</span>
+          {modes}
+        </h3>
+        <ReviewSession scope="lesson" id={lessonId} />
+      </section>
+    );
+  return <BrowseCards cards={cards} modes={modes} />;
+}
+
+function BrowseCards({ cards, modes }: { cards: Study["flashcard"]; modes: React.ReactNode }) {
   const [order, setOrder] = useState(() => cards.map((_, i) => i));
   const [i, setI] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -680,10 +711,12 @@ function Flashcards({ cards }: { cards: Study["flashcard"] }) {
   };
   return (
     <section>
-      <h3 className="mb-3 flex items-center justify-between font-semibold">
+      <h3 className="mb-3 flex items-center gap-2 font-semibold">
         <span>
           Flashcard <span className="font-normal text-zinc-400">{i + 1} di {cards.length}</span>
         </span>
+        <span className="flex-1" />
+        {modes}
         <button
           className="btn"
           onClick={() => {

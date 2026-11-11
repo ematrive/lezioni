@@ -1,6 +1,6 @@
 import { FileAudio, Image, Paperclip, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, fmtDate, today, toAppError, type Course, type Lesson } from "../../lib/api";
+import { api, fmtDate, review, today, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
 
@@ -8,6 +8,17 @@ export function LessonList({ course, rev, selected, onSelect, onOverview, onChan
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
+  const [toReview, setToReview] = useState(0);
+  useEffect(() => {
+    let live = true;
+    review
+      .due("course", course.id)
+      .then((d) => live && setToReview(d.cards.length))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [course.id, rev, selected]);
 
   useEffect(() => {
     let live = true;
@@ -30,6 +41,7 @@ export function LessonList({ course, rev, selected, onSelect, onOverview, onChan
           <button className={`min-w-0 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title="Pagina del corso: ripasso, sintesi del corso, costi">
             <h2 className="truncate text-base font-semibold">{course.name}</h2>
             {course.teacher && <p className="truncate text-xs text-zinc-500">{course.teacher}</p>}
+            {toReview > 0 && <p className="text-xs text-sky-700 dark:text-sky-400">{toReview} flashcard da ripassare oggi</p>}
           </button>
           <button className="btn btn-primary shrink-0" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Lezione

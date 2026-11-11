@@ -955,6 +955,11 @@ pub struct Outputs {
     pub versions: Vec<crate::versions::Version>,
 }
 
+/// Just the study material (`generati/studio.json`), for the review.
+pub fn outputs_study(lesson: &Lesson) -> Option<Study> {
+    serde_json::from_slice(&fs::read(lesson.path.join(GENERATED_DIR).join("studio.json")).ok()?).ok()
+}
+
 pub fn outputs(lesson: &Lesson) -> Outputs {
     let read = |rel: &Path| fs::read_to_string(lesson.path.join(rel)).ok();
     let gdir = Path::new(GENERATED_DIR);

@@ -208,6 +208,22 @@ export function versionDate(stamp: string): Date {
   return new Date(stamp.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2})-(\d{2})-(\d{2}).*$/, "$1T$2:$3:$4Z"));
 }
 
+export interface DueCard {
+  lessonId: string;
+  lessonTitle: string;
+  key: string;
+  domanda: string;
+  risposta: string;
+  /** null = never seen */
+  box: number | null;
+}
+
+export const review = {
+  /** Cards to review today: seen ones that are due, then at most 20 new ones. */
+  due: (scope: "lesson" | "course", id: string) => invoke<{ cards: DueCard[]; due: number; new: number }>("review_due", { scope, id }),
+  answer: (lessonId: string, key: string, knew: boolean) => invoke<{ box: number; due: string; seen: number; wrong: number }>("review_answer", { lessonId, key, knew }),
+};
+
 export type BookmarkKind = "importante" | "dubbio" | "nota";
 
 export interface Bookmark {

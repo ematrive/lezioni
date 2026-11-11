@@ -157,12 +157,28 @@ try {
   await shot("studio");
   // Own flashcard, added by hand.
   await p.getByRole("button", { name: "Modifica flashcard e glossario" }).click();
-  await p.getByRole("button", { name: "Aggiungi", exact: true }).first().click();
-  await p.getByLabel("Domanda", { exact: true }).last().fill("Cos'è una base?");
-  await p.getByLabel("Risposta", { exact: true }).last().fill("Un insieme di variabili linearmente indipendenti.");
+  const cardsEditor = p.locator("section").filter({ has: p.getByRole("heading", { name: /^Flashcard/ }) });
+  await cardsEditor.getByRole("button", { name: "Aggiungi", exact: true }).click();
+  await cardsEditor.getByLabel("Domanda", { exact: true }).last().fill("Cos'è una base?");
+  await cardsEditor.getByLabel("Risposta", { exact: true }).last().fill("Un insieme di variabili linearmente indipendenti.");
   await p.getByRole("button", { name: "Salva", exact: true }).click();
   await p.getByText("Materiale di studio salvato.").waitFor();
   await p.getByText("1 di 2").waitFor();
+  await p.getByText("Illustra il metodo del simplesso.").waitFor();
+  // Spaced review: turn, then "La sapevo" / "Non la sapevo"; a card not known comes back.
+  await p.getByRole("button", { name: "Ripasso", exact: true }).click();
+  await p.getByText("2 carte in questa sessione").waitFor();
+  await p.getByRole("button", { name: "Mostra la risposta" }).click();
+  await shot("ripasso");
+  await p.getByRole("button", { name: "Non la sapevo" }).click();
+  await p.getByText("2 carte in questa sessione").waitFor();
+  for (let k = 0; k < 3; k++) {
+    await p.getByRole("button", { name: "Mostra la risposta" }).click();
+    await p.getByRole("button", { name: "La sapevo", exact: true }).click();
+    if (await p.locator("[data-review-done]").count()) break;
+  }
+  await p.getByText("Ripasso di oggi finito!").waitFor();
+  await p.getByRole("button", { name: "Sfoglia", exact: true }).click();
   // Questions on the lesson, with a clickable reference to the recording.
   await p.getByRole("button", { name: "Domande", exact: true }).click();
   await p.getByPlaceholder("Chiedi qualcosa su questa lezione…").fill("Cos'è il rapporto minimo?");
@@ -172,8 +188,9 @@ try {
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Clicca un tempo per ascoltare da quel punto.").waitFor();
 
-  // Course page: what the AI cost, by month and by lesson.
+  // Course page: review of the whole course (all done today), then what the AI cost.
   await p.getByTitle(/^Pagina del corso/).click();
+  await p.getByText("Niente da ripassare oggi.").waitFor();
   await p.getByRole("button", { name: "Costi", exact: true }).click();
   await p.getByText("spesi con l'AI per questo corso", { exact: false }).waitFor();
   await p.getByRole("cell", { name: "0,03 $" }).first().waitFor();

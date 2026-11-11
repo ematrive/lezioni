@@ -9,6 +9,7 @@ pub mod error;
 pub mod jobs;
 pub mod library;
 pub mod pipeline;
+pub mod review;
 pub mod search;
 pub mod secrets;
 pub mod settings;
@@ -129,6 +130,8 @@ pub fn run() {
             extract_reclean,
             version_read,
             version_restore,
+            review_due,
+            review_answer,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
