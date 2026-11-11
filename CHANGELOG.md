@@ -1,40 +1,37 @@
 # Novità
 
-## Prossima versione
+## 1.0.0
 
-- In basso a sinistra la **versione** dell'app, con le **novità** di ogni versione (un pallino blu quando ce ne sono di nuove da leggere).
-- Slide accanto alla trascrizione: scorrendo il testo la slide cambia di conseguenza (anche dentro i paragrafi lunghi e mentre l'audio suona: vince l'ultima cosa che fai); il pulsante «Collega alla registrazione» non sembra più disattivato.
-- **Slide collegate alla registrazione**: nelle Fonti ogni PDF è *Slide della lezione* o *Altro materiale* (l'app lo propone leggendolo). Le slide vengono collegate alla registrazione e nella Trascrizione compare la **slide del momento accanto al testo**, che cambia mentre ascolti o scorri; nel testo, «▤ Slide 12» segna i passaggi; la sintesi segue l'ordine delle slide.
-- Se il modello della sintesi risponde due volte vuoto o scrive una risposta così lunga da essere troncata, l'app riprova con il **modello di riserva** invece di fermarsi con un errore, e lo segnala; nel log resta la fine della risposta troncata.
-- Il campo «Cerca nella lezione» non è più tagliato.
-- Trascrizione: si passa da un documento all'altro (registrazione, slide, foto) con la riga **In questa lezione**, con il menu sul nome del documento o con le frecce ↑ ↓, senza scorrere tutta la pagina.
-- Gli appunti a mano stanno ognuno su una riga, con la matita e senza la scritta «nota a mano:» ripetuta.
-- **Mappa → trascrizione**: la freccia accanto a un concetto porta al punto della registrazione in cui se ne parla.
-- **Mappa in PDF** (scheda Mappa → Esporta in PDF), disegnata come nell'app su una pagina orizzontale; anche nel PDF della lezione la mappa è ora disegnata invece che un elenco.
-- Gli **appunti a mano** letti dalle slide si vedono in blu, con una penna.
-- Con OpenRouter i PDF possono pesare fino a **50 MB** (prima 30): un PDF di 59 pagine di slide annotate (33 MB) veniva rifiutato.
-- **Pause**: le parole che Whisper inventa durante un silenzio o un intervallo («grazie grazie grazie…») diventano una riga grigia «Pausa 00:12:23 – 00:16:19» e non arrivano più al modello. Per le lezioni già fatte c'è il pulsante «pause da sistemare»; a mano, *Segna come pausa* nella correzione.
-- **Cerca nella lezione** (⌘F / Ctrl+F): occorrenze evidenziate nella scheda aperta, con successiva e precedente.
-- Gli **appunti a mano** sopra slide e foto (note, evidenziature, frecce) vengono trascritti come *(nota a mano: …)*.
-- Corretto: da un risultato della ricerca o da un riferimento della sintesi la trascrizione ora scorre fino al paragrafo di quel minuto, non solo l'audio.
-- **Parole per tutti i corsi** (Impostazioni): nomi e sigle che tornano in ogni corso, suggeriti a Whisper, alla ripulitura e alla sintesi insieme alle parole del corso.
-- **Glossario del corso** nella pagina del corso: le parole del corso, finalmente in vista e modificabili, e i glossari di tutte le lezioni uniti, con un clic per aggiungere un termine alle parole del corso.
-- Menu **⋯** anche sulle lezioni nell'elenco (Condividi, Mostra la cartella, Elimina).
-- Pulsanti e campi tutti della stessa altezza; il pulsante per nascondere i corsi è accanto alla ricerca.
-- Le azioni di un corso sono nel menu **⋯** (prima le icone coprivano il nome); la colonna dei corsi si può **nascondere**; la lezione aperta può andare **a tutto schermo** (Esc per tornare).
-- Trascrizione: intestazione più ordinata e che non lascia più intravedere il testo che scorre sopra; i pulsanti dei segnaposti sono accanto al lettore e l'elenco dei segnaposti si apre sopra il testo.
-- Le **formule** nelle flashcard, nelle domande d'esame e nel glossario si vedono come formule, non più come `$\alpha$`.
-- Corretto: con OpenRouter, rielaborare una lezione dopo una ripulitura non riuscita provava a inviare l'audio al modello (errore «parte-01.wav è troppo grande per OpenRouter»). Ora riprende dal testo di Whisper già salvato, e l'audio non viene mai inviato.
-- **Sintesi del corso** nella pagina del corso: tutto il corso organizzato per argomenti, fatto dalle sintesi delle lezioni, con le **domande d'esame** più ricorrenti e i link alle lezioni da ripassare. Avvisa quando ci sono lezioni nuove.
-- **Ripasso a intervalli** delle flashcard: dopo aver girato la carta dici se la sapevi; quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni, quelle che non sai tornano subito. Si fa per una lezione (Studio → Ripasso) o per tutto il corso (pagina del corso), al massimo 20 carte nuove per volta.
-- **Versioni precedenti** nell'app: le sintesi sostituite da Rigenera e le trascrizioni corrette poi rifatte si possono confrontare con quella attuale (differenze riga per riga) e ripristinare; quella sostituita diventa a sua volta una versione.
-- **Ripulisci di nuovo un pezzo**: nella correzione di una trascrizione selezioni un passaggio venuto male e il modello (anche un altro, scelto dalla tendina) lo ripulisce di nuovo dal testo di Whisper; vedi la proposta accanto al testo attuale e scegli se sostituirlo.
-- **Segnaposti mentre ascolti**: accanto al lettore della registrazione, *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto a cui sei arrivato. Nella trascrizione il paragrafo è evidenziato; con Rigenera la sintesi dà più spazio ai punti importanti e spiega meglio quelli non capiti, e le Domande li conoscono.
-- **Pagina del corso** (clic sul nome del corso sopra le lezioni) con i **costi**: quanto hai speso con l'AI, per mese e per lezione, comprese domande ed elaborazioni interrotte. Nella Sintesi la riga in alto dice anche quanto è costata l'ultima elaborazione.
-- **Testo di Whisper**: nella Trascrizione l'interruttore *Ripulita | Whisper* mostra il testo come l'ha riconosciuto Whisper, prima della ripulitura.
-- **Correzioni a mano**: trascrizioni e testi letti, sintesi, flashcard, domande d'esame e glossario si possono correggere con **Modifica**. Nei testi c'è **Trova e sostituisci** per correggere in un colpo una parola sbagliata. Con **Rigenera** la sintesi usa le correzioni; con *Rielabora anche le fonti* l'app chiede conferma e conserva la versione corretta.
-- **Parole del corso**: nel corso si scrivono i termini e i nomi ricorrenti (per esempio ARERA, colpo d'ariete); Whisper, la ripulitura e la sintesi li scrivono giusti. Si possono aggiungere anche da una sostituzione.
-- Se il modello risponde con una sintesi vuota (succede ogni tanto con Claude Haiku), l'app la richiede fino a tre volte e non sostituisce mai la sintesi salvata con una vuota.
+### Trascrizione
+- **Correzioni a mano** di trascrizioni e testi letti, con **trova e sostituisci**; il testo di **Whisper** prima della ripulitura si vede con l'interruttore *Ripulita | Whisper*.
+- **Ripulisci di nuovo un pezzo**: selezioni un passaggio venuto male e un modello (anche un altro) lo rifà dal testo di Whisper; scegli tu se sostituirlo.
+- **Pause**: le parole che Whisper inventa durante un silenzio o un intervallo («grazie grazie grazie…») diventano una riga grigia «Pausa 00:12:23 – 00:16:19» e non arrivano al modello. Per le lezioni già fatte c'è il pulsante «pause da sistemare»; a mano, *Segna come pausa*.
+- **Segnaposti mentre ascolti**: *Importante* (tasto I), *Non ho capito* (D) e *Nota* (N) segnano il minuto; il paragrafo è evidenziato e la sintesi ne tiene conto.
+- **Cerca nella lezione** (⌘F / Ctrl+F) e, con più documenti, la riga **In questa lezione** e il menu sul nome per passare dall'uno all'altro.
+- Dalla ricerca, dalla sintesi e dalla mappa la trascrizione va al paragrafo di quel minuto.
+
+### Slide e PDF
+- **Slide collegate alla registrazione**: ogni PDF è *Slide della lezione* o *Altro materiale* (l'app lo propone). Le slide vengono collegate ai minuti della lezione e nella Trascrizione compare la **slide del momento accanto al testo**, che segue l'audio e lo scorrimento.
+- Gli **appunti a mano** sopra slide e foto vengono trascritti e si vedono in blu, con una matita.
+- Con OpenRouter i PDF possono pesare fino a 50 MB.
+
+### Studio
+- **Ripasso a intervalli** delle flashcard, per una lezione o per tutto il corso: quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni.
+- Sintesi, flashcard, domande d'esame e glossario si correggono a mano; le **formule** si vedono come formule anche nelle flashcard.
+- **Versioni precedenti**: le sintesi sostituite da Rigenera e le trascrizioni rifatte si confrontano con quella attuale e si ripristinano.
+- **Mappa**: la freccia accanto a un concetto porta al punto della registrazione; **Esporta in PDF** la stampa disegnata su una pagina orizzontale (anche nel PDF della lezione).
+
+### Corsi
+- **Pagina del corso** (clic sul nome del corso): ripasso, **sintesi del corso** per argomenti con le domande d'esame più ricorrenti, **glossario** del corso e **costi** per mese e per lezione.
+- **Parole del corso** e **parole per tutti i corsi** (Impostazioni): termini e nomi suggeriti a Whisper, alla ripulitura e alla sintesi.
+
+### Interfaccia
+- Menu **⋯** per corsi e lezioni, colonna dei corsi **nascondibile**, lezione **a tutto schermo** (Esc per tornare), pulsanti tutti della stessa altezza.
+- In basso a sinistra la **versione** con le **novità** (un pallino blu quando ce ne sono di nuove).
+
+### Affidabilità
+- Se il modello della sintesi risponde vuoto o scrive una risposta troncata, l'app riprova (anche con il modello di riserva) e non sostituisce mai la sintesi salvata.
+- Corretto: con OpenRouter, la ripresa dopo una ripulitura non riuscita provava a inviare l'audio («troppo grande per OpenRouter»); ora riparte dal testo di Whisper.
 - I messaggi durante l'elaborazione non nominano più Gemini quando si usa OpenRouter.
 
 ## 0.7.0
