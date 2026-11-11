@@ -91,5 +91,10 @@ jobs:
         run: |
           # whisper-rs-sys says why bindgen failed only with -vv (warnings of dependencies are hidden).
           cargo build --lib -vv *> build.log
-          Select-String -Path build.log -Pattern "Unable to generate|bundled bindings" -Context 0,8
           cargo test --lib
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-build-log
+          path: src-tauri/build.log
+          if-no-files-found: ignore
