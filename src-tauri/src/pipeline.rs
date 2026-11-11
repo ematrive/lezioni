@@ -371,8 +371,11 @@ fn asr_prompt(course: &str, title: &str, terms: &str, notes: &str) -> String {
 }
 
 /// True when processing will transcribe at least one recording (to get Whisper ready first).
+/// Whisper is needed: a recording without its transcript, or with parts whose cleanup failed
+/// last time (`run` takes those up again through Whisper's saved text, `raw_part`, so nothing is
+/// transcribed twice; without Whisper loaded they would go to the model as audio).
 pub fn needs_transcription(lesson: &Lesson, force: bool) -> bool {
-    lesson.meta.sources.iter().any(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video) && !s.omitted && (force || !lesson.path.join(extract_rel(s)).is_file()))
+    lesson.meta.sources.iter().any(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video) && !s.omitted && (force || !lesson.path.join(extract_rel(s)).is_file() || cleanup_pending(&lesson.path, s)))
 }
 
 /// A recording with parts still in Whisper's text (cleanup failed last time): processing must
@@ -524,6 +527,13 @@ impl<A: Ai> Ctx<'_, A> {
         let tmp = std::env::temp_dir().join(format!("lezioni-{}", uuid::Uuid::new_v4()));
         let (p, d, c, w) = (path.to_path_buf(), tmp.clone(), self.cancel.clone(), self.window);
         let split = tokio::task::spawn_blocking(move || audio::split(&p, &d, w, &c)).await?;
+        // Transcription on the computer (always with OpenRouter): the audio must never go to the
+        // model, which with OpenRouter refuses it anyway ("troppo grande").
+        if self.models.engine == Engine::Local && self.asr.is_none() {
+            let _ = fs::remove_dir_all(&tmp);
+            log::warn!("{label}: trascrizione locale senza Whisper caricato");
+            bail!("la trascrizione sul computer non era pronta: rilancia l'elaborazione");
+        }
         let result = match split {
             Ok(chunks) => match &self.asr {
                 Some(asr) => self.transcribe_local(asr, lesson_id, s, &chunks, step, usage, warnings).await,
@@ -1113,7 +1123,12 @@ mod tests {
     }
 
     async fn run_with(st: &Setup, ai: &Fake, asr: Option<Arc<dyn Asr>>, opts: Options) -> Result<Report> {
-        let models = Models::default();
+        // Without Whisper the recordings go to the model ("Con Gemini"), as the app does.
+        let models = Models { engine: if asr.is_some() { Engine::Local } else { Engine::Gemini }, ..Models::default() };
+        run_models(st, ai, asr, opts, models).await
+    }
+
+    async fn run_models(st: &Setup, ai: &Fake, asr: Option<Arc<dyn Asr>>, opts: Options, models: Models) -> Result<Report> {
         let cancel = CancellationToken::new();
         let progress = |_: f64, _: u32, _: String| {};
         let detail = |_: String| {};
@@ -1244,6 +1259,17 @@ mod tests {
         assert!(out.info.unwrap().edited.is_some());
     }
 
+    /// Transcription on the computer without Whisper loaded: an error, never the audio to the model.
+    #[tokio::test]
+    async fn local_transcription_never_sends_the_audio() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        let err = run_models(&st, &ai, None, Options::default(), Models::default()).await.unwrap_err().to_string();
+        assert!(err.contains("non era pronta"), "{err}");
+        assert_eq!(ai.uploads.load(Ordering::SeqCst), 0);
+        assert_eq!(ai.calls.load(Ordering::SeqCst), 0);
+    }
+
     #[tokio::test]
     async fn failed_cleanup_keeps_whisper_text_and_retries_only_the_cleanup() {
         let st = setup(&[("reg.wav", None)]);
@@ -1259,6 +1285,8 @@ mod tests {
         // Whisper's text is what the user sees (transcript tab, search, chat) until cleaned.
         assert_eq!(outputs(&l).extracts[&src.id], "[00:00:01] ehm allora il simplesso\n\n[00:00:11] ehm allora il simplesso\n\n[00:00:21] ehm allora il simplesso");
         assert!(cleanup_pending(&l.path, src));
+        // So the app loads Whisper again for the next run (it once sent the audio to OpenRouter).
+        assert!(needs_transcription(&l, false));
         assert!(outputs(&l).summary.unwrap().contains("Simplesso"), "summary made from Whisper's text");
 
         ai.fail_cleanup.store(false, Ordering::SeqCst);
@@ -1268,6 +1296,7 @@ mod tests {
         let l = st.lib.lesson(&st.lesson).unwrap();
         assert_eq!(outputs(&l).extracts[&l.meta.sources[0].id], "[00:00:01] il simplesso\n\n[00:00:11] il simplesso\n\n[00:00:21] il simplesso");
         assert!(!l.path.join(parts_rel(&l.meta.sources[0])).exists(), "parts removed once all cleaned");
+        assert!(!needs_transcription(&l, false));
 
         // Nothing pending: a third run only redoes the summary.
         let before = count(&ai, "Ripuliscila");
