@@ -39,6 +39,39 @@ impl Ai for Gemini {
     }
 }
 
+/// Counts what every answer cost, model by model, also when the job fails afterwards.
+pub struct Metered<A> {
+    pub inner: A,
+    pub spent: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, Usage>>>,
+}
+
+impl<A> Metered<A> {
+    pub fn new(inner: A) -> Self {
+        Metered { inner, spent: Default::default() }
+    }
+}
+
+impl<A: Ai> Ai for Metered<A> {
+    async fn generate(&self, model: &str, req: &Request, cancel: &CancellationToken) -> Result<Answer> {
+        let a = self.inner.generate(model, req, cancel).await?;
+        let m = if a.model.is_empty() { model } else { &a.model };
+        self.spent.lock().unwrap().entry(m.to_string()).or_default().add(&a.usage);
+        Ok(a)
+    }
+    async fn count_tokens(&self, model: &str, parts: &[Part], cancel: &CancellationToken) -> Result<u64> {
+        self.inner.count_tokens(model, parts, cancel).await
+    }
+    async fn upload(&self, path: &Path, mime: &str, cancel: &CancellationToken) -> Result<RemoteFile> {
+        self.inner.upload(path, mime, cancel).await
+    }
+    async fn delete_file(&self, name: &str) {
+        self.inner.delete_file(name).await
+    }
+    fn inline_max(&self) -> u64 {
+        self.inner.inline_max()
+    }
+}
+
 /// The provider chosen in Settings.
 #[derive(Clone)]
 pub enum Provider {

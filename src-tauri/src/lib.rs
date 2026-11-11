@@ -3,6 +3,7 @@ pub mod asr;
 pub mod audio;
 pub mod chat;
 pub mod commands;
+pub mod costs;
 pub mod error;
 pub mod jobs;
 pub mod library;
@@ -118,6 +119,7 @@ pub fn run() {
             chat_load,
             chat_clear,
             chat_ask,
+            course_costs,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

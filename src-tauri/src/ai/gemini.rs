@@ -94,6 +94,12 @@ impl Usage {
             self.cost = Some(self.cost.unwrap_or(0.0) + c);
         }
     }
+
+    /// USD: the real cost, or else the paid-tier list price of gemini-3.8-flash (Nov 2026,
+    /// 0.75 in / 3.75 out per 1M tokens; the same figure as `costEstimate` in `src/lib/api.ts`).
+    pub fn cost_or_estimate(&self) -> f64 {
+        self.cost.unwrap_or_else(|| (self.prompt_token_count as f64 * 0.75 + (self.candidates_token_count + self.thoughts_token_count) as f64 * 3.75) / 1e6)
+    }
 }
 
 #[derive(Debug, Clone)]

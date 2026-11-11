@@ -140,6 +140,15 @@ try {
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Clicca un tempo per ascoltare da quel punto.").waitFor();
 
+  // Course page: what the AI cost, by month and by lesson.
+  await p.getByTitle(/^Pagina del corso/).click();
+  await p.getByRole("button", { name: "Costi", exact: true }).click();
+  await p.getByText("spesi con l'AI per questo corso", { exact: false }).waitFor();
+  await p.getByRole("cell", { name: "0,03 $" }).first().waitFor();
+  await shot("corso-costi");
+  await p.getByRole("button", { name: "Simplesso e degenerazione" }).last().click();
+  await p.getByText("base ammissibile").waitFor();
+
   // Share as a web page: the HTML is built in the UI, with the summary and embedded KaTeX fonts.
   await p.getByRole("button", { name: "Condividi" }).click();
   await p.getByText("Pagina web").click();

@@ -2,6 +2,7 @@
 
 ## Prossima versione
 
+- **Pagina del corso** (clic sul nome del corso sopra le lezioni) con i **costi**: quanto hai speso con l'AI, per mese e per lezione, comprese domande ed elaborazioni interrotte. Nella Sintesi la riga in alto dice anche quanto è costata l'ultima elaborazione.
 - **Testo di Whisper**: nella Trascrizione l'interruttore *Ripulita | Whisper* mostra il testo come l'ha riconosciuto Whisper, prima della ripulitura.
 - **Correzioni a mano**: trascrizioni e testi letti, sintesi, flashcard, domande d'esame e glossario si possono correggere con **Modifica**. Nei testi c'è **Trova e sostituisci** per correggere in un colpo una parola sbagliata. Con **Rigenera** la sintesi usa le correzioni; con *Rielabora anche le fonti* l'app chiede conferma e conserva la versione corretta.
 - **Parole del corso**: nel corso si scrivono i termini e i nomi ricorrenti (per esempio ARERA, colpo d'ariete); Whisper, la ripulitura e la sintesi li scrivono giusti. Si possono aggiungere anche da una sostituzione.

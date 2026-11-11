@@ -161,7 +161,7 @@ fn whisper_parts(lesson_dir: &Path, s: &Source) -> Option<String> {
 }
 
 /// Writes `<dir>/<rel>` through a temporary file, so a crash never leaves half a file.
-fn write_atomic(dir: &Path, rel: &Path, content: &[u8]) -> Result<()> {
+pub(crate) fn write_atomic(dir: &Path, rel: &Path, content: &[u8]) -> Result<()> {
     let p = dir.join(rel);
     if let Some(d) = p.parent() {
         fs::create_dir_all(d)?;

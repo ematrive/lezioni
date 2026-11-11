@@ -5,6 +5,7 @@ import { api, share, toAppError, type Course, type Hit, type SettingsView } from
 import { Welcome } from "./features/settings/Welcome";
 import { CourseList } from "./features/courses/CourseList";
 import { LessonList } from "./features/courses/LessonList";
+import { CoursePage } from "./features/courses/CoursePage";
 import { LessonView, type Focus } from "./features/lesson/LessonView";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { SearchResults } from "./features/search/SearchResults";
@@ -159,6 +160,7 @@ export default function App() {
             rev={lessonsRev}
             selected={lessonId}
             onSelect={setLessonId}
+            onOverview={clearLesson}
             onChanged={() => {
               setLessonsRev((r) => r + 1);
               loadCourses();
@@ -188,8 +190,18 @@ export default function App() {
               loadCourses();
             }}
           />
+        ) : course ? (
+          <CoursePage
+            key={course.id}
+            course={course}
+            rev={lessonsRev}
+            onOpenLesson={(id) => {
+              setLessonId(id);
+              setFocus({ lessonId: id, tab: "summary", sourceId: null, secs: null, n: Date.now() });
+            }}
+          />
         ) : (
-          <Empty text={course ? "Scegli una lezione o creane una nuova." : ""} />
+          <Empty text="" />
         )}
       </main>
       {showSettings && (

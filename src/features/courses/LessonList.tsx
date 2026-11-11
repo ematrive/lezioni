@@ -4,7 +4,7 @@ import { api, fmtDate, today, toAppError, type Course, type Lesson } from "../..
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
 
-export function LessonList({ course, rev, selected, onSelect, onChanged }: { course: Course; rev: number; selected: string | null; onSelect: (id: string) => void; onChanged: () => void }) {
+export function LessonList({ course, rev, selected, onSelect, onOverview, onChanged }: { course: Course; rev: number; selected: string | null; onSelect: (id: string) => void; onOverview: () => void; onChanged: () => void }) {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
@@ -27,12 +27,10 @@ export function LessonList({ course, rev, selected, onSelect, onChanged }: { cou
     <div className="flex h-full flex-col">
       <div className="space-y-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold" title={course.name}>
-              {course.name}
-            </h2>
+          <button className={`min-w-0 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title="Pagina del corso: ripasso, sintesi del corso, costi">
+            <h2 className="truncate text-base font-semibold">{course.name}</h2>
             {course.teacher && <p className="truncate text-xs text-zinc-500">{course.teacher}</p>}
-          </div>
+          </button>
           <button className="btn btn-primary shrink-0" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Lezione
           </button>

@@ -11,6 +11,7 @@
   const outputs = {};
   let aiProvider = "gemini";
   const chats = {};
+  const costs = {}; // lesson id -> [{ when, total }]
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
     if (["mp3", "m4a", "wav", "ogg"].includes(e)) return "audio";
@@ -138,6 +139,14 @@
           outputs[a.lessonId].study = a.study;
           outputs[a.lessonId].info.edited = now();
           return null;
+        case "course_costs": {
+          const ls = lessons.filter((l) => l.courseId === a.courseId).sort((x, y) => y.date.localeCompare(x.date));
+          const rows = ls.map((l) => ({ lessonId: l.id, title: l.title, date: l.date, total: (costs[l.id] ?? []).reduce((t, e) => t + e.total, 0) }));
+          const months = {};
+          for (const l of ls) for (const e of costs[l.id] ?? []) months[e.when.slice(0, 7)] = (months[e.when.slice(0, 7)] ?? 0) + e.total;
+          const total = rows.reduce((t, r) => t + r.total, 0);
+          return { lessons: rows, course: 0, months: Object.entries(months).map(([month, total]) => ({ month, total })), total, estimated: false };
+        }
         case "lessons_list":
           return lessons.filter((l) => l.courseId === a.courseId).sort((x, y) => y.date.localeCompare(x.date));
         case "lesson_get":
@@ -215,8 +224,9 @@
                 flashcard: [{ domanda: "Cos'è il test del rapporto minimo?", risposta: "Sceglie la variabile uscente mantenendo l'ammissibilità." }],
                 domandeEsame: [{ domanda: "Illustra il metodo del simplesso.", traccia: "Forma standard, base iniziale, pivot, criterio di ottimalità." }],
               },
-              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
+              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
             };
+            costs[l.id] = (costs[l.id] ?? []).concat([{ when: now(), total: 0.034 }]);
             send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, warnings: [] });
           };
           return null;

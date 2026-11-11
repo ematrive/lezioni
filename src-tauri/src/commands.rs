@@ -309,13 +309,15 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
     let settings = state.settings.lock().unwrap().clone();
     let models = settings.effective_models();
     let ch = channel.clone();
-    let ai = provider(&settings)?.with_notify(Arc::new(move |message| {
+    let ai = crate::ai::Metered::new(provider(&settings)?.with_notify(Arc::new(move |message| {
         let _ = ch.send(JobEvent::Detail { message });
-    }));
+    })));
+    let spent = ai.spent.clone();
     let archive = Archive { dir, lock: state.write.clone() };
     let cancel = state.jobs.start(&job_id, &lesson_id);
     let whisper = state.whisper.clone();
     let ch = channel.clone();
+    let lesson_id2 = lesson_id.clone();
     let work = tauri::async_runtime::spawn(async move {
         // Whisper only when a recording is still to be transcribed: download (first time) and load.
         let lesson = archive.lesson(&lesson_id)?;
@@ -354,8 +356,17 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
                 JobEvent::Failed { message: format!("errore interno durante l'elaborazione ({e}): manda il file di log (Impostazioni → Log) a chi sviluppa l'app") }
             }
         };
+        // What was spent is recorded also when the job failed or was cancelled.
+        let state = app.state::<AppState>();
+        let spent = std::mem::take(&mut *spent.lock().unwrap());
+        if let Ok(lib) = state.library() {
+            let _w = state.writing();
+            if let Err(e) = crate::costs::record_lesson(&lib, &lesson_id2, "elaborazione", spent) {
+                log::warn!("costi: {e:#}");
+            }
+        }
         let _ = channel.send(ev);
-        app.state::<AppState>().jobs.finish(&job_id);
+        state.jobs.finish(&job_id);
     });
     Ok(())
 }
@@ -493,5 +504,16 @@ pub async fn chat_ask(state: State<'_, AppState>, lesson_id: String, scope: Scop
     let ai = provider(&settings)?;
     let lib = state.library()?;
     let (messages, usage) = chat::ask(&ai, &model, &lib, &lesson_id, scope, &question, &tokio_util::sync::CancellationToken::new()).await?;
+    {
+        let _w = state.writing();
+        if let Err(e) = crate::costs::record_lesson(&lib, &lesson_id, "chat", [(model, usage.clone())].into()) {
+            log::warn!("costi: {e:#}");
+        }
+    }
     Ok(ChatAnswer { messages, usage })
+}
+
+#[tauri::command(async)]
+pub fn course_costs(state: State<'_, AppState>, course_id: String) -> CmdResult<crate::costs::CourseCosts> {
+    Ok(crate::costs::course(&state.library()?, &course_id)?)
 }

@@ -61,6 +61,7 @@ export const api = {
   createCourse: (name: string, teacher: string, terms: string) => invoke<Course>("course_create", { name, teacher, terms }),
   updateCourse: (id: string, name: string, teacher: string, terms: string) => invoke<Course>("course_update", { id, name, teacher, terms }),
   deleteCourse: (id: string) => invoke<void>("course_delete", { id }),
+  courseCosts: (courseId: string) => invoke<CourseCosts>("course_costs", { courseId }),
 
   lessons: (courseId: string) => invoke<Lesson[]>("lessons_list", { courseId }),
   lesson: (id: string) => invoke<Lesson>("lesson_get", { id }),
@@ -93,8 +94,21 @@ export function fmtSize(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
+/** USD, with more decimals for small amounts. */
+export function fmtUsd(x: number): string {
+  return `${(x > 0 && x < 0.01 ? x.toFixed(4) : x.toFixed(2)).replace(".", ",")} $`;
+}
+
+export interface CourseCosts {
+  lessons: { lessonId: string; title: string; date: string; total: number }[];
+  course: number;
+  months: { month: string; total: number }[];
+  total: number;
+  estimated: boolean;
+}
+
 export function fmtDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
@@ -213,11 +227,11 @@ export const ai = {
 
 /** What a run cost: the real figure from OpenRouter, or "would cost" at Gemini's paid list price. */
 export function costLine(u: Usage): string {
-  const fmt = (x: number) => (x < 0.01 ? x.toFixed(4) : x.toFixed(2)).replace(".", ",");
-  return u.cost != null ? `costo: ${fmt(u.cost)} $` : `a pagamento sarebbero circa ${fmt(costEstimate(u))} $`;
+  return u.cost != null ? `costo: ${fmtUsd(u.cost)}` : `a pagamento sarebbero circa ${fmtUsd(costEstimate(u))}`;
 }
 
-/** Paid-tier list price of gemini-3.8-flash (USD per 1M tokens, Nov 2026): rough cost of a run. */
+/** Paid-tier list price of gemini-3.8-flash (USD per 1M tokens, Nov 2026): rough cost of a run.
+ *  Same figure as `Usage::cost_or_estimate` in Rust (course totals). */
 export function costEstimate(u: Usage): number {
   return (u.promptTokenCount * 0.75 + (u.candidatesTokenCount + u.thoughtsTokenCount) * 3.75) / 1e6;
 }

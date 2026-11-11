@@ -307,7 +307,7 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
       <div className="mb-4 flex items-start gap-3">
         {outputs.info && (
           <p className="flex-1 text-xs text-zinc-500">
-            Generata il {new Date(outputs.info.generated).toLocaleString("it-IT")} con {outputs.info.model}
+            Generata il {new Date(outputs.info.generated).toLocaleString("it-IT")} con {outputs.info.model} ({costLine(outputs.info.usage)})
             {outputs.info.edited && <>, corretta a mano il {fmtDate(outputs.info.edited)}</>}. I riferimenti [F1 00:12:30] portano alla trascrizione.
           </p>
         )}
