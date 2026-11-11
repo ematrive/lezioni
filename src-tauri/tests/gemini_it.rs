@@ -63,7 +63,7 @@ async fn real_api() {
     // Structured output with the real schema, on a small text.
     let req = Request {
         system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Prova", "2026-11-10", "", "[F1] appunti (testo)\nIl metodo del simplesso si muove tra i vertici del poliedro ammissibile. [00:01:00] La variabile entrante si sceglie col costo ridotto più negativo."))],
+        parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Prova", "2026-11-10", "", "", "[F1] appunti (testo)\nIl metodo del simplesso si muove tra i vertici del poliedro ammissibile. [00:01:00] La variabile entrante si sceglie col costo ridotto più negativo."))],
         schema: Some(prompts::generate_schema()),
         max_output_tokens: Some(8000),
         ..Default::default()

@@ -27,6 +27,9 @@ pub struct PackageCourse {
     pub name: String,
     #[serde(default)]
     pub teacher: String,
+    /// The course's terms travel with the package (they help whoever processes it again).
+    #[serde(default)]
+    pub terms: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +122,7 @@ pub fn export_package(lib: &Library, lesson_ids: &[String], include: Include, de
                 || left_out.iter().any(|o| o == rel)
                 || rel.starts_with(Path::new(EXTRACTS_DIR).join(".parti"))
                 || rel.starts_with(Path::new(GENERATED_DIR).join("versioni"))
+                || rel.starts_with(Path::new(EXTRACTS_DIR).join("versioni"))
                 || rel.extension().is_some_and(|e| e == "tmp")
         };
         add_dir(&mut zw, &l.path, &folder, &skip)?;
@@ -128,7 +132,7 @@ pub fn export_package(lib: &Library, lesson_ids: &[String], include: Include, de
         format: FORMAT,
         app: format!("Lezioni {}", env!("CARGO_PKG_VERSION")),
         exported: Utc::now(),
-        course: PackageCourse { name: course.meta.name.clone(), teacher: course.meta.teacher.clone() },
+        course: PackageCourse { name: course.meta.name.clone(), teacher: course.meta.teacher.clone(), terms: course.meta.terms.clone() },
         lessons: folders,
     };
     zw.start_file(PACKAGE_FILE, zip_options())?;
@@ -227,7 +231,7 @@ pub fn import(lib: &Library, path: &Path, course_id: Option<&str>, on_existing: 
         Some(id) => lib.course(id)?.meta.id,
         None => match lib.courses()?.into_iter().find(|c| c.meta.name.to_lowercase() == m.course.name.to_lowercase()) {
             Some(c) => c.meta.id,
-            None => lib.create_course(&m.course.name, &m.course.teacher)?.meta.id,
+            None => lib.create_course(&m.course.name, &m.course.teacher, &m.course.terms)?.meta.id,
         },
     };
     // Staged inside the archive, so the final move is a rename on the same disk.
@@ -390,7 +394,7 @@ mod tests {
     fn lesson_with_outputs(lib: &Library, course: &str) -> Lesson {
         let c = match lib.courses().unwrap().into_iter().find(|c| c.meta.name == course) {
             Some(c) => c,
-            None => lib.create_course(course, "Bianchi").unwrap(),
+            None => lib.create_course(course, "Bianchi", "").unwrap(),
         };
         let l = lib.create_lesson(&c.meta.id, "Simplesso", "2026-11-10".parse().unwrap()).unwrap();
         let tmp = tempfile::tempdir().unwrap();
@@ -410,6 +414,8 @@ mod tests {
         fs::write(l.path.join("generati/info.json"), format!(r#"{{"generated":"2026-11-10T10:00:00Z","model":"m","usage":{{}},"suggestedTitle":"x","sources":{{"F1":"{}"}}}}"#, l.meta.sources[0].id)).unwrap();
         fs::create_dir_all(l.path.join("generati/versioni/vecchia")).unwrap();
         fs::write(l.path.join("generati/versioni/vecchia/sintesi.md"), "old").unwrap();
+        fs::create_dir_all(l.path.join("estratti/versioni/vecchia")).unwrap();
+        fs::write(l.path.join("estratti/versioni/vecchia/reg.m4a.md"), "old").unwrap();
         lib.lesson(&l.meta.id).unwrap()
     }
 
@@ -439,6 +445,7 @@ mod tests {
         assert_eq!(o.extracts[&got.meta.sources[0].id], "[00:00:05] Oggi il simplesso.", "transcript travels without the audio");
         assert!(o.summary.is_some() && o.study.is_some() && o.map.is_some());
         assert!(!got.path.join("generati/versioni").exists(), "old versions not shared");
+        assert!(!got.path.join("estratti/versioni").exists(), "copies of corrected transcripts not shared");
         assert!(fs::read_dir(b.path()).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with(".importazione")));
 
         // Same package again.
@@ -479,7 +486,7 @@ mod tests {
     /// A package written by hand (or by someone malicious).
     fn handmade(path: &Path, meta: &serde_json::Value, extra: &[(&str, &[u8])]) {
         let mut zw = zip::ZipWriter::new(fs::File::create(path).unwrap());
-        let m = Manifest { format: 1, app: "x".into(), exported: Utc::now(), course: PackageCourse { name: "RO".into(), teacher: String::new() }, lessons: vec!["lezioni/01".into()] };
+        let m = Manifest { format: 1, app: "x".into(), exported: Utc::now(), course: PackageCourse { name: "RO".into(), teacher: String::new(), terms: String::new() }, lessons: vec!["lezioni/01".into()] };
         zw.start_file(PACKAGE_FILE, zip_options()).unwrap();
         zw.write_all(&serde_json::to_vec(&m).unwrap()).unwrap();
         zw.start_file("lezioni/01/lezione.json", zip_options()).unwrap();

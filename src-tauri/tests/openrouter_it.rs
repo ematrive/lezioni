@@ -33,6 +33,7 @@ async fn compare_models() {
     let models = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite,anthropic/claude-haiku-5.5,openai/gpt-5-nano,deepseek/deepseek-v4-flash".into());
     let raw = std::env::var("LEZIONI_IT_TEXT").map(|p| std::fs::read_to_string(p).unwrap()).unwrap_or_else(|_| RAW.into());
     let course = std::env::var("LEZIONI_IT_COURSE").unwrap_or_else(|_| "Ricerca operativa".into());
+    let terms = std::env::var("LEZIONI_IT_TERMS").unwrap_or_default();
     let title = std::env::var("LEZIONI_IT_TITLE").unwrap_or_else(|_| "Metodo del simplesso".into());
     let o = OpenRouter::new(key);
     let cancel = CancellationToken::new();
@@ -41,7 +42,7 @@ async fn compare_models() {
         eprintln!("\n===== {model}");
         // 1. Cleanup of Whisper's text.
         let t = Instant::now();
-        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompts::clean_transcript(1, 1, &course, &title, &raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompts::clean_transcript(1, 1, &course, &title, &terms, &raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
         let clean = match o.generate(model, &req, &cancel).await {
             Ok(a) => a,
             Err(e) => {
@@ -71,7 +72,7 @@ async fn compare_models() {
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &sources))],
+            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()

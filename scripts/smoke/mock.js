@@ -20,7 +20,7 @@
     return "other";
   };
   const src = (file, originalName, size) => ({ id: id(), file, kind: kind(file), originalName, size, added: now() });
-  const course = (c) => ({ ...c, lessons: lessons.filter((l) => l.courseId === c.id).length });
+  const course = (c) => ({ terms: "", ...c, lessons: lessons.filter((l) => l.courseId === c.id).length });
   const find = (lid) => {
     const l = lessons.find((x) => x.id === lid);
     if (!l) throw { kind: "other", message: "lezione non trovata" };
@@ -115,10 +115,29 @@
         case "courses_list":
           return courses.map(course);
         case "course_create": {
-          const c = { id: id(), name: a.name, teacher: a.teacher, created: now(), path: `${libraryDir}/${a.name}` };
+          const c = { id: id(), name: a.name, teacher: a.teacher, terms: a.terms ?? "", created: now(), path: `${libraryDir}/${a.name}` };
           courses.push(c);
           return course(c);
         }
+        case "course_update": {
+          const c = courses.find((x) => x.id === a.id);
+          Object.assign(c, { name: a.name, teacher: a.teacher, terms: a.terms });
+          return course(c);
+        }
+        case "extract_save": {
+          const l = find(a.lessonId);
+          outputs[l.id].extracts[a.sourceId] = a.text;
+          l.sources.find((s) => s.id === a.sourceId).edited = now();
+          return l;
+        }
+        case "summary_save":
+          outputs[a.lessonId].summary = a.text;
+          outputs[a.lessonId].info.edited = now();
+          return null;
+        case "study_save":
+          outputs[a.lessonId].study = a.study;
+          outputs[a.lessonId].info.edited = now();
+          return null;
         case "lessons_list":
           return lessons.filter((l) => l.courseId === a.courseId).sort((x, y) => y.date.localeCompare(x.date));
         case "lesson_get":
@@ -174,7 +193,7 @@
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
-          return outputs[a.id] ?? { extracts: {}, summary: null, map: null, study: null, info: null };
+          return outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null };
         case "lesson_process": {
           // Fake run: a few steps, then the outputs below.
           const l = find(a.lessonId);
@@ -187,7 +206,8 @@
           setTimeout(() => send({ event: "detail", message: "Whisper: 43% · ripulitura della parte 1" }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
-              extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$." } : {},
+              extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
+              raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
               summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
               map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
               study: {

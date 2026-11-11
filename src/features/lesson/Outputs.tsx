@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, RotateCcw, Shuffle, Sparkles, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, costLine, fileUrl, sourceFile, toAppError, type JobEvent, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
 import { Markdown } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 
@@ -110,7 +110,117 @@ function Placeholder({ text, action }: { text: string; action?: React.ReactNode 
   );
 }
 
-export function TranscriptTab({ lesson, outputs, seek, process }: { lesson: Lesson; outputs: Outputs; seek: Seek | null; process: React.ReactNode }) {
+// ---------- corrections by hand ----------
+
+/** What a tab needs to correct its texts: off (undefined) while the lesson is being processed. */
+export interface Editing {
+  course: Course | null;
+  /** After a save: the lesson (when it changed) and the outputs are loaded again. */
+  onSaved: (lesson?: Lesson) => void;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const fmtDate = (iso: string) => new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+
+/** Adds a term to the course's ones (read fresh, so that two adds in a row both stay). */
+async function addCourseTerm(courseId: string, term: string) {
+  const c = (await api.courses()).find((x) => x.id === courseId);
+  if (!c) return;
+  const have = c.terms.split(/[,;\n]/).map((t) => t.trim().toLowerCase());
+  if (have.includes(term.toLowerCase())) {
+    toast(`«${term}» è già tra le parole del corso.`);
+    return;
+  }
+  await api.updateCourse(c.id, c.name, c.teacher, c.terms.trim() ? `${c.terms.trim()}, ${term}` : term);
+  toast(`«${term}» aggiunta alle parole del corso: varrà dalle prossime elaborazioni.`);
+}
+
+/** Markdown text editor with find and replace (all occurrences, ignoring case). */
+export function TextEditor({ initial, course, onSave, onCancel }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void }) {
+  const [text, setText] = useState(initial);
+  const [find, setFind] = useState("");
+  const [repl, setRepl] = useState("");
+  const [replaced, setReplaced] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const re = find ? new RegExp(escapeRe(find), "gi") : null;
+  const n = re ? (text.match(re)?.length ?? 0) : 0;
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(text);
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="space-y-2" data-editor>
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="field max-w-52" placeholder="Trova" value={find} onChange={(e) => setFind(e.target.value)} spellCheck={false} />
+        <input className="field max-w-52" placeholder="Sostituisci con" value={repl} onChange={(e) => setRepl(e.target.value)} spellCheck={false} />
+        <button
+          className="btn"
+          disabled={!n}
+          onClick={() => {
+            if (!re) return;
+            setText(text.replace(re, () => repl));
+            setReplaced(repl.trim() || null);
+            toast(`${n} ${n === 1 ? "sostituzione" : "sostituzioni"}.`);
+          }}
+        >
+          Sostituisci tutte ({n})
+        </button>
+        {replaced && course && (
+          <button
+            className="text-sm text-sky-700 hover:underline dark:text-sky-400"
+            onClick={() => {
+              addCourseTerm(course.id, replaced).catch((e) => toast(toAppError(e).message, "error"));
+              setReplaced(null);
+            }}
+          >
+            Aggiungi «{replaced}» alle parole del corso
+          </button>
+        )}
+      </div>
+      <textarea className="field min-h-[60vh] font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} />
+      <div className="flex justify-end gap-2">
+        <button className="btn" onClick={onCancel}>
+          Annulla
+        </button>
+        <button className="btn btn-primary" disabled={saving || text === initial} onClick={save}>
+          Salva
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditButton({ editing, onClick, label = "Modifica" }: { editing?: Editing; onClick: () => void; label?: string }) {
+  return (
+    <button className="btn" disabled={!editing} onClick={onClick} title={editing ? "Correggi il testo a mano" : "Aspetta la fine dell'elaborazione"}>
+      <Pencil className="size-4" /> {label}
+    </button>
+  );
+}
+
+/** Corrections not yet in the summary: they need a Rigenera. */
+export function staleSources(lesson: Lesson, outputs: Outputs) {
+  const generated = outputs.info?.generated;
+  return lesson.sources.filter((s) => s.edited && (!generated || s.edited > generated));
+}
+
+function RegenerateHint({ lesson, outputs }: { lesson: Lesson; outputs: Outputs }) {
+  if (!outputs.summary || !staleSources(lesson, outputs).length) return null;
+  return (
+    <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      Hai corretto la trascrizione: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio.
+    </p>
+  );
+}
+
+export function TranscriptTab({ lesson, outputs, seek, process, editing }: { lesson: Lesson; outputs: Outputs; seek: Seek | null; process: React.ReactNode; editing?: Editing }) {
+  const [view, setView] = useState<Record<string, "clean" | "raw">>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const players = useRef<Record<string, HTMLAudioElement | HTMLVideoElement | null>>({});
   const sections = useRef<Record<string, HTMLElement | null>>({});
   useEffect(() => {
@@ -134,8 +244,11 @@ export function TranscriptTab({ lesson, outputs, seek, process }: { lesson: Less
   };
   return (
     <div className="mx-auto max-w-3xl space-y-10">
+      <RegenerateHint lesson={lesson} outputs={outputs} />
       {withText.map((s) => {
         const media = s.kind === "audio" || s.kind === "video";
+        const raw = outputs.raw[s.id];
+        const showRaw = !!raw && view[s.id] === "raw";
         return (
           <section key={s.id} ref={(el) => void (sections.current[s.id] = el)} className="scroll-mt-4">
             <div className="sticky top-0 z-10 -mx-4 mb-3 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:bg-zinc-950/95">
@@ -143,9 +256,41 @@ export function TranscriptTab({ lesson, outputs, seek, process }: { lesson: Less
               {s.omitted && <p className="mt-1 text-xs text-zinc-500">La registrazione non era nel pacchetto ricevuto: c'è solo la trascrizione.</p>}
               {s.kind === "audio" && !s.omitted && <audio ref={(el) => void (players.current[s.id] = el)} className="mt-2 w-full" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
               {s.kind === "video" && !s.omitted && <video ref={(el) => void (players.current[s.id] = el)} className="mt-2 max-h-64 w-full rounded" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
-              {media && !s.omitted && <p className="mt-1 text-xs text-zinc-500">Clicca un tempo per ascoltare da quel punto.</p>}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {raw && editingId !== s.id && (
+                  <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm dark:border-zinc-700" role="group" aria-label="Versione del testo">
+                    {(["clean", "raw"] as const).map((v) => (
+                      <button
+                        key={v}
+                        className={`rounded px-2 py-0.5 ${(view[s.id] ?? "clean") === v ? "bg-sky-600 text-white" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
+                        onClick={() => setView({ ...view, [s.id]: v })}
+                        title={v === "raw" ? "Il testo come l'ha riconosciuto Whisper, prima della ripulitura" : "Il testo ripulito dal modello"}
+                      >
+                        {v === "clean" ? "Ripulita" : "Whisper"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {editingId !== s.id && !showRaw && <EditButton editing={editing} onClick={() => setEditingId(s.id)} />}
+                {s.edited && <span className="text-xs text-zinc-500">Corretta a mano il {fmtDate(s.edited)}</span>}
+                {media && !s.omitted && editingId !== s.id && <span className="text-xs text-zinc-500">Clicca un tempo per ascoltare da quel punto.</span>}
+              </div>
             </div>
-            <Markdown text={outputs.extracts[s.id]} source={media ? s.id : undefined} onRef={onRef} />
+            {editingId === s.id && editing ? (
+              <TextEditor
+                initial={outputs.extracts[s.id]}
+                course={editing.course}
+                onCancel={() => setEditingId(null)}
+                onSave={async (text) => {
+                  const l = await ai.saveExtract(lesson.id, s.id, text);
+                  setEditingId(null);
+                  editing.onSaved(l);
+                  toast(outputs.summary ? "Correzione salvata. Premi Rigenera per aggiornare la sintesi." : "Correzione salvata.");
+                }}
+              />
+            ) : (
+              <Markdown text={showRaw ? raw : outputs.extracts[s.id]} source={media ? s.id : undefined} onRef={onRef} />
+            )}
           </section>
         );
       })}
@@ -153,16 +298,36 @@ export function TranscriptTab({ lesson, outputs, seek, process }: { lesson: Less
   );
 }
 
-export function SummaryTab({ outputs, onRef, process }: { outputs: Outputs; onRef: (href: string) => void; process: React.ReactNode }) {
+export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesson: Lesson; outputs: Outputs; onRef: (href: string) => void; process: React.ReactNode; editing?: Editing }) {
+  const [edit, setEdit] = useState(false);
   if (!outputs.summary) return <Placeholder text="La sintesi della lezione, costruita da tutte le fonti insieme, con i riferimenti al minuto della registrazione." action={process} />;
   return (
     <div className="mx-auto max-w-3xl">
-      {outputs.info && (
-        <p className="mb-4 text-xs text-zinc-500">
-          Generata il {new Date(outputs.info.generated).toLocaleString("it-IT")} con {outputs.info.model}. I riferimenti [F1 00:12:30] portano alla trascrizione.
-        </p>
+      <RegenerateHint lesson={lesson} outputs={outputs} />
+      <div className="mb-4 flex items-start gap-3">
+        {outputs.info && (
+          <p className="flex-1 text-xs text-zinc-500">
+            Generata il {new Date(outputs.info.generated).toLocaleString("it-IT")} con {outputs.info.model}
+            {outputs.info.edited && <>, corretta a mano il {fmtDate(outputs.info.edited)}</>}. I riferimenti [F1 00:12:30] portano alla trascrizione.
+          </p>
+        )}
+        {!edit && <EditButton editing={editing} onClick={() => setEdit(true)} />}
+      </div>
+      {edit && editing ? (
+        <TextEditor
+          initial={outputs.summary}
+          course={editing.course}
+          onCancel={() => setEdit(false)}
+          onSave={async (text) => {
+            await ai.saveSummary(lesson.id, text);
+            setEdit(false);
+            editing.onSaved();
+            toast("Sintesi salvata. Con Rigenera la versione corretta resta in generati/versioni.");
+          }}
+        />
+      ) : (
+        <Markdown text={outputs.summary} onRef={onRef} />
       )}
-      <Markdown text={outputs.summary} onRef={onRef} />
     </div>
   );
 }
@@ -209,10 +374,27 @@ export function MapTab({ outputs, process }: { outputs: Outputs; process: React.
   );
 }
 
-export function StudyTab({ outputs, process }: { outputs: Outputs; process: React.ReactNode }) {
+export function StudyTab({ lesson, outputs, process, editing }: { lesson: Lesson; outputs: Outputs; process: React.ReactNode; editing?: Editing }) {
+  const [edit, setEdit] = useState(false);
   if (!outputs.study) return <Placeholder text="Flashcard, domande d'esame e glossario per ripassare." action={process} />;
+  if (edit && editing)
+    return (
+      <StudyEditor
+        initial={outputs.study}
+        onCancel={() => setEdit(false)}
+        onSave={async (study) => {
+          await ai.saveStudy(lesson.id, study);
+          setEdit(false);
+          editing.onSaved();
+          toast("Materiale di studio salvato.");
+        }}
+      />
+    );
   return (
     <div className="mx-auto max-w-3xl space-y-10">
+      <div className="flex justify-end">
+        <EditButton editing={editing} onClick={() => setEdit(true)} label="Modifica flashcard e glossario" />
+      </div>
       <Flashcards cards={outputs.study.flashcard} />
       <Exam items={outputs.study.domandeEsame} />
       <Glossary items={outputs.study.glossario} />
@@ -323,5 +505,73 @@ function Glossary({ items }: { items: Study["glossario"] }) {
         ))}
       </dl>
     </section>
+  );
+}
+
+// ---------- study material editor ----------
+
+type Rows = { a: string; b: string }[];
+const toRows = <T,>(xs: T[], a: keyof T, b: keyof T): Rows => xs.map((x) => ({ a: String(x[a]), b: String(x[b]) }));
+
+function RowsEditor({ title, rows, labels, onChange }: { title: string; rows: Rows; labels: [string, string]; onChange: (r: Rows) => void }) {
+  const set = (i: number, k: "a" | "b", v: string) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <section>
+      <h3 className="mb-3 font-semibold">
+        {title} <span className="font-normal text-zinc-400">{rows.length}</span>
+      </h3>
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-start gap-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800" data-study-row>
+            <div className="grid flex-1 gap-2 md:grid-cols-2">
+              <textarea className="field min-h-16 text-sm" aria-label={labels[0]} placeholder={labels[0]} value={r.a} onChange={(e) => set(i, "a", e.target.value)} />
+              <textarea className="field min-h-16 text-sm" aria-label={labels[1]} placeholder={labels[1]} value={r.b} onChange={(e) => set(i, "b", e.target.value)} />
+            </div>
+            <button className="btn px-2" title="Elimina" onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+              <Trash2 className="size-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button className="btn mt-2" onClick={() => onChange([...rows, { a: "", b: "" }])}>
+        <Plus className="size-4" /> Aggiungi
+      </button>
+    </section>
+  );
+}
+
+function StudyEditor({ initial, onSave, onCancel }: { initial: Study; onSave: (s: Study) => Promise<void>; onCancel: () => void }) {
+  const [cards, setCards] = useState(() => toRows(initial.flashcard, "domanda", "risposta"));
+  const [exam, setExam] = useState(() => toRows(initial.domandeEsame, "domanda", "traccia"));
+  const [terms, setTerms] = useState(() => toRows(initial.glossario, "termine", "definizione"));
+  const [saving, setSaving] = useState(false);
+  const filled = (r: Rows) => r.filter((x) => x.a.trim() || x.b.trim());
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        flashcard: filled(cards).map((x) => ({ domanda: x.a.trim(), risposta: x.b.trim() })),
+        domandeEsame: filled(exam).map((x) => ({ domanda: x.a.trim(), traccia: x.b.trim() })),
+        glossario: filled(terms).map((x) => ({ termine: x.a.trim(), definizione: x.b.trim() })),
+      });
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="mx-auto max-w-3xl space-y-10">
+      <RowsEditor title="Flashcard" rows={cards} labels={["Domanda", "Risposta"]} onChange={setCards} />
+      <RowsEditor title="Domande d'esame" rows={exam} labels={["Domanda", "Traccia di risposta"]} onChange={setExam} />
+      <RowsEditor title="Glossario" rows={terms} labels={["Termine", "Definizione"]} onChange={setTerms} />
+      <div className="sticky bottom-0 flex justify-end gap-2 bg-zinc-50/95 py-3 dark:bg-zinc-950/95">
+        <button className="btn" onClick={onCancel}>
+          Annulla
+        </button>
+        <button className="btn btn-primary" disabled={saving} onClick={save}>
+          Salva
+        </button>
+      </div>
+    </div>
   );
 }

@@ -99,6 +99,23 @@ try {
   await p.getByText("Oggi vediamo il metodo del simplesso.").waitFor();
   await p.getByRole("button", { name: "00:12:30" }).waitFor();
   await shot("trascrizione");
+  // Whisper's text, before the cleanup.
+  await p.getByRole("button", { name: "Whisper", exact: true }).click();
+  await p.getByText(/Allora, ehm, oggi vediamo/).waitFor();
+  await shot("trascrizione-whisper");
+  await p.getByRole("button", { name: "Ripulita", exact: true }).click();
+  // Correction by hand with find and replace; the term goes to the course's ones.
+  await p.getByRole("button", { name: "Modifica", exact: true }).click();
+  await p.getByPlaceholder("Trova").fill("team");
+  await p.getByPlaceholder("Sostituisci con").fill("TIM");
+  await p.getByRole("button", { name: "Sostituisci tutte (1)" }).click();
+  await shot("correzione");
+  await p.getByRole("button", { name: "Aggiungi «TIM» alle parole del corso" }).click();
+  await p.getByText(/«TIM» aggiunta alle parole del corso/).waitFor();
+  await p.getByRole("button", { name: "Salva", exact: true }).click();
+  await p.getByText(/libro di TIM/).waitFor();
+  await p.getByText(/Corretta a mano il/).waitFor();
+  await p.getByText(/premi Rigenera per aggiornare sintesi/).waitFor();
   await p.getByRole("button", { name: "Mappa", exact: true }).click();
   await p.getByText("Rapporto minimo").waitFor();
   await shot("mappa");
@@ -106,6 +123,14 @@ try {
   await p.getByText("Cos'è il test del rapporto minimo?").click();
   await p.getByText(/mantenendo l'ammissibilità/).waitFor();
   await shot("studio");
+  // Own flashcard, added by hand.
+  await p.getByRole("button", { name: "Modifica flashcard e glossario" }).click();
+  await p.getByRole("button", { name: "Aggiungi", exact: true }).first().click();
+  await p.getByLabel("Domanda", { exact: true }).last().fill("Cos'è una base?");
+  await p.getByLabel("Risposta", { exact: true }).last().fill("Un insieme di variabili linearmente indipendenti.");
+  await p.getByRole("button", { name: "Salva", exact: true }).click();
+  await p.getByText("Materiale di studio salvato.").waitFor();
+  await p.getByText("1 di 2").waitFor();
   // Questions on the lesson, with a clickable reference to the recording.
   await p.getByRole("button", { name: "Domande", exact: true }).click();
   await p.getByPlaceholder("Chiedi qualcosa su questa lezione…").fill("Cos'è il rapporto minimo?");

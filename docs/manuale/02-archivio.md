@@ -13,7 +13,8 @@ Lezioni/
   Ricerca operativa/
     2026-11-10 Metodo del simplesso/
       fonti/       i file che hai aggiunto
-      estratti/    il testo letto da ogni fonte (trascrizioni, appunti)
+      estratti/    il testo letto da ogni fonte (trascrizioni, appunti), il testo
+                   di Whisper (.whisper.md) e le copie delle correzioni (versioni/)
       generati/    sintesi, mappa, flashcard
 ```
 
@@ -22,6 +23,7 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 ## Corsi
 
 - **Nuovo corso**: il **+** accanto a *Corsi*. Il docente è facoltativo.
+- **Parole del corso**: nel corso (anche da **Rinomina**) puoi scrivere i termini tecnici e i nomi che tornano spesso, separati da virgole e scritti giusti: per esempio `ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler`. Vengono suggeriti a Whisper, alla ripulitura e alla sintesi, così sbagliano meno; valgono dalle elaborazioni successive. Puoi aggiungerne una anche mentre correggi una trascrizione.
 - Passando col mouse su un corso compaiono **Rinomina**, **Esporta il corso**, **Mostra la cartella** ed **Elimina**.
 - Eliminare un corso lo sposta nel **Cestino** con tutte le sue lezioni: si può recuperare da lì.
 

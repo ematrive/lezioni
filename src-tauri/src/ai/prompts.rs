@@ -40,11 +40,18 @@ Se la parte comincia o finisce a metà frase, trascrivi comunque quello che si s
     )
 }
 
+/// The course's terms as a line of the prompt (empty when there are none).
+fn terms_line(terms: &str) -> String {
+    let t = terms.split([',', ';', '\n']).map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(", ");
+    if t.is_empty() { String::new() } else { format!("Termini e nomi ricorrenti del corso, scritti correttamente: {t}.\n") }
+}
+
 /// Cleanup of Whisper's text (one part of the recording). Text only: small, cheap requests.
-pub fn clean_transcript(n: usize, of: usize, course: &str, title: &str, raw: &str) -> String {
+pub fn clean_transcript(n: usize, of: usize, course: &str, title: &str, terms: &str, raw: &str) -> String {
     let which = if of > 1 { format!("la parte {n} di {of} della trascrizione") } else { "la trascrizione".into() };
+    let terms = terms_line(terms);
     format!(
-        "Questa è {which} automatica (fatta da un riconoscimento vocale) di una lezione universitaria del corso «{course}», argomento «{title}». \
+        "Questa è {which} automatica (fatta da un riconoscimento vocale) di una lezione universitaria del corso «{course}», argomento «{title}».\n{terms}\
 Ripuliscila senza riassumere e senza togliere contenuti:\n\
 - togli intercalari, ripetizioni e false partenze (ehm, cioè, allora…);\n\
 - correggi le parole riconosciute male quando il contesto rende chiaro cosa è stato detto (termini tecnici, nomi, formule); non inventare quello che non si capisce;\n\
@@ -65,10 +72,11 @@ pub const PDF: &str = "Questo è un PDF di una lezione (slide, dispense o appunt
 con un titolo ## Pagina N per ogni pagina. Mantieni titoli, elenchi e tabelle; formule in LaTeX; descrivi grafici e schemi in corsivo tra parentesi. \
 Se è un testo lungo e già digitale, riportalo fedelmente. Rispondi solo con il contenuto.";
 
-pub fn generate(course: &str, title: &str, date: &str, notes: &str, sources: &str) -> String {
+pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, sources: &str) -> String {
+    let terms = terms_line(terms);
     let notes = if notes.trim().is_empty() { String::new() } else { format!("\nNote dello studente sulla lezione:\n{notes}\n") };
     format!(
-        "Corso: {course}\nLezione: {title} ({date})\n{notes}\n\
+        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}\n\
 Qui sotto ci sono tutte le fonti della lezione, ognuna con un codice [F1], [F2]…: la trascrizione della registrazione, appunti, foto della lavagna, slide. \
 Collegale tra loro: gli appunti e le slide spesso spiegano o correggono ciò che si sente nella registrazione, e viceversa.\n\n\
 Produci:\n\

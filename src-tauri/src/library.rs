@@ -31,6 +31,10 @@ pub struct CourseMeta {
     pub name: String,
     #[serde(default)]
     pub teacher: String,
+    /// Terms and names that recur in the course, written correctly: given to Whisper and to the
+    /// model as hints.
+    #[serde(default)]
+    pub terms: String,
     pub created: DateTime<Utc>,
 }
 
@@ -85,6 +89,9 @@ pub struct Source {
     /// its transcript is here, the file is not.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub omitted: bool,
+    /// When its extract was corrected by hand (cleared when it is extracted again).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -278,19 +285,19 @@ impl Library {
         Ok(Course { meta, path, lessons })
     }
 
-    pub fn create_course(&self, name: &str, teacher: &str) -> Result<Course> {
+    pub fn create_course(&self, name: &str, teacher: &str, terms: &str) -> Result<Course> {
         let name = name.trim();
         if name.is_empty() {
             bail!("il nome del corso è vuoto");
         }
         let dir = unique_path(&self.root, &safe_name(name, 80), None);
         fs::create_dir_all(&dir)?;
-        let meta = CourseMeta { id: new_id(), name: name.to_string(), teacher: teacher.trim().to_string(), created: Utc::now() };
+        let meta = CourseMeta { id: new_id(), name: name.to_string(), teacher: teacher.trim().to_string(), terms: terms.trim().to_string(), created: Utc::now() };
         write_json(&dir.join(COURSE_FILE), &meta)?;
         Ok(Course { meta, path: dir, lessons: 0 })
     }
 
-    pub fn update_course(&self, id: &str, name: &str, teacher: &str) -> Result<Course> {
+    pub fn update_course(&self, id: &str, name: &str, teacher: &str, terms: &str) -> Result<Course> {
         let (mut dir, mut meta) = self.course_dir(id)?;
         let name = name.trim();
         if name.is_empty() {
@@ -305,6 +312,7 @@ impl Library {
             meta.name = name.to_string();
         }
         meta.teacher = teacher.trim().to_string();
+        meta.terms = terms.trim().to_string();
         write_json(&dir.join(COURSE_FILE), &meta)?;
         let lessons = self.lesson_dirs(&dir)?.len();
         Ok(Course { meta, path: dir, lessons })
@@ -427,6 +435,7 @@ impl Library {
             size: fs::metadata(dest)?.len(),
             added: Utc::now(),
             omitted: false,
+            edited: None,
         };
         l.meta.sources.push(src.clone());
         Ok(src)
@@ -493,11 +502,25 @@ impl Library {
         if p.exists() {
             discard(&p)?;
         }
-        // Its extract must not end up in the next summary.
-        let e = l.path.join(EXTRACTS_DIR).join(format!("{}.md", src.file));
-        if e.exists() {
-            fs::remove_file(&e)?;
+        // Its extract (and Whisper's text) must not end up in the next summary.
+        for name in [format!("{}.md", src.file), format!("{}.whisper.md", src.file)] {
+            let e = l.path.join(EXTRACTS_DIR).join(name);
+            if e.exists() {
+                fs::remove_file(&e)?;
+            }
         }
+        self.save_lesson(&l)?;
+        Ok(l)
+    }
+
+    /// Marks a source's extract as corrected by hand (`Some`) or extracted again (`None`).
+    pub fn set_source_edited(&self, lesson_id: &str, source_id: &str, when: Option<DateTime<Utc>>) -> Result<Lesson> {
+        let mut l = self.find_lesson(lesson_id)?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        if s.edited == when {
+            return Ok(l);
+        }
+        s.edited = when;
         self.save_lesson(&l)?;
         Ok(l)
     }
@@ -551,8 +574,8 @@ mod tests {
     #[test]
     fn courses_and_lessons() {
         let (_t, lib) = lib();
-        let c = lib.create_course("Ricerca operativa", "Rossi").unwrap();
-        let c2 = lib.create_course("Ricerca operativa", "").unwrap();
+        let c = lib.create_course("Ricerca operativa", "Rossi", "").unwrap();
+        let c2 = lib.create_course("Ricerca operativa", "", "").unwrap();
         assert_ne!(c.path, c2.path, "same name gets a different folder");
         let l1 = lib.create_lesson(&c.meta.id, "Simplesso", d("2026-11-03")).unwrap();
         let l2 = lib.create_lesson(&c.meta.id, "Dualità", d("2026-11-10")).unwrap();
@@ -565,7 +588,7 @@ mod tests {
         assert_eq!(u.path.file_name().unwrap(), "2026-11-10 Teoria della dualità");
         assert!(!l2.path.exists());
 
-        let rc = lib.update_course(&c.meta.id, "RO", "Rossi").unwrap();
+        let rc = lib.update_course(&c.meta.id, "RO", "Rossi", "").unwrap();
         assert_eq!(rc.path.file_name().unwrap(), "RO");
         // Lessons are still found after the course folder moved.
         assert_eq!(lib.lesson(&l1.meta.id).unwrap().meta.title, "Simplesso");
@@ -574,7 +597,7 @@ mod tests {
     #[test]
     fn sources() {
         let (t, lib) = lib();
-        let c = lib.create_course("Economia", "").unwrap();
+        let c = lib.create_course("Economia", "", "").unwrap();
         let l = lib.create_lesson(&c.meta.id, "", d("2026-11-10")).unwrap();
         assert_eq!(l.meta.title, "Lezione");
         let a = t.path().join("reg.m4a");

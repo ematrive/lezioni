@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
 import { ShareDialog } from "../share/ShareDialog";
 import { ChatTab } from "./ChatTab";
-import { JobBar, MapTab, startProcessing, StudyTab, SummaryTab, TranscriptTab, useJob, type Seek } from "./Outputs";
+import { JobBar, MapTab, startProcessing, StudyTab, SummaryTab, TranscriptTab, useJob, type Editing, type Seek } from "./Outputs";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
 
@@ -175,6 +175,31 @@ export function LessonView({
       api.lesson(lesson.id).then(setLesson, () => {});
     });
   const processed = !!outputs?.summary;
+  // Corrections by hand: not while the lesson is being processed.
+  const editing: Editing | undefined = job
+    ? undefined
+    : {
+        course,
+        onSaved: (l) => {
+          if (l) changed(l);
+          loadOutputs();
+        },
+      };
+  // Rielabora anche le fonti redoes the transcripts corrected by hand: say so, a copy is kept.
+  const processAgain = async () => {
+    const edited = lesson.sources.filter((s) => s.edited);
+    if (edited.length) {
+      const names = edited.map((s) => `• ${s.originalName}`).join("\n");
+      const ok = await ask(`Hai corretto a mano:\n${names}\n\nQueste trascrizioni verranno rifatte da capo. La versione corretta resta in estratti/versioni nella cartella della lezione.`, {
+        title: "Rielabora anche le fonti",
+        kind: "warning",
+        okLabel: "Rielabora",
+        cancelLabel: "Annulla",
+      });
+      if (!ok) return;
+    }
+    process(true);
+  };
   const processButton = (
     <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={lesson.sources.length ? "Trascrivi, leggi le fonti e genera sintesi, mappa e studio" : "Aggiungi prima le fonti"}>
       <Sparkles className="size-4" /> {processed ? "Rigenera" : "Elabora"}
@@ -211,7 +236,7 @@ export function LessonView({
     <div className="relative flex h-full flex-col">
       <Header lesson={lesson} onChanged={changed} onDelete={remove} actions={
           <>
-            <ProcessMenu main={processButton} disabled={!!job || !lesson.sources.length} onForce={() => process(true)} />
+            <ProcessMenu main={processButton} disabled={!!job || !lesson.sources.length} onForce={processAgain} />
             <button className="btn" disabled={!course} onClick={() => setSharing(true)} title="Condividi: pacchetto, PDF, pagina web, Markdown, Anki">
               <Share2 className="size-4" /> Condividi
             </button>
@@ -235,9 +260,9 @@ export function LessonView({
         {tab === "sources" ? (
           <Sources lesson={lesson} busy={busy} onPick={pick} onPasteText={() => setTextDraft("")} onChanged={changed} />
         ) : !outputs ? null : tab === "transcript" ? (
-          <TranscriptTab lesson={lesson} outputs={outputs} seek={seek} process={processButton} />
+          <TranscriptTab lesson={lesson} outputs={outputs} seek={seek} process={processButton} editing={editing} />
         ) : tab === "summary" ? (
-          <SummaryTab outputs={outputs} onRef={onSummaryRef} process={processButton} />
+          <SummaryTab lesson={lesson} outputs={outputs} onRef={onSummaryRef} process={processButton} editing={editing} />
         ) : tab === "chat" ? (
           <ChatTab
             lesson={lesson}
@@ -250,7 +275,7 @@ export function LessonView({
         ) : tab === "map" ? (
           <MapTab outputs={outputs} process={processButton} />
         ) : (
-          <StudyTab outputs={outputs} process={processButton} />
+          <StudyTab lesson={lesson} outputs={outputs} process={processButton} editing={editing} />
         )}
       </div>
       {dragging && (

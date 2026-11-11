@@ -11,12 +11,16 @@ export interface Source {
   added: string;
   /** Not in the package this lesson came from (usually the recording): transcript only. */
   omitted?: boolean;
+  /** When its text was corrected by hand (ISO date). */
+  edited?: string;
 }
 
 export interface Course {
   id: string;
   name: string;
   teacher: string;
+  /** Recurring terms and names, given to Whisper and to the model. */
+  terms: string;
   created: string;
   path: string;
   lessons: number;
@@ -54,8 +58,8 @@ export const api = {
   setLibrary: (dir: string) => invoke<void>("settings_set_library", { dir }),
 
   courses: () => invoke<Course[]>("courses_list"),
-  createCourse: (name: string, teacher: string) => invoke<Course>("course_create", { name, teacher }),
-  updateCourse: (id: string, name: string, teacher: string) => invoke<Course>("course_update", { id, name, teacher }),
+  createCourse: (name: string, teacher: string, terms: string) => invoke<Course>("course_create", { name, teacher, terms }),
+  updateCourse: (id: string, name: string, teacher: string, terms: string) => invoke<Course>("course_update", { id, name, teacher, terms }),
   deleteCourse: (id: string) => invoke<void>("course_delete", { id }),
 
   lessons: (courseId: string) => invoke<Lesson[]>("lessons_list", { courseId }),
@@ -167,10 +171,12 @@ export interface Study {
 export interface Outputs {
   /** source id → extracted text */
   extracts: Record<string, string>;
+  /** source id → Whisper's text before the cleanup */
+  raw: Record<string, string>;
   summary: string | null;
   map: MapNode | null;
   study: Study | null;
-  info: { generated: string; model: string; usage: Usage; suggestedTitle: string; sources: Record<string, string> } | null;
+  info: { generated: string; model: string; usage: Usage; suggestedTitle: string; sources: Record<string, string>; edited?: string } | null;
 }
 
 export type JobEvent =
@@ -192,6 +198,9 @@ export const ai = {
   /** Checks the key typed (or the saved one); returns a line for Settings (e.g. the credit left). */
   check: (provider: ProviderKind, key: string | null) => invoke<string>("ai_check", { provider, key }),
   outputs: (id: string) => invoke<Outputs>("lesson_outputs", { id }),
+  saveExtract: (lessonId: string, sourceId: string, text: string) => invoke<Lesson>("extract_save", { lessonId, sourceId, text }),
+  saveSummary: (lessonId: string, text: string) => invoke<void>("summary_save", { lessonId, text }),
+  saveStudy: (lessonId: string, study: Study) => invoke<void>("study_save", { lessonId, study }),
   cancel: (jobId: string) => invoke<boolean>("job_cancel", { jobId }),
   async process(lessonId: string, options: { force?: boolean; extractOnly?: boolean }, onEvent: (e: JobEvent) => void): Promise<string> {
     const jobId = crypto.randomUUID();

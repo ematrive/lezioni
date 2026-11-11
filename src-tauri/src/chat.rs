@@ -179,7 +179,7 @@ mod tests {
     async fn lesson_and_course() {
         let t = tempfile::tempdir().unwrap();
         let lib = Library::open(t.path().join("a")).unwrap();
-        let c = lib.create_course("Economia", "").unwrap();
+        let c = lib.create_course("Economia", "", "").unwrap();
         let l1 = lib.create_lesson(&c.meta.id, "VAN", "2026-11-03".parse().unwrap()).unwrap();
         let l2 = lib.create_lesson(&c.meta.id, "TIR", "2026-11-10".parse().unwrap()).unwrap();
         let ai = Echo::default();

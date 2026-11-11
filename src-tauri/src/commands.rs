@@ -74,15 +74,15 @@ pub fn courses_list(state: State<'_, AppState>) -> CmdResult<Vec<Course>> {
 }
 
 #[tauri::command(async)]
-pub fn course_create(state: State<'_, AppState>, name: String, teacher: String) -> CmdResult<Course> {
+pub fn course_create(state: State<'_, AppState>, name: String, teacher: String, terms: String) -> CmdResult<Course> {
     let _w = state.writing();
-    Ok(state.library()?.create_course(&name, &teacher)?)
+    Ok(state.library()?.create_course(&name, &teacher, &terms)?)
 }
 
 #[tauri::command(async)]
-pub fn course_update(state: State<'_, AppState>, id: String, name: String, teacher: String) -> CmdResult<Course> {
+pub fn course_update(state: State<'_, AppState>, id: String, name: String, teacher: String, terms: String) -> CmdResult<Course> {
     let _w = state.writing();
-    Ok(state.library()?.update_course(&id, &name, &teacher)?)
+    Ok(state.library()?.update_course(&id, &name, &teacher, &terms)?)
 }
 
 #[tauri::command(async)]
@@ -313,7 +313,7 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
         let _ = ch.send(JobEvent::Detail { message });
     }));
     let archive = Archive { dir, lock: state.write.clone() };
-    let cancel = state.jobs.start(&job_id);
+    let cancel = state.jobs.start(&job_id, &lesson_id);
     let whisper = state.whisper.clone();
     let ch = channel.clone();
     let work = tauri::async_runtime::spawn(async move {
@@ -363,6 +363,36 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
 #[tauri::command(async)]
 pub fn job_cancel(state: State<'_, AppState>, job_id: String) -> bool {
     state.jobs.cancel(&job_id)
+}
+
+// ---------- corrections by hand ----------
+
+fn not_busy(state: &AppState, lesson_id: &str) -> CmdResult<()> {
+    if state.jobs.busy(lesson_id) {
+        return Err(anyhow::anyhow!("la lezione è in elaborazione: aspetta che finisca per correggere i testi").into());
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn extract_save(state: State<'_, AppState>, lesson_id: String, source_id: String, text: String) -> CmdResult<Lesson> {
+    not_busy(&state, &lesson_id)?;
+    let _w = state.writing();
+    Ok(pipeline::save_extract(&state.library()?, &lesson_id, &source_id, &text)?)
+}
+
+#[tauri::command(async)]
+pub fn summary_save(state: State<'_, AppState>, lesson_id: String, text: String) -> CmdResult<()> {
+    not_busy(&state, &lesson_id)?;
+    let _w = state.writing();
+    Ok(pipeline::save_summary(&state.library()?, &lesson_id, &text)?)
+}
+
+#[tauri::command(async)]
+pub fn study_save(state: State<'_, AppState>, lesson_id: String, study: pipeline::Study) -> CmdResult<()> {
+    not_busy(&state, &lesson_id)?;
+    let _w = state.writing();
+    Ok(pipeline::save_study(&state.library()?, &lesson_id, &study)?)
 }
 
 #[tauri::command(async)]

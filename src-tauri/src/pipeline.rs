@@ -146,6 +146,75 @@ pub fn extract_rel(s: &Source) -> PathBuf {
     Path::new(EXTRACTS_DIR).join(format!("{}.md", s.file))
 }
 
+/// Whisper's text of a whole recording, before the cleanup (kept to be compared and corrected).
+pub fn raw_rel(s: &Source) -> PathBuf {
+    Path::new(EXTRACTS_DIR).join(format!("{}.whisper.md", s.file))
+}
+
+/// Whisper's text of the parts still in `.parti/` (None when there are none).
+fn whisper_parts(lesson_dir: &Path, s: &Source) -> Option<String> {
+    let dir = lesson_dir.join(parts_rel(s));
+    let mut names: Vec<String> = fs::read_dir(&dir).ok()?.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".whisper.md")).collect();
+    names.sort();
+    let texts: Vec<String> = names.iter().filter_map(|n| fs::read_to_string(dir.join(n)).ok()).filter(|t| !t.trim().is_empty()).collect();
+    if texts.is_empty() { None } else { Some(texts.join("\n\n")) }
+}
+
+/// Writes `<dir>/<rel>` through a temporary file, so a crash never leaves half a file.
+fn write_atomic(dir: &Path, rel: &Path, content: &[u8]) -> Result<()> {
+    let p = dir.join(rel);
+    if let Some(d) = p.parent() {
+        fs::create_dir_all(d)?;
+    }
+    let tmp = p.with_extension("tmp");
+    fs::write(&tmp, content).with_context(|| format!("scrittura di {}", p.display()))?;
+    fs::rename(&tmp, &p)?;
+    Ok(())
+}
+
+/// Saves the parts' Whisper text as `<file>.whisper.md` and removes `.parti/`: the transcript is
+/// final (complete, or corrected by hand).
+fn close_parts(lesson_dir: &Path, s: &Source) -> Result<()> {
+    if let Some(raw) = whisper_parts(lesson_dir, s) {
+        write_atomic(lesson_dir, &raw_rel(s), raw.as_bytes())?;
+    }
+    let _ = fs::remove_dir_all(lesson_dir.join(parts_rel(s)));
+    Ok(())
+}
+
+// ---------- corrections by hand (the caller holds the archive's write lock) ----------
+
+/// A source's extract corrected by hand. The parts waiting for a cleanup are closed, otherwise
+/// the next processing would clean them again over the correction.
+pub fn save_extract(lib: &Library, lesson_id: &str, source_id: &str, text: &str) -> Result<Lesson> {
+    let l = lib.lesson(lesson_id)?;
+    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+    close_parts(&l.path, s)?;
+    write_atomic(&l.path, &extract_rel(s), text.as_bytes())?;
+    lib.set_source_edited(lesson_id, source_id, Some(Utc::now()))
+}
+
+fn mark_info_edited(l: &Lesson) -> Result<()> {
+    let p = l.path.join(GENERATED_DIR).join("info.json");
+    if let Some(mut info) = fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<Info>(&t).ok()) {
+        info.edited = Some(Utc::now());
+        write_atomic(&l.path, &Path::new(GENERATED_DIR).join("info.json"), &serde_json::to_vec_pretty(&info)?)?;
+    }
+    Ok(())
+}
+
+pub fn save_summary(lib: &Library, lesson_id: &str, text: &str) -> Result<()> {
+    let l = lib.lesson(lesson_id)?;
+    write_atomic(&l.path, &Path::new(GENERATED_DIR).join("sintesi.md"), text.as_bytes())?;
+    mark_info_edited(&l)
+}
+
+pub fn save_study(lib: &Library, lesson_id: &str, study: &Study) -> Result<()> {
+    let l = lib.lesson(lesson_id)?;
+    write_atomic(&l.path, &Path::new(GENERATED_DIR).join("studio.json"), &serde_json::to_vec_pretty(study)?)?;
+    mark_info_edited(&l)
+}
+
 /// `[hh:mm:ss]`
 pub fn hms(secs: u64) -> String {
     format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60)
@@ -206,6 +275,9 @@ pub struct Info {
     pub suggested_title: String,
     /// "F1" → source id
     pub sources: BTreeMap<String, String>,
+    /// Last correction by hand of the summary or of the study material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited: Option<chrono::DateTime<Utc>>,
 }
 
 /// Mermaid mindmap of the tree (for Obsidian and Markdown exports). Shapes are not used, so
@@ -264,9 +336,16 @@ fn kind_label(k: SourceKind) -> &'static str {
 
 /// Whisper's initial prompt: context that steers spelling of names and terms (short: Whisper
 /// keeps only the last ~220 tokens).
-fn asr_prompt(course: &str, title: &str, notes: &str) -> String {
+/// Whisper's initial prompt: it steers spelling and vocabulary, and only the last ~220 tokens
+/// count, so the course's terms (the most useful part) are kept short and come first.
+fn asr_prompt(course: &str, title: &str, terms: &str, notes: &str) -> String {
     let notes: String = notes.split_whitespace().take(40).collect::<Vec<_>>().join(" ");
+    let terms: String = terms.split([',', ';', '\n']).map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(", ");
+    let terms: String = terms.split_whitespace().take(40).collect::<Vec<_>>().join(" ");
     let mut p = format!("Lezione universitaria di {course}: {title}.");
+    if !terms.is_empty() {
+        p.push_str(&format!(" Termini: {terms}."));
+    }
     if !notes.is_empty() {
         p.push(' ');
         p.push_str(&notes);
@@ -435,12 +514,12 @@ impl<A: Ai> Ctx<'_, A> {
 
     /// Gemini cleans Whisper's text of part `i`. On any failure the raw text is used, and the
     /// next run tries the cleanup again.
-    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String)) -> Result<Cleaned> {
+    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String, String)) -> Result<Cleaned> {
         let c = &chunks[i];
         let (start, end) = (c.start, c.start + c.secs.round() as u64);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::clean_transcript(i + 1, chunks.len(), &context.0, &context.1, &raw))],
+            parts: vec![Part::Text(prompts::clean_transcript(i + 1, chunks.len(), &context.0, &context.1, &context.2, &raw))],
             max_output_tokens: Some(32_000),
             thinking: Some("LOW"),
             // Best effort (Whisper's text is already there): do not wait minutes on an overloaded
@@ -473,9 +552,9 @@ impl<A: Ai> Ctx<'_, A> {
     #[allow(clippy::too_many_arguments)]
     async fn transcribe_local(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
         let lesson = self.archive.lesson(lesson_id)?;
-        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| c.meta.name).unwrap_or_default();
-        let context = (course, lesson.meta.title.clone());
-        let prompt = asr_prompt(&context.0, &context.1, &lesson.meta.notes);
+        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (c.meta.name, c.meta.terms)).unwrap_or_default();
+        let context = (course.0, lesson.meta.title.clone(), course.1);
+        let prompt = asr_prompt(&context.0, &context.1, &context.2, &lesson.meta.notes);
         let n = chunks.len();
         let mut texts: Vec<String> = vec![String::new(); n];
         let mut skipped = 0;
@@ -643,6 +722,8 @@ impl<A: Ai> Ctx<'_, A> {
         let mut extracts: Vec<(String, Source, String)> = Vec::new();
         // Recordings that could not be transcribed: without them the summary would be wrong.
         let mut media_failed = Vec::new();
+        // Folder name of the copies of the transcripts corrected by hand, if any is redone.
+        let stamp = Utc::now().format("%Y-%m-%d %H-%M-%S").to_string();
         for (i, s) in lesson.meta.sources.iter().enumerate() {
             self.check()?;
             let step = (i as u32, total);
@@ -651,6 +732,13 @@ impl<A: Ai> Ctx<'_, A> {
             let existing = current.path.join(extract_rel(s));
             if opts.force {
                 let _ = fs::remove_dir_all(current.path.join(parts_rel(s)));
+                // A transcript corrected by hand is about to be redone: keep a copy.
+                if s.edited.is_some() && existing.is_file() {
+                    let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
+                    let dest = current.path.join(EXTRACTS_DIR).join("versioni").join(&stamp);
+                    fs::create_dir_all(&dest)?;
+                    fs::copy(&existing, dest.join(format!("{}.md", s.file))).context("copia della trascrizione corretta")?;
+                }
             }
             // From a package without its file (the recording): the extract is all there is.
             if s.omitted {
@@ -667,10 +755,15 @@ impl<A: Ai> Ctx<'_, A> {
                 match self.extract(&current, s, step, &mut report.usage, &mut report.warnings).await {
                     Ok(Some((t, true))) => {
                         self.archive.write(lesson_id, &extract_rel(s), t.as_bytes())?;
+                        let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
+                        let lib = self.archive.lib()?;
+                        let dir = lib.lesson(lesson_id)?.path;
                         // Parts still waiting for the cleanup stay for the next run.
-                        let dir = self.archive.lesson(lesson_id)?.path;
                         if !cleanup_pending(&dir, s) {
-                            let _ = fs::remove_dir_all(dir.join(parts_rel(s)));
+                            close_parts(&dir, s)?;
+                        }
+                        if s.edited.is_some() {
+                            lib.set_source_edited(lesson_id, &s.id, None)?;
                         }
                         Some(t)
                     }
@@ -714,11 +807,11 @@ impl<A: Ai> Ctx<'_, A> {
         self.check()?;
         (self.progress)((total - 1) as f64, total, "Sintesi, mappa e materiale di studio…".into());
         let lesson = self.archive.lesson(lesson_id)?;
-        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| c.meta.name).unwrap_or_default();
+        let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (c.meta.name, c.meta.terms)).unwrap_or_default();
         let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &sources))],
+            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(48_000),
             ..Default::default()
@@ -760,6 +853,7 @@ impl<A: Ai> Ctx<'_, A> {
             usage: report.usage.clone(),
             suggested_title: g.titolo,
             sources: extracts.iter().map(|(code, s, _)| (code.clone(), s.id.clone())).collect(),
+            edited: None,
         };
         self.archive.write(lesson_id, &gdir.join("info.json"), &serde_json::to_vec_pretty(&info)?)?;
         self.fallback_warning(&mut report);
@@ -774,6 +868,8 @@ impl<A: Ai> Ctx<'_, A> {
 pub struct Outputs {
     /// source id → extracted text
     pub extracts: BTreeMap<String, String>,
+    /// source id → Whisper's text before the cleanup (recordings transcribed on the computer)
+    pub raw: BTreeMap<String, String>,
     pub summary: Option<String>,
     pub map: Option<MapNode>,
     pub study: Option<Study>,
@@ -785,6 +881,8 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
     let gdir = Path::new(GENERATED_DIR);
     Outputs {
         extracts: lesson.meta.sources.iter().filter_map(|s| read(&extract_rel(s)).map(|t| (s.id.clone(), t))).collect(),
+        // While parts wait for the cleanup, their Whisper text is still in `.parti/`.
+        raw: lesson.meta.sources.iter().filter_map(|s| read(&raw_rel(s)).or_else(|| whisper_parts(&lesson.path, s)).map(|t| (s.id.clone(), t))).collect(),
         summary: read(&gdir.join("sintesi.md")),
         map: read(&gdir.join("mappa.json")).and_then(|t| serde_json::from_str(&t).ok()),
         study: read(&gdir.join("studio.json")).and_then(|t| serde_json::from_str(&t).ok()),
@@ -820,12 +918,14 @@ mod tests {
     #[derive(Default)]
     struct FakeAsr {
         calls: AtomicUsize,
+        prompt: Mutex<String>,
     }
 
     impl Asr for FakeAsr {
-        fn transcribe(&self, wav: &Path, _prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
+        fn transcribe(&self, wav: &Path, prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
             assert!(wav.is_file());
             self.calls.fetch_add(1, Ordering::SeqCst);
+            *self.prompt.lock().unwrap() = prompt.to_string();
             progress(100);
             Ok(vec![asr::Segment { start: 1.0, end: 4.0, text: "ehm allora il simplesso".into() }])
         }
@@ -904,7 +1004,7 @@ mod tests {
     fn setup(files: &[(&str, Option<&[u8]>)]) -> Setup {
         let t = tempfile::tempdir().unwrap();
         let lib = Library::open(t.path().join("archivio")).unwrap();
-        let c = lib.create_course("Ricerca operativa", "").unwrap();
+        let c = lib.create_course("Ricerca operativa", "", "").unwrap();
         let l = lib.create_lesson(&c.meta.id, "Lezione 5", "2026-11-10".parse().unwrap()).unwrap();
         let mut paths = Vec::new();
         for (n, b) in files {
@@ -948,6 +1048,68 @@ mod tests {
         assert_eq!(out.extracts[&l.meta.sources[0].id], "[00:00:01] il simplesso\n\n[00:00:11] il simplesso\n\n[00:00:21] il simplesso");
         assert!(!l.path.join(parts_rel(&l.meta.sources[0])).exists());
         assert!(out.summary.is_some());
+        // Whisper's text stays, to be compared with the cleaned one.
+        let raw = &out.raw[&l.meta.sources[0].id];
+        assert_eq!(raw, "[00:00:01] ehm allora il simplesso\n\n[00:00:11] ehm allora il simplesso\n\n[00:00:21] ehm allora il simplesso");
+        assert!(l.path.join(raw_rel(&l.meta.sources[0])).is_file());
+        // Removing the recording removes its Whisper text too.
+        st.lib.remove_source(&l.meta.id, &l.meta.sources[0].id).unwrap();
+        assert!(!l.path.join(raw_rel(&l.meta.sources[0])).exists());
+    }
+
+    #[tokio::test]
+    async fn corrected_transcript_is_used_and_copied_before_being_redone() {
+        let st = setup(&[("reg.wav", None)]);
+        let ai = Fake::default();
+        let asr = Arc::new(FakeAsr::default());
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        let sid = st.lib.lesson(&st.lesson).unwrap().meta.sources[0].id.clone();
+        let l = save_extract(&st.lib, &st.lesson, &sid, "[00:00:01] il metodo spiegato da TIM").unwrap();
+        assert!(l.meta.sources[0].edited.is_some());
+
+        // Rigenera: the correction goes into the summary, nothing is transcribed again.
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert_eq!(asr.calls.load(Ordering::SeqCst), 3);
+        assert!(ai.prompts.lock().unwrap().last().unwrap().contains("spiegato da TIM"));
+
+        // Rielabora anche le fonti: transcribed again, the correction kept in estratti/versioni.
+        run_with(&st, &ai, Some(asr.clone()), Options { force: true, ..Default::default() }).await.unwrap();
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        assert!(l.meta.sources[0].edited.is_none());
+        assert!(!outputs(&l).extracts[&sid].contains("TIM"));
+        let versions: Vec<_> = fs::read_dir(l.path.join(EXTRACTS_DIR).join("versioni")).unwrap().flatten().collect();
+        assert_eq!(versions.len(), 1);
+        let copy = fs::read_to_string(versions[0].path().join(format!("{}.md", l.meta.sources[0].file))).unwrap();
+        assert_eq!(copy, "[00:00:01] il metodo spiegato da TIM");
+    }
+
+    #[tokio::test]
+    async fn course_terms_reach_whisper_cleanup_and_summary() {
+        let st = setup(&[("reg.wav", None)]);
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        st.lib.update_course(&l.course_id, "Ricerca operativa", "", "ARERA, colpo d'ariete\nGauckler-Strickler").unwrap();
+        let ai = Fake::default();
+        let asr = Arc::new(FakeAsr::default());
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert!(asr.prompt.lock().unwrap().contains("Termini: ARERA, colpo d'ariete, Gauckler-Strickler."), "{}", asr.prompt.lock().unwrap());
+        let line = "Termini e nomi ricorrenti del corso, scritti correttamente: ARERA, colpo d'ariete, Gauckler-Strickler.";
+        let prompts = ai.prompts.lock().unwrap();
+        assert!(prompts.iter().filter(|p| p.contains("Ripuliscila")).all(|p| p.contains(line)));
+        assert!(prompts.last().unwrap().contains(line), "summary");
+    }
+
+    #[tokio::test]
+    async fn summary_and_study_corrected_by_hand() {
+        let st = setup(&[("lavagna.jpg", Some(b"img"))]);
+        run(&st, &Fake::default(), Options::default()).await.unwrap();
+        save_summary(&st.lib, &st.lesson, "## Simplesso\nCorretta.").unwrap();
+        let mut study = outputs(&st.lib.lesson(&st.lesson).unwrap()).study.unwrap();
+        study.flashcard.remove(0);
+        save_study(&st.lib, &st.lesson, &study).unwrap();
+        let out = outputs(&st.lib.lesson(&st.lesson).unwrap());
+        assert_eq!(out.summary.unwrap(), "## Simplesso\nCorretta.");
+        assert!(out.study.unwrap().flashcard.is_empty());
+        assert!(out.info.unwrap().edited.is_some());
     }
 
     #[tokio::test]

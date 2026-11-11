@@ -25,18 +25,22 @@ La fonte di verità è una **cartella scelta dall'utente**, sincronizzabile con 
 
 ```
 <archivio>/
-  <Corso>/corso.json                         { id, name, teacher, created }
+  <Corso>/corso.json                         { id, name, teacher, terms, created }
   <Corso>/<AAAA-MM-GG titolo>/lezione.json    { id, title, date, notes, created, sources[] }
                              /fonti/          file copiati (mai spostati o modificati)
                              /estratti/<file>.md         testo di ogni fonte
+                             /estratti/<file>.whisper.md testo di Whisper prima della ripulitura
                              /estratti/.parti/<file>/NN.md  parti di una trascrizione in corso
+                             /estratti/versioni/<data-ora>/ trascrizioni corrette a mano poi rifatte
                              /generati/sintesi.md, mappa.json, mappa.mmd, studio.json, info.json
                              /generati/versioni/<data-ora>/  output precedenti
                              /chat.json       conversazioni (mai esportate)
 ```
 
 - Gli **id** (UUID) identificano corsi e lezioni; i nomi delle cartelle seguono nome, data e titolo e vengono rinominati quando cambiano (`safe_name`: niente caratteri vietati su Windows, nomi riservati, lunghezza massima).
-- Ogni `Source` ha `file` (nome dentro `fonti/`, sempre un nome semplice: `is_plain_file_name`), `kind` (dall'estensione), `originalName`, `size`, `added` e `omitted` (fonte arrivata da un pacchetto senza il file).
+- Ogni `Source` ha `file` (nome dentro `fonti/`, sempre un nome semplice: `is_plain_file_name`), `kind` (dall'estensione), `originalName`, `size`, `added`, `omitted` (fonte arrivata da un pacchetto senza il file) ed `edited` (data della correzione a mano dell'estratto).
+- **Correzioni a mano** (`pipeline::save_extract`, `save_summary`, `save_study`, comandi `extract_save`, `summary_save`, `study_save`): rifiutate mentre un job elabora la lezione (`Jobs::busy`). Correggere un estratto chiude le parti in attesa di ripulitura, che altrimenti la riscriverebbero. *Rielabora anche le fonti* copia gli estratti con `edited` in `estratti/versioni/<data-ora>/` e azzera `edited` quando il nuovo estratto è salvato. Sintesi e studio corretti segnano `info.edited`; *Rigenera* li sposta in `generati/versioni` come sempre.
+- **Parole del corso** (`CourseMeta.terms`): vanno nel prompt iniziale di Whisper (`asr_prompt`, al massimo 40 parole), in `prompts::clean_transcript` e in `prompts::generate`.
 - I JSON si scrivono con file temporaneo + rinomina, quindi non restano mai a metà.
 - Eliminare un corso, una lezione o una fonte li sposta nel Cestino del sistema (crate `trash`).
 
@@ -50,7 +54,7 @@ Tutti i comandi sono `async` o `#[tauri::command(async)]`: nessuno gira sul thre
 
 1. **Estrazione per fonte** → `estratti/<file>.md`, riusata nelle elaborazioni successive (salvo *Rielabora anche le fonti*):
    - **registrazioni e video**: `audio.rs` decodifica con Symphonia (m4a/AAC, mp3, wav, flac, ogg/vorbis, audio di mp4/mov), ricampiona a 16 kHz mono e scrive parti WAV di `WINDOW_SECS` (20 minuti). Poi, secondo `Models.engine`:
-     - **`local`** (predefinito): `asr.rs` trascrive ogni parte con whisper.cpp (`whisper-rs`, Metal su macOS; modello `ggml-large-v3-turbo-q5_0.bin` scaricato in `app_data_dir()/modelli` e verificato con SHA-256, tenuto in memoria da `asr::Loader`). I segmenti diventano paragrafi `[hh:mm:ss]` assoluti (`asr::paragraphs`, che scarta le frasi «allucinate» sul silenzio) salvati in `.parti/NN.whisper.md`; Gemini li ripulisce (`prompts::clean_transcript`, solo testo) e il risultato va in `.parti/NN.md`. La ripulitura della parte N corre mentre Whisper fa la N+1 (`futures::join!`). Una ripulitura fallita, troncata o non plausibile (`plausible_cleanup`: metà delle parole e dei tempi, tempi dentro la parte) lascia il testo di Whisper con un avviso e l'estratto non viene salvato, così il giro dopo rifà solo la ripulitura;
+     - **`local`** (predefinito): `asr.rs` trascrive ogni parte con whisper.cpp (`whisper-rs`, Metal su macOS; modello `ggml-large-v3-turbo-q5_0.bin` scaricato in `app_data_dir()/modelli` e verificato con SHA-256, tenuto in memoria da `asr::Loader`). I segmenti diventano paragrafi `[hh:mm:ss]` assoluti (`asr::paragraphs`, che scarta le frasi «allucinate» sul silenzio) salvati in `.parti/NN.whisper.md`; il modello li ripulisce (`prompts::clean_transcript`, solo testo) e il risultato va in `.parti/NN.md`. La ripulitura della parte N corre mentre Whisper fa la N+1 (`futures::join!`). Una ripulitura fallita, troncata o non plausibile (`plausible_cleanup`: metà delle parole e dei tempi, tempi dentro la parte) lascia il testo di Whisper con un avviso e l'estratto non viene salvato, così il giro dopo rifà solo la ripulitura. A trascrizione completa (o corretta a mano) i `.whisper.md` delle parti vengono uniti in `estratti/<file>.whisper.md`, che l'interfaccia mostra con l'interruttore *Ripulita | Whisper*, e `.parti` sparisce;
      - **`gemini`**: ogni parte va a Gemini (inline se piccola, altrimenti Files API) con `prompts::transcribe_clip`; i tempi `[mm:ss]` relativi alla parte vengono spostati con `shift_times`. Motivo delle parti: l'API non ha offset di inizio/fine per l'audio, quindi chiedere finestre di un file intero farebbe pagare il file intero a ogni finestra.
 
      Ogni parte è salvata appena pronta in `estratti/.parti/`, così dopo un errore si riprende da lì;
@@ -82,7 +86,7 @@ Legge i file a ogni ricerca (l'archivio è piccolo: decine o centinaia di lezion
 
 ## Condivisione (`share.rs`)
 
-- **Pacchetto `.lezione`**: zip con `pacchetto.json` (formato, corso, elenco) e `lezioni/NN/` con la cartella della lezione. Esclusi: `chat.json`, `generati/versioni`, `estratti/.parti`, file temporanei; registrazioni e altri file secondo le opzioni (le fonti escluse restano in `lezione.json` con `omitted: true`); note solo se scelto. Importazione: `enclosed_name` contro i percorsi fuori dallo zip, rifiuto dei `file` non semplici, estrazione in una cartella temporanea dentro l'archivio e spostamento finale; con *Sostituisci* la lezione esistente va nel Cestino solo dopo l'estrazione riuscita.
+- **Pacchetto `.lezione`**: zip con `pacchetto.json` (formato, corso, elenco) e `lezioni/NN/` con la cartella della lezione. Esclusi: `chat.json`, `generati/versioni`, `estratti/versioni`, `estratti/.parti`, file temporanei; registrazioni e altri file secondo le opzioni (le fonti escluse restano in `lezione.json` con `omitted: true`); note solo se scelto. Importazione: `enclosed_name` contro i percorsi fuori dallo zip, rifiuto dei `file` non semplici, estrazione in una cartella temporanea dentro l'archivio e spostamento finale; con *Sostituisci* la lezione esistente va nel Cestino solo dopo l'estrazione riuscita.
 - **Markdown** (Obsidian, NotebookLM) e **Anki** (testo con intestazioni `#separator:tab`, `#html:true`, `#tags column:3`) scritti dal backend.
 - **HTML e PDF** costruiti dall'interfaccia (`features/share/html.tsx`) con lo stesso renderer Markdown dell'app e i font KaTeX incorporati. Il PDF è la stessa pagina aperta nel browser di sistema con la finestra di stampa (`export_print`).
 

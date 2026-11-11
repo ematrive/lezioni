@@ -8,11 +8,30 @@ Ogni paragrafo inizia con il **minuto** in cui comincia: cliccalo e la registraz
 
 ![La trascrizione con i minuti cliccabili](img/trascrizione.png)
 
+### Il testo di Whisper
+
+Per le registrazioni trascritte sul computer, l'interruttore **Ripulita | Whisper** mostra il testo come l'ha riconosciuto Whisper, prima che il modello lo ripulisse. Serve a controllare un passaggio dubbio: se la versione ripulita dice qualcosa di strano, il testo di Whisper mostra cosa è stato sentito davvero (e il minuto per riascoltarlo).
+
+![Il testo di Whisper, prima della ripulitura](img/trascrizione-whisper.png)
+
+### Correggere la trascrizione
+
+**Modifica** apre il testo di una fonte per correggerlo a mano: è Markdown, con i minuti tra parentesi quadre all'inizio dei paragrafi (lasciali come sono, servono per i riferimenti). In alto, **Trova** e **Sostituisci tutte** correggono in un colpo una parola sbagliata in tutto il testo, senza distinguere maiuscole e minuscole.
+
+![Correggere con trova e sostituisci](img/correzione.png)
+
+- Dopo una sostituzione puoi **aggiungere la parola alle parole del corso** (vedi [Corsi](02-archivio.md#corsi)): così le prossime lezioni la riconoscono già giusta.
+- **Salva** conserva la correzione; la fonte mostra «Corretta a mano». La correzione vale per la ricerca, le domande, le esportazioni e i pacchetti.
+- Sintesi, mappa e studio non cambiano da soli: premi **Rigenera** per rifarli con il testo corretto (l'app lo ricorda con un avviso).
+- **Rielabora anche le fonti** rifà la trascrizione da capo: l'app chiede conferma e conserva la versione corretta in `estratti/versioni` nella cartella della lezione.
+
 ## Sintesi
 
 La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, elenchi, tabelle, formule ed esempi. Alla fine di ogni paragrafo ci sono i **riferimenti**: **F1 00:12:30** vuol dire «fonte 1, al minuto 12:30». Cliccandolo si apre la trascrizione con la registrazione già a quel punto: comodo per riascoltare un passaggio poco chiaro.
 
 ![La sintesi con i riferimenti alle fonti](img/sintesi.png)
+
+Anche la sintesi si corregge con **Modifica**, con lo stesso trova e sostituisci. Con **Rigenera** la versione corretta non si perde: resta in `generati/versioni`.
 
 ## Mappa
 
@@ -27,5 +46,7 @@ La **Mappa** mostra gli argomenti della lezione ad albero: al centro l'argomento
 - **Glossario**: i termini tecnici della lezione, in ordine alfabetico.
 
 ![Flashcard, domande d'esame e glossario](img/studio.png)
+
+**Modifica flashcard e glossario** trasforma flashcard, domande d'esame e glossario in un elenco di campi: correggi il testo, elimina le voci sbagliate con il cestino o aggiungine di tue con **Aggiungi**, poi **Salva**. Le voci lasciate vuote non vengono salvate.
 
 > Il materiale è scritto dall'intelligenza artificiale a partire dalle tue fonti: è un aiuto per studiare, non un sostituto. Se qualcosa non torna, controlla nella trascrizione o riascolta il punto indicato.

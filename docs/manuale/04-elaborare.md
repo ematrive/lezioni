@@ -51,8 +51,8 @@ Sotto la barra, una seconda riga dice cosa sta aspettando (l'avanzamento di Whis
 
 ## Rielaborare
 
-- **Rigenera** rifà sintesi, mappa e studio **riusando le trascrizioni già fatte**: costa poco. Utile dopo aver aggiunto appunti o slide, o per provare un altro modello.
-- Dalla freccia accanto: **Rielabora anche le fonti** rifà anche trascrizioni e letture.
+- **Rigenera** rifà sintesi, mappa e studio **riusando le trascrizioni già fatte**: costa poco. Utile dopo aver aggiunto appunti o slide, dopo aver [corretto una trascrizione](05-studiare.md#correggere-la-trascrizione), o per provare un altro modello.
+- Dalla freccia accanto: **Rielabora anche le fonti** rifà anche trascrizioni e letture. Se hai corretto a mano qualche trascrizione l'app chiede conferma, e la versione corretta resta in `estratti/versioni`.
 - Le versioni precedenti di sintesi e mappa restano in `generati/versioni` nella cartella della lezione.
 
 Se l'elaborazione si interrompe (connessione, quota esaurita), le parti di registrazione già trascritte sono salvate: la volta dopo riparte da lì. In quel caso la sintesi non viene scritta, per non farne una senza la registrazione.

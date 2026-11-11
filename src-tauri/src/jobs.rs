@@ -25,17 +25,22 @@ pub type Emit = Arc<dyn Fn(JobEvent) + Send + Sync>;
 
 #[derive(Default)]
 pub struct Jobs {
-    map: Mutex<HashMap<String, CancellationToken>>,
+    /// job id → (lesson id, token)
+    map: Mutex<HashMap<String, (String, CancellationToken)>>,
 }
 
 impl Jobs {
-    pub fn start(&self, id: &str) -> CancellationToken {
+    pub fn start(&self, id: &str, lesson_id: &str) -> CancellationToken {
         let t = CancellationToken::new();
-        self.map.lock().unwrap().insert(id.to_string(), t.clone());
+        self.map.lock().unwrap().insert(id.to_string(), (lesson_id.to_string(), t.clone()));
         t
     }
     pub fn cancel(&self, id: &str) -> bool {
-        self.map.lock().unwrap().get(id).map(|t| t.cancel()).is_some()
+        self.map.lock().unwrap().get(id).map(|(_, t)| t.cancel()).is_some()
+    }
+    /// A job is processing this lesson (its texts must not be edited meanwhile).
+    pub fn busy(&self, lesson_id: &str) -> bool {
+        self.map.lock().unwrap().values().any(|(l, _)| l == lesson_id)
     }
     pub fn finish(&self, id: &str) {
         self.map.lock().unwrap().remove(id);

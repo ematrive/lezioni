@@ -166,7 +166,7 @@ mod tests {
     fn finds_across_lessons() {
         let t = tempfile::tempdir().unwrap();
         let lib = Library::open(t.path()).unwrap();
-        let c = lib.create_course("Economia", "").unwrap();
+        let c = lib.create_course("Economia", "", "").unwrap();
         let l1 = lib.create_lesson(&c.meta.id, "Valore attuale netto", "2026-11-03".parse().unwrap()).unwrap();
         let l2 = lib.create_lesson(&c.meta.id, "Break-even", "2026-11-10".parse().unwrap()).unwrap();
         let wav = t.path().join("reg.m4a");

@@ -2,6 +2,9 @@
 
 ## Prossima versione
 
+- **Testo di Whisper**: nella Trascrizione l'interruttore *Ripulita | Whisper* mostra il testo come l'ha riconosciuto Whisper, prima della ripulitura.
+- **Correzioni a mano**: trascrizioni e testi letti, sintesi, flashcard, domande d'esame e glossario si possono correggere con **Modifica**. Nei testi c'è **Trova e sostituisci** per correggere in un colpo una parola sbagliata. Con **Rigenera** la sintesi usa le correzioni; con *Rielabora anche le fonti* l'app chiede conferma e conserva la versione corretta.
+- **Parole del corso**: nel corso si scrivono i termini e i nomi ricorrenti (per esempio ARERA, colpo d'ariete); Whisper, la ripulitura e la sintesi li scrivono giusti. Si possono aggiungere anche da una sostituzione.
 - Se il modello risponde con una sintesi vuota (succede ogni tanto con Claude Haiku), l'app la richiede fino a tre volte e non sostituisce mai la sintesi salvata con una vuota.
 - I messaggi durante l'elaborazione non nominano più Gemini quando si usa OpenRouter.
 

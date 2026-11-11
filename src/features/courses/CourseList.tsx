@@ -147,11 +147,12 @@ function IconBtn({ title, onClick, active, children }: { title: string; onClick:
 function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onClose: () => void; onSaved: (c: Course) => void }) {
   const [name, setName] = useState(course?.name ?? "");
   const [teacher, setTeacher] = useState(course?.teacher ?? "");
+  const [terms, setTerms] = useState(course?.terms ?? "");
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     try {
-      onSaved(course ? await api.updateCourse(course.id, name, teacher) : await api.createCourse(name, teacher));
+      onSaved(course ? await api.updateCourse(course.id, name, teacher, terms) : await api.createCourse(name, teacher, terms));
     } catch (e) {
       toast(toAppError(e).message, "error");
       setBusy(false);
@@ -186,6 +187,11 @@ function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onC
         <label className="block">
           <span className="label">Docente</span>
           <input className="field" value={teacher} onChange={(e) => setTeacher(e.target.value)} placeholder="facoltativo" />
+        </label>
+        <label className="block">
+          <span className="label">Parole del corso</span>
+          <textarea className="field min-h-20" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler" />
+          <span className="mt-1 block text-xs text-zinc-500">Termini tecnici e nomi che tornano spesso, separati da virgole, scritti giusti. La trascrizione e la ripulitura li riconoscono meglio dalle prossime elaborazioni.</span>
         </label>
         <button type="submit" hidden />
       </form>
