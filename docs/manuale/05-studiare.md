@@ -29,7 +29,7 @@ Con **Rigenera** la sintesi dà più spazio ai punti importanti e spiega con pi�
 Se la lezione ha le **slide del docente** collegate alla registrazione (vedi [Fonti](03-fonti.md#slide-della-lezione-o-altro-materiale)), accanto alla trascrizione compare la **slide del momento**:
 
 - mentre ascolti, la slide cambia da sola quando il docente passa alla successiva;
-- a registrazione ferma, segue il testo che stai leggendo mentre scorri;
+- quando scorri, segue il testo che stai leggendo (il paragrafo a un terzo dello schermo), anche mentre l'audio suona; se poi non scorri più, torna a seguire l'audio;
 - **‹ ›** sfogliano le slide; **▶ 00:12:30** sopra la slide fa ascoltare da quando il docente ci arriva;
 - nel testo, l'etichetta **▤ Slide 12** segna dove il docente passa a quella slide: cliccala per vederla;
 - nel testo delle slide, accanto a ogni **Pagina N** c'è il minuto in cui se ne parla.

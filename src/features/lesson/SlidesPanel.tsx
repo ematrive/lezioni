@@ -45,35 +45,51 @@ export function SlidesPanel({
   const sectionRef = useRef(section);
   sectionRef.current = section;
 
-  // While the recording plays: its minute.
+  // Whatever the user did last wins: scrolling the text, or the recording playing.
+  const scrolledAt = useRef(0);
+
+  // While the recording plays (and the text was not scrolled just now): its minute.
   useEffect(() => {
     const p = playerRef.current();
     if (!p) return;
-    const on = () => !p.paused && follow.current(pageAt(al, p.currentTime));
+    const on = () => {
+      if (!p.paused && Date.now() - scrolledAt.current > 4000) follow.current(pageAt(al, p.currentTime));
+    };
     p.addEventListener("timeupdate", on);
     return () => p.removeEventListener("timeupdate", on);
   }, [al]);
 
-  // While scrolling (recording paused): the paragraph at the top of the view.
+  // While scrolling: the paragraph a third of the way down the view (the one being read),
+  // also inside long paragraphs: the last minute that has gone above that line.
   useEffect(() => {
     const sec = sectionRef.current();
-    if (!sec) return;
-    const visible = new Map<Element, number>();
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) visible.set(e.target, Number((e.target as HTMLElement).dataset.t));
-          else visible.delete(e.target);
-        }
-        const p = playerRef.current();
-        if (p && !p.paused) return;
-        const top = [...visible.entries()].sort((a, b) => a[0].getBoundingClientRect().top - b[0].getBoundingClientRect().top)[0];
-        if (top) follow.current(pageAt(al, top[1]));
-      },
-      { rootMargin: "-25% 0px -55% 0px" },
-    );
-    sec.querySelectorAll("[data-t]").forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+    const scroller = sec?.closest<HTMLElement>("[data-lesson-content]");
+    if (!sec || !scroller) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const box = scroller.getBoundingClientRect();
+      const line = box.top + box.height / 3;
+      const r = sec.getBoundingClientRect();
+      if (r.bottom < line || r.top > box.bottom) return;
+      const times = [...sec.querySelectorAll<HTMLElement>("[data-t]")];
+      // At the start of the text, before any minute reaches the line: the first one.
+      let t: number | null = times.length ? Number(times[0].dataset.t) : null;
+      for (const el of times) {
+        if (el.getBoundingClientRect().top > line) break;
+        t = Number(el.dataset.t);
+      }
+      if (t !== null) follow.current(pageAt(al, t));
+    };
+    const onScroll = () => {
+      scrolledAt.current = Date.now();
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
   }, [al]);
 
   const first = al.steps.find((s) => s.page === page);

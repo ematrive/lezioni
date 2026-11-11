@@ -199,6 +199,16 @@ try {
   await p.locator("[data-slides-panel]").evaluate((e) => e.closest("section").scrollIntoView({ block: "start" }));
   await p.waitForTimeout(300);
   await shot("slide-accanto");
+  // Scrolling the text moves the slide: back to the top → slide 1, then 00:12:30 → slide 2.
+  const scrollTo = (y) => p.evaluate((y) => document.querySelector("[data-lesson-content]").scrollTo(0, y), y);
+  await scrollTo(0);
+  await p.locator("[data-slides-panel]").getByText("Slide 1 di 3").waitFor();
+  await p.evaluate(() => {
+    const box = document.querySelector("[data-lesson-content]");
+    const b = box.querySelector('[data-t="750"]');
+    box.scrollBy(0, b.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight * 0.2);
+  });
+  await p.locator("[data-slides-panel]").getByText("Slide 2 di 3").waitFor();
   await p.keyboard.press("Escape");
   // Notes written by hand on the slides: pen blue, on their own line, without "nota a mano:".
   await p.locator(".handwritten").getByText(/regola di Bland/).waitFor();
