@@ -35,3 +35,6 @@ scripts/smoke/out/
 
 # Local test material (audio, PDF), never committed
 training/
+
+# Claude Code local files (screenshots, settings)
+.claude/
