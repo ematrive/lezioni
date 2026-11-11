@@ -36,6 +36,7 @@ La fonte di verità è una **cartella scelta dall'utente**, sincronizzabile con 
                              /generati/versioni/<data-ora>/  output precedenti
                              /chat.json       conversazioni (mai esportate)
                              /costi.json      spese dell'AI (mai esportate)
+                             /segnaposti.json segnaposti nella registrazione (esportati)
   <Corso>/costi.json                          spese della sintesi del corso
 ```
 
@@ -43,6 +44,7 @@ La fonte di verità è una **cartella scelta dall'utente**, sincronizzabile con 
 - Ogni `Source` ha `file` (nome dentro `fonti/`, sempre un nome semplice: `is_plain_file_name`), `kind` (dall'estensione), `originalName`, `size`, `added`, `omitted` (fonte arrivata da un pacchetto senza il file) ed `edited` (data della correzione a mano dell'estratto).
 - **Correzioni a mano** (`pipeline::save_extract`, `save_summary`, `save_study`, comandi `extract_save`, `summary_save`, `study_save`): rifiutate mentre un job elabora la lezione (`Jobs::busy`). Correggere un estratto chiude le parti in attesa di ripulitura, che altrimenti la riscriverebbero. *Rielabora anche le fonti* copia gli estratti con `edited` in `estratti/versioni/<data-ora>/` e azzera `edited` quando il nuovo estratto è salvato. Sintesi e studio corretti segnano `info.edited`; *Rigenera* li sposta in `generati/versioni` come sempre.
 - **Costi** (`costs.rs`): `costi.json` è un elenco di `{ when, kind, model, usage }` (`kind`: elaborazione, chat, ripulitura, sintesi-corso). `ai::Metered` avvolge il fornitore e somma per modello ogni risposta, così un'elaborazione fallita o annullata registra comunque quanto ha speso; `lesson_process` e `chat_ask` scrivono sotto `AppState.write`. Una lezione elaborata prima di `costi.json` conta la voce ricavata da `generati/info.json` (`legacy: true`), scritta nel file alla prima voce nuova. Con Gemini il costo è una stima al listino di gemini-3.8-flash (`Usage::cost_or_estimate`, stesse cifre di `costEstimate` in `api.ts`). `course_costs` somma per lezione e per mese (ora locale).
+- **Segnaposti** (`bookmarks.rs`): `{ id, sourceId, at (secondi), kind: importante|dubbio|nota, note, created }`, ordinati per registrazione e minuto; il file sparisce quando non ce ne sono più, e `remove_source` toglie quelli della fonte. Arrivano a `outputs()` (quindi all'interfaccia) e, con i codici `[F1 00:12:30]`, al prompt della sintesi (`prompts::generate`, argomento `marks`) e al contesto delle Domande sulla lezione. Nell'interfaccia `Markdown` evidenzia il paragrafo che contiene il minuto (l'ultimo che comincia prima). Le note dei segnaposti non entrano nella ricerca.
 - **Parole del corso** (`CourseMeta.terms`): vanno nel prompt iniziale di Whisper (`asr_prompt`, al massimo 40 parole), in `prompts::clean_transcript` e in `prompts::generate`.
 - I JSON si scrivono con file temporaneo + rinomina, quindi non restano mai a metà.
 - Eliminare un corso, una lezione o una fonte li sposta nel Cestino del sistema (crate `trash`).

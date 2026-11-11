@@ -104,6 +104,20 @@ try {
   await p.getByText(/Allora, ehm, oggi vediamo/).waitFor();
   await shot("trascrizione-whisper");
   await p.getByRole("button", { name: "Ripulita", exact: true }).click();
+  // Bookmarks while listening: the player is at 12:30 (the fake audio element can't play).
+  await p.evaluate(() => {
+    const a = document.querySelector("audio");
+    Object.defineProperty(a, "currentTime", { configurable: true, get: () => 752, set: () => {} });
+    a.play = () => Promise.resolve();
+  });
+  await p.getByRole("button", { name: "Non ho capito" }).click();
+  await p.locator("[data-mark=dubbio]").waitFor();
+  await p.getByRole("button", { name: /Nota$/ }).click();
+  await p.getByPlaceholder("Cosa vuoi ricordare di questo punto?").fill("chiedere al ricevimento");
+  await p.getByRole("button", { name: "Aggiungi", exact: true }).click();
+  await p.getByRole("button", { name: "chiedere al ricevimento" }).waitFor();
+  await p.getByText(/Hai corretto la trascrizione|Hai aggiunto dei segnaposti/).first().waitFor();
+  await shot("segnaposti");
   // Correction by hand with find and replace; the term goes to the course's ones.
   await p.getByRole("button", { name: "Modifica", exact: true }).click();
   await p.getByPlaceholder("Trova").fill("team");

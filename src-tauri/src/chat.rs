@@ -78,6 +78,10 @@ fn context(lib: &Library, lesson_id: &str, scope: Scope) -> Result<(String, BTre
                 text.push_str(&format!("[{code}] {} ({kind})\n{t}\n\n", s.original_name));
                 refs.insert(code.clone(), sid.clone());
             }
+            let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), |sid| refs.iter().find(|(_, v)| v.as_str() == sid).map(|(k, _)| k.clone()));
+            if !marks.is_empty() {
+                text.push_str(&format!("[SEGNAPOSTI] punti segnati dallo studente mentre riascoltava\n{marks}\n"));
+            }
             if let Some(s) = &o.summary {
                 text.push_str(&format!("[SINTESI] (già scritta a partire dalle fonti)\n{s}\n\n"));
             }

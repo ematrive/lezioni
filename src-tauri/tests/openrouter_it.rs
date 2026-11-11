@@ -72,7 +72,7 @@ async fn compare_models() {
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, &sources))],
+            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()

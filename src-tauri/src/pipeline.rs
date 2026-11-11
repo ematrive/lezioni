@@ -809,9 +809,10 @@ impl<A: Ai> Ctx<'_, A> {
         let lesson = self.archive.lesson(lesson_id)?;
         let course = self.archive.lib()?.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (c.meta.name, c.meta.terms)).unwrap_or_default();
         let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
+        let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), |sid| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string()));
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &sources))],
+            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(48_000),
             ..Default::default()
@@ -874,6 +875,8 @@ pub struct Outputs {
     pub map: Option<MapNode>,
     pub study: Option<Study>,
     pub info: Option<Info>,
+    /// The student's bookmarks (`segnaposti.json`).
+    pub bookmarks: Vec<crate::bookmarks::Bookmark>,
 }
 
 pub fn outputs(lesson: &Lesson) -> Outputs {
@@ -887,6 +890,7 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         map: read(&gdir.join("mappa.json")).and_then(|t| serde_json::from_str(&t).ok()),
         study: read(&gdir.join("studio.json")).and_then(|t| serde_json::from_str(&t).ok()),
         info: read(&gdir.join("info.json")).and_then(|t| serde_json::from_str(&t).ok()),
+        bookmarks: crate::bookmarks::read(&lesson.path),
     }
 }
 
@@ -1096,6 +1100,17 @@ mod tests {
         let prompts = ai.prompts.lock().unwrap();
         assert!(prompts.iter().filter(|p| p.contains("Ripuliscila")).all(|p| p.contains(line)));
         assert!(prompts.last().unwrap().contains(line), "summary");
+    }
+
+    #[tokio::test]
+    async fn bookmarks_reach_the_summary() {
+        let st = setup(&[("reg.wav", None)]);
+        let sid = st.lib.lesson(&st.lesson).unwrap().meta.sources[0].id.clone();
+        crate::bookmarks::add(&st.lib, &st.lesson, &sid, 750.0, crate::bookmarks::Kind::Dubbio, "perché il rapporto minimo?").unwrap();
+        let ai = Fake::default();
+        run_with(&st, &ai, Some(Arc::new(FakeAsr::default())), Options::default()).await.unwrap();
+        let prompts = ai.prompts.lock().unwrap();
+        assert!(prompts.last().unwrap().contains("- [F1 00:12:30] non capito: perché il rapporto minimo?"), "{}", prompts.last().unwrap());
     }
 
     #[tokio::test]

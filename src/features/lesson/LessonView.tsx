@@ -260,7 +260,7 @@ export function LessonView({
         {tab === "sources" ? (
           <Sources lesson={lesson} busy={busy} onPick={pick} onPasteText={() => setTextDraft("")} onChanged={changed} />
         ) : !outputs ? null : tab === "transcript" ? (
-          <TranscriptTab lesson={lesson} outputs={outputs} seek={seek} process={processButton} editing={editing} />
+          <TranscriptTab lesson={lesson} outputs={outputs} seek={seek} process={processButton} editing={editing} onBookmarks={loadOutputs} />
         ) : tab === "summary" ? (
           <SummaryTab lesson={lesson} outputs={outputs} onRef={onSummaryRef} process={processButton} editing={editing} />
         ) : tab === "chat" ? (

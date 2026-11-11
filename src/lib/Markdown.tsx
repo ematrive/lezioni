@@ -1,4 +1,5 @@
 import "katex/dist/katex.min.css";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -36,6 +37,47 @@ export function linkRefs(md: string, source?: string): string {
   return out;
 }
 
+/** A point the student marked in a recording (bookmark). */
+export interface Mark {
+  at: number;
+  kind: "importante" | "dubbio" | "nota";
+  note: string;
+}
+
+export const MARK_ICON: Record<Mark["kind"], string> = { importante: "★", dubbio: "?", nota: "✎" };
+export const MARK_LABEL: Record<Mark["kind"], string> = { importante: "Importante", dubbio: "Non ho capito", nota: "Nota" };
+const MARK_STYLE: Record<Mark["kind"], string> = {
+  dubbio: "border-rose-400 bg-rose-50/70 dark:bg-rose-950/30",
+  importante: "border-amber-400 bg-amber-50/70 dark:bg-amber-950/30",
+  nota: "border-sky-400 bg-sky-50/70 dark:bg-sky-950/30",
+};
+
+/** Each mark goes to the paragraph it falls in: the last one starting at or before it. */
+function marksByParagraph(text: string, marks: Mark[]): Map<number, Mark[]> {
+  const starts = [...text.matchAll(new RegExp(String.raw`^\s*\[(${TIME})\]`, "gm"))].map((m) => toSecs(m[1])).sort((a, b) => a - b);
+  const out = new Map<number, Mark[]>();
+  for (const m of marks) {
+    let t: number | undefined;
+    for (const s of starts) if (s <= m.at) t = s;
+    if (t === undefined) t = starts[0];
+    if (t !== undefined) out.set(t, [...(out.get(t) ?? []), m]);
+  }
+  return out;
+}
+
+/** Seconds of the first `#t=…@N` link of a paragraph (hast node). */
+function firstTime(node: unknown): number | null {
+  const kids = (node as { children?: { type: string; tagName?: string; properties?: { href?: unknown } }[] } | undefined)?.children ?? [];
+  for (const k of kids) {
+    if (k.type === "element" && k.tagName === "a") {
+      const m = String(k.properties?.href ?? "").match(/^#t=[^@]+@(\d+)$/);
+      return m ? Number(m[1]) : null;
+    }
+    if (k.type === "text" && String((k as { value?: string }).value ?? "").trim()) return null;
+  }
+  return null;
+}
+
 /** Markdown with GFM tables and LaTeX; `#t=…` / `#f=…` links go to `onRef`. */
 export function Markdown({
   text,
@@ -44,8 +86,11 @@ export function Markdown({
   exported,
   imgSrc,
   onLink,
+  marks,
 }: {
   text: string;
+  /** Bookmarks of the recording: their paragraphs are highlighted. */
+  marks?: Mark[];
   source?: string;
   onRef?: (href: string) => void;
   exported?: boolean;
@@ -54,12 +99,27 @@ export function Markdown({
   /** Relative links (`02-lezioni.md`) inside the user guide. */
   onLink?: (href: string) => void;
 }) {
+  const byParagraph = useMemo(() => (marks?.length ? marksByParagraph(text, marks) : null), [text, marks]);
   return (
     <div className="prose-lezioni select-text">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
+          p: ({ node, children }) => {
+            const t = byParagraph ? firstTime(node) : null;
+            const ms = t === null ? undefined : byParagraph?.get(t);
+            if (!ms) return <p>{children}</p>;
+            const top = ms.find((m) => m.kind === "dubbio") ?? ms.find((m) => m.kind === "importante") ?? ms[0];
+            return (
+              <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]}`} data-mark={top.kind}>
+                <span className="mr-1 select-none font-semibold" title={ms.map((m) => MARK_LABEL[m.kind] + (m.note ? `: ${m.note}` : "")).join("\n")}>
+                  {[...new Set(ms.map((m) => MARK_ICON[m.kind]))].join("")}
+                </span>
+                {children}
+              </p>
+            );
+          },
           img: ({ src, alt }) => {
             const url = typeof src === "string" ? (imgSrc?.(src) ?? src) : undefined;
             return url ? <img src={url} alt={alt ?? ""} className="my-2 rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800" loading="lazy" /> : null;

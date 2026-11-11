@@ -517,3 +517,28 @@ pub async fn chat_ask(state: State<'_, AppState>, lesson_id: String, scope: Scop
 pub fn course_costs(state: State<'_, AppState>, course_id: String) -> CmdResult<crate::costs::CourseCosts> {
     Ok(crate::costs::course(&state.library()?, &course_id)?)
 }
+
+// ---------- bookmarks ----------
+
+#[tauri::command(async)]
+pub fn bookmarks_list(state: State<'_, AppState>, lesson_id: String) -> CmdResult<Vec<crate::bookmarks::Bookmark>> {
+    Ok(crate::bookmarks::list(&state.library()?, &lesson_id)?)
+}
+
+#[tauri::command(async)]
+pub fn bookmark_add(state: State<'_, AppState>, lesson_id: String, source_id: String, at: f64, kind: crate::bookmarks::Kind, note: String) -> CmdResult<Vec<crate::bookmarks::Bookmark>> {
+    let _w = state.writing();
+    Ok(crate::bookmarks::add(&state.library()?, &lesson_id, &source_id, at, kind, &note)?)
+}
+
+#[tauri::command(async)]
+pub fn bookmark_update(state: State<'_, AppState>, lesson_id: String, id: String, kind: crate::bookmarks::Kind, note: String) -> CmdResult<Vec<crate::bookmarks::Bookmark>> {
+    let _w = state.writing();
+    Ok(crate::bookmarks::update(&state.library()?, &lesson_id, &id, kind, &note)?)
+}
+
+#[tauri::command(async)]
+pub fn bookmark_remove(state: State<'_, AppState>, lesson_id: String, id: String) -> CmdResult<Vec<crate::bookmarks::Bookmark>> {
+    let _w = state.writing();
+    Ok(crate::bookmarks::remove(&state.library()?, &lesson_id, &id)?)
+}

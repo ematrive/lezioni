@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
-import { Markdown } from "../../lib/Markdown";
+import { ai, api, costLine, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { Markdown, MARK_ICON, MARK_LABEL } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
@@ -209,20 +209,154 @@ export function staleSources(lesson: Lesson, outputs: Outputs) {
   return lesson.sources.filter((s) => s.edited && (!generated || s.edited > generated));
 }
 
+/** Bookmarks added or changed after the summary was made. */
+const newMarks = (outputs: Outputs) => outputs.bookmarks.some((b) => !outputs.info || b.created > outputs.info.generated);
+
 function RegenerateHint({ lesson, outputs }: { lesson: Lesson; outputs: Outputs }) {
-  if (!outputs.summary || !staleSources(lesson, outputs).length) return null;
+  if (!outputs.summary) return null;
+  const edited = staleSources(lesson, outputs).length > 0;
+  if (!edited && !newMarks(outputs)) return null;
   return (
     <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      Hai corretto la trascrizione: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio.
+      {edited ? "Hai corretto la trascrizione" : "Hai aggiunto dei segnaposti"}: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio.
     </p>
   );
 }
 
-export function TranscriptTab({ lesson, outputs, seek, process, editing }: { lesson: Lesson; outputs: Outputs; seek: Seek | null; process: React.ReactNode; editing?: Editing }) {
+const clock = (secs: number) => {
+  const s = Math.floor(secs);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
+};
+
+/** Under a player: mark the current minute, and the list of marks of that recording. */
+function Bookmarks({ lessonId, sourceId, marks, player, onChanged, openNote }: { lessonId: string; sourceId: string; marks: Bookmark[]; player: () => HTMLMediaElement | null; onChanged: () => void; openNote?: boolean }) {
+  const [draft, setDraft] = useState<{ at: number; note: string } | null>(() => (openNote ? { at: player()?.currentTime ?? 0, note: "" } : null));
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState("");
+  const run = async (f: () => Promise<unknown>) => {
+    try {
+      await f();
+      onChanged();
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    }
+  };
+  const now = () => player()?.currentTime ?? 0;
+  const add = (kind: BookmarkKind) => run(() => ai.addBookmark(lessonId, sourceId, now(), kind));
+  const seekTo = (at: number) => {
+    const p = player();
+    if (p) {
+      p.currentTime = at;
+      p.play().catch(() => {});
+    }
+  };
+  return (
+    <div className="mt-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-zinc-500">Segna questo punto:</span>
+        <button className="btn py-0.5" onClick={() => add("importante")} title="Tasto I mentre ascolti">
+          {MARK_ICON.importante} Importante
+        </button>
+        <button className="btn py-0.5" onClick={() => add("dubbio")} title="Tasto D mentre ascolti">
+          {MARK_ICON.dubbio} Non ho capito
+        </button>
+        <button className="btn py-0.5" onClick={() => setDraft({ at: now(), note: "" })} title="Tasto N mentre ascolti">
+          {MARK_ICON.nota} Nota
+        </button>
+      </div>
+      {draft && (
+        <form
+          className="mt-2 flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const d = draft;
+            setDraft(null);
+            run(() => ai.addBookmark(lessonId, sourceId, d.at, "nota", d.note));
+          }}
+        >
+          <span className="font-mono text-xs text-zinc-500">{clock(draft.at)}</span>
+          <input autoFocus className="field flex-1" placeholder="Cosa vuoi ricordare di questo punto?" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
+          <button className="btn btn-primary py-0.5">Aggiungi</button>
+        </form>
+      )}
+      {marks.length > 0 && (
+        <ul className="mt-2 space-y-1" aria-label="Segnaposti">
+          {marks.map((m) => (
+            <li key={m.id} className="group flex items-center gap-2">
+              <span title={MARK_LABEL[m.kind]}>{MARK_ICON[m.kind]}</span>
+              <button className="rounded bg-sky-100 px-1 font-mono text-xs text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => seekTo(m.at)}>
+                {clock(m.at)}
+              </button>
+              {editId === m.id ? (
+                <input
+                  autoFocus
+                  className="field flex-1 py-0.5"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") setEditId(null);
+                  }}
+                  onBlur={() => {
+                    setEditId(null);
+                    if (editNote.trim() !== m.note) run(() => ai.updateBookmark(lessonId, m.id, m.kind, editNote));
+                  }}
+                />
+              ) : (
+                <button
+                  className={`min-w-0 flex-1 truncate text-left ${m.note ? "" : "text-zinc-400"}`}
+                  onClick={() => {
+                    setEditId(m.id);
+                    setEditNote(m.note);
+                  }}
+                  title="Clicca per scrivere una nota"
+                >
+                  {m.note || MARK_LABEL[m.kind]}
+                </button>
+              )}
+              <button className="text-zinc-400 opacity-0 hover:text-red-600 group-hover:opacity-100" onClick={() => run(() => ai.removeBookmark(lessonId, m.id))} title="Elimina il segnaposto" aria-label="Elimina il segnaposto">
+                <Trash2 className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookmarks }: { lesson: Lesson; outputs: Outputs; seek: Seek | null; process: React.ReactNode; editing?: Editing; onBookmarks: () => void }) {
   const [view, setView] = useState<Record<string, "clean" | "raw">>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const players = useRef<Record<string, HTMLAudioElement | HTMLVideoElement | null>>({});
   const sections = useRef<Record<string, HTMLElement | null>>({});
+  /** The recording played last: the keys I, D and N mark it. */
+  const playing = useRef<string | null>(null);
+  const [noteFor, setNoteFor] = useState<{ sourceId: string; n: number } | null>(null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const t = e.target;
+      if (e.metaKey || e.ctrlKey || e.altKey || (t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)))) return;
+      const media = lesson.sources.filter((s) => (s.kind === "audio" || s.kind === "video") && !s.omitted && players.current[s.id]);
+      const sid = playing.current ?? (media.length === 1 ? media[0].id : null);
+      const p = sid ? players.current[sid] : null;
+      if (!sid || !p) return;
+      const kind = ({ i: "importante", d: "dubbio" } as const)[e.key.toLowerCase() as "i" | "d"];
+      if (kind) {
+        e.preventDefault();
+        ai.addBookmark(lesson.id, sid, p.currentTime, kind).then(() => {
+          toast(`${MARK_LABEL[kind]} a ${clock(p.currentTime)}`);
+          onBookmarks();
+        }, (err) => toast(toAppError(err).message, "error"));
+      } else if (e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setNoteFor({ sourceId: sid, n: Date.now() });
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [lesson, onBookmarks]);
   useEffect(() => {
     if (!seek) return;
     sections.current[seek.sourceId]?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -254,8 +388,11 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing }: { les
             <div className="sticky top-0 z-10 -mx-4 mb-3 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:bg-zinc-950/95">
               <h3 className="font-semibold">{s.originalName}</h3>
               {s.omitted && <p className="mt-1 text-xs text-zinc-500">La registrazione non era nel pacchetto ricevuto: c'è solo la trascrizione.</p>}
-              {s.kind === "audio" && !s.omitted && <audio ref={(el) => void (players.current[s.id] = el)} className="mt-2 w-full" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
-              {s.kind === "video" && !s.omitted && <video ref={(el) => void (players.current[s.id] = el)} className="mt-2 max-h-64 w-full rounded" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
+              {s.kind === "audio" && !s.omitted && <audio ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="mt-2 w-full" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
+              {s.kind === "video" && !s.omitted && <video ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="mt-2 max-h-64 w-full rounded" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} />}
+              {media && !s.omitted && editingId !== s.id && (
+                <Bookmarks key={noteFor?.sourceId === s.id ? noteFor.n : 0} lessonId={lesson.id} sourceId={s.id} marks={outputs.bookmarks.filter((b) => b.sourceId === s.id)} player={() => players.current[s.id] ?? null} onChanged={onBookmarks} openNote={noteFor?.sourceId === s.id} />
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {raw && editingId !== s.id && (
                   <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm dark:border-zinc-700" role="group" aria-label="Versione del testo">
@@ -289,7 +426,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing }: { les
                 }}
               />
             ) : (
-              <Markdown text={showRaw ? raw : outputs.extracts[s.id]} source={media ? s.id : undefined} onRef={onRef} />
+              <Markdown text={showRaw ? raw : outputs.extracts[s.id]} source={media ? s.id : undefined} onRef={onRef} marks={media ? outputs.bookmarks.filter((b) => b.sourceId === s.id) : undefined} />
             )}
           </section>
         );

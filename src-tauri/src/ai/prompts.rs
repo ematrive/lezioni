@@ -72,11 +72,20 @@ pub const PDF: &str = "Questo è un PDF di una lezione (slide, dispense o appunt
 con un titolo ## Pagina N per ogni pagina. Mantieni titoli, elenchi e tabelle; formule in LaTeX; descrivi grafici e schemi in corsivo tra parentesi. \
 Se è un testo lungo e già digitale, riportalo fedelmente. Rispondi solo con il contenuto.";
 
-pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, sources: &str) -> String {
+/// `marks`: the student's bookmarks, one per line ("- [F1 00:12:30] importante: nota").
+pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, marks: &str, sources: &str) -> String {
     let terms = terms_line(terms);
     let notes = if notes.trim().is_empty() { String::new() } else { format!("\nNote dello studente sulla lezione:\n{notes}\n") };
+    let marks = if marks.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nPunti segnati dallo studente mentre riascoltava la registrazione. Nella sintesi dai più spazio ai punti «importante» \
+e spiega con più calma e con un esempio i punti «non capito»; le note dicono cosa lo studente voleva ricordare:\n{marks}"
+        )
+    };
     format!(
-        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}\n\
+        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}{marks}\n\
 Qui sotto ci sono tutte le fonti della lezione, ognuna con un codice [F1], [F2]…: la trascrizione della registrazione, appunti, foto della lavagna, slide. \
 Collegale tra loro: gli appunti e le slide spesso spiegano o correggono ciò che si sente nella registrazione, e viceversa.\n\n\
 Produci:\n\

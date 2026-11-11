@@ -509,6 +509,7 @@ impl Library {
                 fs::remove_file(&e)?;
             }
         }
+        crate::bookmarks::remove_source(&l.path, source_id)?;
         self.save_lesson(&l)?;
         Ok(l)
     }

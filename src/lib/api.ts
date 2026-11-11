@@ -191,6 +191,19 @@ export interface Outputs {
   map: MapNode | null;
   study: Study | null;
   info: { generated: string; model: string; usage: Usage; suggestedTitle: string; sources: Record<string, string>; edited?: string } | null;
+  bookmarks: Bookmark[];
+}
+
+export type BookmarkKind = "importante" | "dubbio" | "nota";
+
+export interface Bookmark {
+  id: string;
+  sourceId: string;
+  /** seconds from the start of the recording */
+  at: number;
+  kind: BookmarkKind;
+  note: string;
+  created: string;
 }
 
 export type JobEvent =
@@ -215,6 +228,9 @@ export const ai = {
   saveExtract: (lessonId: string, sourceId: string, text: string) => invoke<Lesson>("extract_save", { lessonId, sourceId, text }),
   saveSummary: (lessonId: string, text: string) => invoke<void>("summary_save", { lessonId, text }),
   saveStudy: (lessonId: string, study: Study) => invoke<void>("study_save", { lessonId, study }),
+  addBookmark: (lessonId: string, sourceId: string, at: number, kind: BookmarkKind, note = "") => invoke<Bookmark[]>("bookmark_add", { lessonId, sourceId, at, kind, note }),
+  updateBookmark: (lessonId: string, id: string, kind: BookmarkKind, note: string) => invoke<Bookmark[]>("bookmark_update", { lessonId, id, kind, note }),
+  removeBookmark: (lessonId: string, id: string) => invoke<Bookmark[]>("bookmark_remove", { lessonId, id }),
   cancel: (jobId: string) => invoke<boolean>("job_cancel", { jobId }),
   async process(lessonId: string, options: { force?: boolean; extractOnly?: boolean }, onEvent: (e: JobEvent) => void): Promise<string> {
     const jobId = crypto.randomUUID();

@@ -12,6 +12,8 @@
   let aiProvider = "gemini";
   const chats = {};
   const costs = {}; // lesson id -> [{ when, total }]
+  const marks = {}; // lesson id -> bookmarks
+  const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
     const e = f.split(".").pop().toLowerCase();
     if (["mp3", "m4a", "wav", "ogg"].includes(e)) return "audio";
@@ -202,7 +204,16 @@
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
-          return outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null };
+          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [] };
+        case "bookmark_add":
+          (marks[a.lessonId] ??= []).push({ id: id(), sourceId: a.sourceId, at: a.at, kind: a.kind, note: a.note, created: now() });
+          return sortMarks(a.lessonId);
+        case "bookmark_update":
+          Object.assign(marks[a.lessonId].find((b) => b.id === a.id), { kind: a.kind, note: a.note });
+          return sortMarks(a.lessonId);
+        case "bookmark_remove":
+          marks[a.lessonId] = marks[a.lessonId].filter((b) => b.id !== a.id);
+          return sortMarks(a.lessonId);
         case "lesson_process": {
           // Fake run: a few steps, then the outputs below.
           const l = find(a.lessonId);
