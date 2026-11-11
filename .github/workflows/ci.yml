@@ -61,3 +61,30 @@ jobs:
       - name: Backend (Rust, Metal)
         working-directory: src-tauri
         run: cargo test --lib
+
+  # Only compiles (whisper.cpp and its bindings are the part that differs on Windows): the
+  # release found out too late that Windows did not build.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # whisper-rs-sys makes its Rust bindings with bindgen, which needs libclang: without it it
+      # falls back to bindings made on Linux, whose struct sizes are wrong for MSVC (E0080).
+      - name: libclang per whisper-rs (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Backend (Rust, Windows)
+        working-directory: src-tauri
+        run: cargo test --lib
