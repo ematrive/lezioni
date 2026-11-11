@@ -342,6 +342,13 @@ try {
   await p.getByText("file non incluso").waitFor();
   if ((await p.evaluate(() => window.__calls.filter((c) => c === "sources_add_files").length)) !== 1) throw new Error("il pacchetto è stato aggiunto come fonte");
 
+  // Version and what's new (the CHANGELOG), bottom left.
+  await p.getByRole("button", { name: /^Lezioni \d+\.\d+\.\d+ · Novità/ }).click();
+  await p.getByText("In sviluppo (non ancora rilasciata)").waitFor();
+  await p.getByRole("heading", { name: "0.7.0", exact: true }).waitFor();
+  await shot("novita");
+  await p.keyboard.press("Escape");
+
   // The user guide (F1), with its screenshots.
   await p.keyboard.press("F1");
   await p.getByRole("button", { name: "Corsi e lezioni →" }).waitFor();

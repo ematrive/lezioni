@@ -31,3 +31,7 @@ Le colonne si allargano o si stringono trascinandone il bordo; un doppio clic su
 Questa guida si apre in qualsiasi momento con **F1** o con **Guida** in basso a sinistra. A sinistra c'è l'indice, con una ricerca nel testo della guida.
 
 ![La guida nell'app](img/guida.png)
+
+Sotto la Guida c'è la **versione** dell'app (per esempio *Lezioni 0.7.0 · Novità*): cliccala per leggere le novità di ogni versione. Un pallino blu accanto vuol dire che l'app è stata aggiornata e ci sono novità che non hai ancora letto.
+
+![Le novità della versione](img/novita.png)

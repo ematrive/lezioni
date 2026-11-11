@@ -3,6 +3,7 @@ import { BookOpen, CircleHelp, Download, FolderOpen, MoreHorizontal, PanelLeftCl
 import { useEffect, useState } from "react";
 import { api, toAppError, type Course } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
+import { hasNews, markNewsSeen, VERSION, WhatsNew } from "../help/WhatsNew";
 import { toast } from "../../lib/toast";
 
 export function CourseList({
@@ -33,6 +34,8 @@ export function CourseList({
 }) {
   /** null = closed, "new" = create, otherwise the course being edited. */
   const [editing, setEditing] = useState<Course | "new" | null>(null);
+  const [news, setNews] = useState(hasNews);
+  const [showNews, setShowNews] = useState(false);
   /** Course whose "⋯" menu is open. */
   const [menu, setMenu] = useState<string | null>(null);
   useEffect(() => {
@@ -155,7 +158,20 @@ export function CourseList({
           <CircleHelp className="size-4" /> Guida
           <kbd className="ml-auto rounded border border-zinc-300 px-1 text-[10px] text-zinc-400 dark:border-zinc-700">F1</kbd>
         </button>
+        <button
+          className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+          onClick={() => {
+            markNewsSeen();
+            setNews(false);
+            setShowNews(true);
+          }}
+          title="Le novità di questa versione e delle precedenti"
+        >
+          Lezioni {VERSION} · Novità
+          {news && <span className="size-1.5 rounded-full bg-sky-500" aria-label="novità da leggere" />}
+        </button>
       </div>
+      {showNews && <WhatsNew onClose={() => setShowNews(false)} />}
       {editing && (
         <CourseDialog
           course={editing === "new" ? null : editing}
