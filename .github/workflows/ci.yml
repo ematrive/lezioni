@@ -90,5 +90,6 @@ jobs:
         shell: pwsh
         run: |
           # whisper-rs-sys says why bindgen failed only with -vv (warnings of dependencies are hidden).
-          cargo build --lib -vv 2>&1 | Select-String -Pattern "Unable to generate|bundled bindings|libclang|whisper-rs-sys.*warning" | Select-Object -First 20
+          cargo build --lib -vv *> build.log
+          Select-String -Path build.log -Pattern "Unable to generate|bundled bindings" -Context 0,8
           cargo test --lib
