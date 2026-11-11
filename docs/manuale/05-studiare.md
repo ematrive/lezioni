@@ -24,6 +24,20 @@ Il segnaposto prende il minuto a cui sei arrivato. I tasti valgono per la regist
 
 Con **Rigenera** la sintesi dà più spazio ai punti importanti e spiega con più calma quelli che non hai capito. Anche le **Domande** li conoscono: puoi chiedere «spiegami i punti che non ho capito». I segnaposti sono nel file `segnaposti.json` della lezione e viaggiano nei pacchetti, come le note.
 
+### Slide accanto alla trascrizione
+
+Se la lezione ha le **slide del docente** collegate alla registrazione (vedi [Fonti](03-fonti.md#slide-della-lezione-o-altro-materiale)), accanto alla trascrizione compare la **slide del momento**:
+
+- mentre ascolti, la slide cambia da sola quando il docente passa alla successiva;
+- a registrazione ferma, segue il testo che stai leggendo mentre scorri;
+- **‹ ›** sfogliano le slide; **▶ 00:12:30** sopra la slide fa ascoltare da quando il docente ci arriva;
+- nel testo, l'etichetta **▤ Slide 12** segna dove il docente passa a quella slide: cliccala per vederla;
+- nel testo delle slide, accanto a ogni **Pagina N** c'è il minuto in cui se ne parla.
+
+La casella **Slide accanto** la nasconde o la rimostra. Con le colonne di corsi e lezioni aperte lo spazio è poco: il **tutto schermo** è il modo più comodo per studiare così.
+
+![La slide del momento accanto alla trascrizione](img/slide-accanto.png)
+
 ### Pause
 
 Se la registrazione è rimasta accesa durante un intervallo o un silenzio, Whisper tende a riempire il vuoto con parole inventate (tipicamente «grazie grazie grazie…», o «sottotitoli a cura di…»). L'app le riconosce e le sostituisce con una sola riga grigia: **Pausa 00:12:23 – 00:16:19 (4 min)**, con il minuto cliccabile. Il testo inventato non arriva al modello, quindi non sporca sintesi e domande.

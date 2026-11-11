@@ -2,6 +2,7 @@
 
 ## Prossima versione
 
+- **Slide collegate alla registrazione**: nelle Fonti ogni PDF è *Slide della lezione* o *Altro materiale* (l'app lo propone leggendolo). Le slide vengono collegate alla registrazione e nella Trascrizione compare la **slide del momento accanto al testo**, che cambia mentre ascolti o scorri; nel testo, «▤ Slide 12» segna i passaggi; la sintesi segue l'ordine delle slide.
 - Se il modello della sintesi risponde due volte vuoto o scrive una risposta così lunga da essere troncata, l'app riprova con il **modello di riserva** invece di fermarsi con un errore, e lo segnala; nel log resta la fine della risposta troncata.
 - Il campo «Cerca nella lezione» non è più tagliato.
 - Trascrizione: si passa da un documento all'altro (registrazione, slide, foto) con la riga **In questa lezione**, con il menu sul nome del documento o con le frecce ↑ ↓, senza scorrere tutta la pagina.

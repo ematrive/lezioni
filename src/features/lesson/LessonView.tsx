@@ -286,7 +286,7 @@ export function LessonView({
       </nav>
       <div ref={content} className="min-h-0 flex-1 overflow-auto p-4" data-lesson-content>
         {tab === "sources" ? (
-          <Sources lesson={lesson} busy={busy} onPick={pick} onPasteText={() => setTextDraft("")} onChanged={changed} />
+          <Sources lesson={lesson} busy={busy || !!job} onPick={pick} onPasteText={() => setTextDraft("")} onChanged={changed} outputs={outputs} onLinked={loadOutputs} />
         ) : !outputs ? null : tab === "transcript" ? (
           <TranscriptTab lesson={lesson} outputs={outputs} seek={seek} process={processButton} editing={editing} onBookmarks={loadOutputs} />
         ) : tab === "summary" ? (
@@ -432,7 +432,28 @@ function KindIcon({ kind, className }: { kind: SourceKind; className?: string })
   return <I className={className} />;
 }
 
-function Sources({ lesson, busy, onPick, onPasteText, onChanged }: { lesson: Lesson; busy: boolean; onPick: () => void; onPasteText: () => void; onChanged: (l: Lesson) => void }) {
+function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLinked }: { lesson: Lesson; busy: boolean; onPick: () => void; onPasteText: () => void; onChanged: (l: Lesson) => void; outputs: Outputs | null; onLinked: () => void }) {
+  const [linking, setLinking] = useState<string | null>(null);
+  const hasRecording = lesson.sources.some((s) => (s.kind === "audio" || s.kind === "video") && outputs?.extracts[s.id] !== undefined);
+  const setRole = async (s: Source, role: "slide" | "materiale") => {
+    try {
+      onChanged(await ai.setRole(lesson.id, s.id, role));
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    }
+  };
+  const link = async (s: Source) => {
+    setLinking(s.id);
+    try {
+      const n = await ai.alignSlides(lesson.id, s.id);
+      toast(`Slide collegate alla registrazione: ${n} passaggi da una slide all'altra.`);
+      onLinked();
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    } finally {
+      setLinking(null);
+    }
+  };
   const [notes, setNotes] = useState(lesson.notes);
   const remove = async (s: Source) => {
     const extracted = s.kind === "audio" || s.kind === "video" ? " e la sua trascrizione" : s.kind === "text" ? "" : " e il testo estratto";
@@ -519,6 +540,38 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged }: { lesson: Les
                     </button>
                   </div>
                   {s.kind === "audio" && !s.omitted && <audio className="mt-2 w-full" controls preload="none" src={fileUrl(sourceFile(lesson, s))} />}
+                  {s.kind === "pdf" && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs text-zinc-500">
+                      <div className="flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label={`Che cos'è ${s.originalName}`}>
+                        {(["slide", "materiale"] as const).map((r) => (
+                          <button
+                            key={r}
+                            className={`rounded px-2 py-0.5 ${(s.role ?? "materiale") === r ? "bg-sky-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                            onClick={() => setRole(s, r)}
+                            title={r === "slide" ? "Le slide che il docente proiettava: si collegano alla registrazione, slide per slide" : "Appunti, dispense, altri documenti: restano a parte"}
+                          >
+                            {r === "slide" ? "Slide della lezione" : "Altro materiale"}
+                          </button>
+                        ))}
+                      </div>
+                      {s.roleGuessed && <span title="Proposto dall'app leggendo il PDF: cambialo se non è giusto">proposto</span>}
+                      {s.role === "slide" &&
+                        (() => {
+                          const al = outputs?.slides.find((a) => a.pdf === s.id);
+                          const read = outputs?.extracts[s.id] !== undefined;
+                          if (!read) return <span>si collegherà alla registrazione quando elabori la lezione</span>;
+                          if (!hasRecording) return <span>nessuna registrazione trascritta da collegare</span>;
+                          return (
+                            <>
+                              {al && <span>collegata: {al.steps.length} passaggi</span>}
+                              <button className="btn btn-sm" disabled={linking === s.id || busy} onClick={() => link(s)}>
+                                {linking === s.id ? "Collego…" : al ? "Ricollega" : "Collega alla registrazione"}
+                              </button>
+                            </>
+                          );
+                        })()}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

@@ -102,7 +102,7 @@ try {
   // [F1 00:12:30] jumps to the transcript.
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Oggi vediamo il metodo del simplesso.").waitFor();
-  await p.getByRole("button", { name: "00:12:30" }).waitFor();
+  await p.getByRole("button", { name: "00:12:30", exact: true }).waitFor();
   // The transcript scrolled to that paragraph (not left at the top).
   await p.waitForTimeout(700);
   const visible = await p.locator('[data-t="750"]').first().evaluate((b) => {
@@ -186,6 +186,20 @@ try {
   await p.getByRole("menuitem", { name: "slide-cap3.pdf" }).click();
   await p.waitForTimeout(600);
   if (!(await p.getByRole("heading", { name: "Pagina 1" }).evaluate((h) => h.getBoundingClientRect().top < window.innerHeight))) throw new Error("salto al documento non riuscito");
+  // The slides next to the transcript: page drawn by pdf.js, "Slide 2" in the text moves it.
+  await p.locator("[data-slides-panel] canvas").first().waitFor();
+  await p.locator("[data-slide-chip='2']").first().click();
+  await p.locator("[data-slides-panel]").getByText("Slide 2 di 3").waitFor();
+  await p.waitForFunction(() => {
+    const c = document.querySelector("[data-slides-panel] canvas");
+    return c && c.width > 50 && c.getContext("2d").getImageData(10, 10, 1, 1).data[3] > 0;
+  });
+  // Shown on the whole window, where text and slide sit side by side comfortably.
+  await p.getByRole("button", { name: "Tutto schermo" }).click();
+  await p.locator("[data-slides-panel]").evaluate((e) => e.closest("section").scrollIntoView({ block: "start" }));
+  await p.waitForTimeout(300);
+  await shot("slide-accanto");
+  await p.keyboard.press("Escape");
   // Notes written by hand on the slides: pen blue, on their own line, without "nota a mano:".
   await p.locator(".handwritten").getByText(/regola di Bland/).waitFor();
   if ((await p.locator(".handwritten").first().innerText()).includes("nota a mano")) throw new Error("nota a mano: ancora scritto");

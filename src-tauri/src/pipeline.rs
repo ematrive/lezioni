@@ -407,6 +407,16 @@ pub fn cleanup_pending(lesson_dir: &Path, s: &Source) -> bool {
     })
 }
 
+/// The "TIPO: slide | documento" line the PDF reading starts with, taken off the text.
+pub(crate) fn pdf_kind(text: &str) -> (Option<crate::library::SourceRole>, String) {
+    let t = text.trim_start();
+    let (first, rest) = t.split_once('\n').unwrap_or((t, ""));
+    let f = first.trim().trim_matches(['*', '_']).to_lowercase();
+    let Some(kind) = f.strip_prefix("tipo:").map(str::trim) else { return (None, text.to_string()) };
+    let role = if kind.starts_with("slide") { crate::library::SourceRole::Slide } else { crate::library::SourceRole::Materiale };
+    (Some(role), rest.trim_start_matches('\n').to_string())
+}
+
 /// Times `[hh:mm:ss]` in a text, in seconds.
 fn times(text: &str) -> Vec<u64> {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\[(\d{2}):(\d{2}):(\d{2})\]").unwrap());
@@ -798,7 +808,14 @@ impl<A: Ai> Ctx<'_, A> {
             }
             (SourceKind::Pdf, Some(m)) => {
                 (self.progress)(step.0 as f64, step.1, format!("Lettura di {label}…"));
-                self.read_with_model(&path, m, prompts::PDF, usage).await?
+                let (text, complete) = self.read_with_model(&path, m, prompts::PDF, usage).await?;
+                // "TIPO: slide" on the first line: the model's guess of what the PDF is.
+                let (kind, text) = pdf_kind(&text);
+                if let Some(role) = kind {
+                    let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
+                    self.archive.lib()?.set_source_role(&lesson.meta.id, &s.id, role, true)?;
+                }
+                (text, complete)
             }
             (SourceKind::Document, _) => {
                 warnings.push(format!("{label}: i file di Office non si possono leggere, esportalo in PDF e aggiungi il PDF"));
@@ -816,6 +833,36 @@ impl<A: Ai> Ctx<'_, A> {
         if f.0 > 0 {
             report.warnings.push(format!("Il modello era sovraccarico: {} richieste fatte con il modello di riserva {}", f.0, f.1));
         }
+    }
+
+    /// Links each PDF marked as slides to each recording, when the link is missing or its texts
+    /// changed. A failure is a warning: the summary is made anyway.
+    async fn link_slides(&self, lesson_id: &str, report: &mut Report) -> Result<()> {
+        let lesson = self.archive.lesson(lesson_id)?;
+        let out = outputs(&lesson);
+        let recs: Vec<&Source> = lesson.meta.sources.iter().filter(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video) && out.extracts.contains_key(&s.id)).collect();
+        let pdfs: Vec<&Source> = lesson.meta.sources.iter().filter(|s| s.kind == SourceKind::Pdf && s.role == Some(crate::library::SourceRole::Slide) && out.extracts.contains_key(&s.id)).collect();
+        for p in &pdfs {
+            for r in &recs {
+                let hash = crate::slides::inputs_hash(&out.extracts[&r.id], &out.extracts[&p.id]);
+                if out.slides.iter().any(|a| a.recording == r.id && a.pdf == p.id && a.inputs == hash) {
+                    continue;
+                }
+                self.check()?;
+                (self.detail)(format!("Collego {} a {}…", p.original_name, r.original_name));
+                let lib = self.archive.lib()?;
+                match crate::slides::align(self.ai, &self.models.transcribe, &lib, lesson_id, &r.id, &p.id, self.cancel).await {
+                    Ok((a, usage)) => {
+                        report.usage.add(&usage);
+                        let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
+                        crate::slides::save(&self.archive.lesson(lesson_id)?.path, a)?;
+                    }
+                    Err(e) if e.to_string() == "annullato" => return Err(e),
+                    Err(e) => report.warnings.push(format!("{}: slide non collegate alla registrazione ({e:#})", p.original_name)),
+                }
+            }
+        }
+        Ok(())
     }
 
     pub async fn run(&self, lesson_id: &str, opts: &Options) -> Result<Report> {
@@ -903,6 +950,7 @@ impl<A: Ai> Ctx<'_, A> {
                 media_failed.join("\n")
             );
         }
+        self.link_slides(lesson_id, &mut report).await?;
         if opts.extract_only {
             self.fallback_warning(&mut report);
             return Ok(report);
@@ -916,10 +964,12 @@ impl<A: Ai> Ctx<'_, A> {
         let lib = self.archive.lib()?;
         let course = lib.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (lib.terms_for(&c.meta), c.meta.name)).map(|(t, n)| (n, t)).unwrap_or_else(|| (String::new(), lib.global_terms()));
         let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
-        let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), |sid| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string()));
+        let code_of = |sid: &str| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string());
+        let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), code_of);
+        let slides = crate::slides::prompt_lines(&crate::slides::read(&lesson.path), code_of);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &sources))],
+            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &slides, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(48_000),
             ..Default::default()
@@ -1012,6 +1062,8 @@ pub struct Outputs {
     pub versions: Vec<crate::versions::Version>,
     /// source id → pauses Whisper filled with invented words, still to be marked.
     pub pauses: BTreeMap<String, usize>,
+    /// Slides linked to recordings (`allineamento.json`).
+    pub slides: Vec<crate::slides::Alignment>,
 }
 
 /// Just the study material (`generati/studio.json`), for the review.
@@ -1042,6 +1094,7 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         info: read(&gdir.join("info.json")).and_then(|t| serde_json::from_str(&t).ok()),
         bookmarks: crate::bookmarks::read(&lesson.path),
         versions: crate::versions::list(lesson),
+        slides: crate::slides::read(&lesson.path),
     }
 }
 
@@ -1120,6 +1173,8 @@ mod tests {
                 raw.replace("ehm allora ", "")
             } else if let Some(raw) = prompt.split("Pezzo:\n").nth(1) {
                 raw.replace("ehm allora ", "")
+            } else if prompt.contains("SLIDE:\n") {
+                r#"{"passaggi":[{"inizio":"00:00:01","pagina":1},{"inizio":"00:00:11","pagina":2}]}"#.into()
             } else if req.schema.is_some() && self.empty_summaries.load(Ordering::SeqCst) > 0 {
                 self.empty_summaries.fetch_sub(1, Ordering::SeqCst);
                 r#"{"titolo":"","sintesi":"","mappa":{"etichetta":""},"glossario":[],"flashcard":[],"domande_esame":[]}"#.into()
@@ -1133,6 +1188,8 @@ mod tests {
                     "domande_esame": [{ "domanda": "Descrivi il simplesso", "traccia": "…" }]
                 })
                 .to_string()
+            } else if prompt.starts_with("Questo è un PDF") {
+                "TIPO: slide\n## Pagina 1\nIl simplesso\n\n## Pagina 2\nIl pivot".into()
             } else if prompt.contains("Questa è la parte") || prompt.contains("È la registrazione") {
                 "[00:05] testo".into()
             } else if prompt.contains("Trascrivi SOLO") || prompt.contains("fino alla fine") || prompt.contains("tutta la registrazione") {
@@ -1322,6 +1379,32 @@ mod tests {
         assert!(!plausible_fragment(raw, "a b c d e f", 0, 120), "no time");
         assert!(!plausible_fragment(raw, "[00:09:00] a b c d e f", 0, 120), "time outside");
         assert!(!plausible_fragment(raw, "[00:00:05] a", 0, 120), "words lost");
+    }
+
+    #[tokio::test]
+    async fn slides_are_recognised_and_linked_to_the_recording() {
+        let st = setup(&[("reg.wav", None), ("slide.pdf", Some(b"%PDF-1.4"))]);
+        let ai = Fake::default();
+        let asr: Arc<dyn Asr> = Arc::new(FakeAsr::default());
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        let pdf = l.meta.sources.iter().find(|s| s.kind == SourceKind::Pdf).unwrap();
+        assert_eq!((pdf.role, pdf.role_guessed), (Some(crate::library::SourceRole::Slide), true), "proposed by the model");
+        let out = outputs(&l);
+        assert!(out.extracts[&pdf.id].starts_with("## Pagina 1"), "the TIPO line is not kept");
+        assert_eq!(out.slides.len(), 1);
+        assert_eq!(out.slides[0].steps.iter().map(|s| (s.at, s.page)).collect::<Vec<_>>(), [(1, 1), (11, 2)]);
+        let prompts = ai.prompts.lock().unwrap().clone();
+        assert!(prompts.last().unwrap().contains("- F2 pagina 2 = F1 00:00:11"), "{}", prompts.last().unwrap());
+        // Nothing changed: not linked again. Marked as other material by hand: no more links made.
+        let before = ai.prompts.lock().unwrap().iter().filter(|p| p.contains("SLIDE:\n")).count();
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert_eq!(ai.prompts.lock().unwrap().iter().filter(|p| p.contains("SLIDE:\n")).count(), before);
+        st.lib.set_source_role(&st.lesson, &pdf.id, crate::library::SourceRole::Materiale, false).unwrap();
+        st.lib.set_source_role(&st.lesson, &pdf.id, crate::library::SourceRole::Slide, true).unwrap();
+        assert_eq!(st.lib.lesson(&st.lesson).unwrap().meta.sources.iter().find(|s| s.id == pdf.id).unwrap().role, Some(crate::library::SourceRole::Materiale), "a guess never overrides the user");
+        st.lib.remove_source(&st.lesson, &pdf.id).unwrap();
+        assert!(outputs(&st.lib.lesson(&st.lesson).unwrap()).slides.is_empty());
     }
 
     #[tokio::test]

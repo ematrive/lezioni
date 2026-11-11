@@ -72,7 +72,7 @@ async fn compare_models() {
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", &sources))],
+            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", "", &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()
@@ -171,6 +171,42 @@ async fn course_summary() {
                 println!("\n=== {used}: {:.1} s, {} in / {} out, {:.4} $\n{}\n\nDOMANDE:", t.elapsed().as_secs_f64(), u.prompt_token_count, u.candidates_token_count, cost(&u), s.summary.unwrap_or_default());
                 for q in s.questions {
                     println!("- {} {:?}", q.domanda, q.lezioni);
+                }
+            }
+            Err(e) => println!("\n=== {m}: ERRORE {e:#}"),
+        }
+    }
+}
+
+/// Slides linked to a recording for real: LEZIONI_IT_TEXT = the cleaned transcript (with times),
+/// LEZIONI_IT_PDF_TEXT = the text read from the slides ("## Pagina N").
+///   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… LEZIONI_IT_TEXT=… LEZIONI_IT_PDF_TEXT=… \
+///   cargo test --test openrouter_it slides_align -- --nocapture
+#[tokio::test]
+async fn slides_align() {
+    let (Ok(_), Ok(text), Ok(pdf)) = (std::env::var("LEZIONI_IT_OPENROUTER"), std::env::var("LEZIONI_IT_TEXT"), std::env::var("LEZIONI_IT_PDF_TEXT")) else {
+        eprintln!("LEZIONI_IT_OPENROUTER, LEZIONI_IT_TEXT o LEZIONI_IT_PDF_TEXT non impostate: test saltato");
+        return;
+    };
+    let o = lezioni_lib::ai::Provider::OpenRouter(OpenRouter::new(std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY")));
+    let tmp = tempfile::tempdir().unwrap();
+    let lib = lezioni_lib::library::Library::open(tmp.path()).unwrap();
+    let c = lib.create_course("Corso", "", "").unwrap();
+    let l = lib.create_lesson(&c.meta.id, "Lezione", chrono::NaiveDate::from_ymd_opt(2026, 11, 10).unwrap()).unwrap();
+    lib.add_bytes(&l.meta.id, "lezione.m4a", b"x").unwrap();
+    let l = lib.add_bytes(&l.meta.id, "slide.pdf", b"x").unwrap();
+    std::fs::create_dir_all(l.path.join("estratti")).unwrap();
+    std::fs::write(l.path.join("estratti/lezione.m4a.md"), std::fs::read_to_string(text).unwrap()).unwrap();
+    std::fs::write(l.path.join("estratti/slide.pdf.md"), std::fs::read_to_string(pdf).unwrap()).unwrap();
+    let (rec, sl) = (l.meta.sources[0].id.clone(), l.meta.sources[1].id.clone());
+    let models = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite".into());
+    for m in models.split(',') {
+        let t = Instant::now();
+        match lezioni_lib::slides::align(&o, m, &lib, &l.meta.id, &rec, &sl, &CancellationToken::new()).await {
+            Ok((a, u)) => {
+                println!("\n=== {m}: {:.1} s, {} in / {} out, {:.4} $, {} pagine", t.elapsed().as_secs_f64(), u.prompt_token_count, u.candidates_token_count, cost(&u), a.pages);
+                for s in a.steps {
+                    println!("  {} → pagina {}", lezioni_lib::pipeline::hms(s.at), s.page);
                 }
             }
             Err(e) => println!("\n=== {m}: ERRORE {e:#}"),

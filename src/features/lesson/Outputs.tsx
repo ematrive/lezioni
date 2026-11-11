@@ -6,6 +6,7 @@ import { Markdown, MARK_ICON, MARK_LABEL, toSecs } from "../../lib/Markdown";
 import { buildMapHtml } from "../share/html";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
+import { SlidesPanel } from "./SlidesPanel";
 import { FlashCard, ReviewSession } from "../study/Review";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
@@ -579,6 +580,22 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
   const sections = useRef<Record<string, HTMLElement | null>>({});
   /** The recording played last: the keys I, D and N mark it. */
   const playing = useRef<string | null>(null);
+  /** Slides next to the transcript (remembered), and the page shown for each recording. */
+  const [side, setSide] = useState(() => {
+    try {
+      return localStorage.getItem("lezioni:slides-side") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("lezioni:slides-side", side ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+  }, [side]);
+  const [slidePage, setSlidePage] = useState<Record<string, number>>({});
   /** The note being written, at a minute of a recording. */
   const [draft, setDraft] = useState<{ sourceId: string; at: number; note: string } | null>(null);
   const mark = useCallback(
@@ -654,8 +671,22 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
     }
   };
   const goTo = (id: string) => sections.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const linked = (sid: string) => {
+    const al = outputs.slides.find((a) => a.recording === sid);
+    const pdf = al && lesson.sources.find((x) => x.id === al.pdf);
+    return al && pdf ? { al, pdf } : null;
+  };
+  const wide = side && withText.some((s) => linked(s.id));
+  // The text of a PDF of slides: each page links to when the teacher talks about it.
+  const pageRefsOf = (sid: string) => {
+    const al = outputs.slides.find((a) => a.pdf === sid);
+    if (!al) return undefined;
+    const refs: Record<number, { href: string; label: string }> = {};
+    for (const st of al.steps) if (!refs[st.page]) refs[st.page] = { href: `#t=${al.recording}@${st.at}`, label: clock(st.at) };
+    return refs;
+  };
   return (
-    <div className="mx-auto max-w-3xl space-y-10">
+    <div className={`mx-auto space-y-10 ${wide ? "max-w-6xl" : "max-w-3xl"}`}>
       <RegenerateHint lesson={lesson} outputs={outputs} />
       {withText.length > 1 && (
         <nav className="flex flex-wrap items-center gap-1.5 pb-2 text-sm" aria-label="Documenti della lezione">
@@ -765,9 +796,57 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                   toast(outputs.summary ? "Correzione salvata. Premi Rigenera per aggiornare la sintesi." : "Correzione salvata.");
                 }}
               />
-            ) : (
-              <Markdown text={showRaw ? raw : outputs.extracts[s.id]} source={media ? s.id : undefined} onRef={onRef} marks={media ? outputs.bookmarks.filter((b) => b.sourceId === s.id) : undefined} />
-            )}
+            ) : (() => {
+              const link = media ? linked(s.id) : null;
+              const text = (
+                <Markdown
+                  text={showRaw ? raw : outputs.extracts[s.id]}
+                  source={media ? s.id : undefined}
+                  onRef={onRef}
+                  marks={media ? outputs.bookmarks.filter((b) => b.sourceId === s.id) : undefined}
+                  slides={link ? link.al.steps : undefined}
+                  onSlide={(page) => {
+                    setSide(true);
+                    setSlidePage((cur) => ({ ...cur, [s.id]: page }));
+                  }}
+                  pageRefs={s.kind === "pdf" ? pageRefsOf(s.id) : undefined}
+                />
+              );
+              if (!link) return text;
+              return (
+                <>
+                  <div className="-mt-2 mb-3 flex items-center gap-2 text-xs text-zinc-500">
+                    <label className="flex cursor-pointer items-center gap-1.5">
+                      <input type="checkbox" checked={side} onChange={(e) => setSide(e.target.checked)} />
+                      Slide accanto
+                    </label>
+                    <span>
+                      · {link.pdf.originalName}, {link.al.steps.length} passaggi
+                    </span>
+                  </div>
+                  {side ? (
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,42%)]">
+                      <div className="min-w-0">{text}</div>
+                      <div className="order-first lg:order-none">
+                        <div className="lg:sticky lg:top-40">
+                          <SlidesPanel
+                            lessonId={lesson.id}
+                            pdf={link.pdf}
+                            al={link.al}
+                            page={slidePage[s.id] ?? link.al.steps[0]?.page ?? 1}
+                            setPage={(p) => setSlidePage((cur) => (cur[s.id] === p ? cur : { ...cur, [s.id]: p }))}
+                            player={() => players.current[s.id] ?? null}
+                            section={() => sections.current[s.id] ?? null}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    text
+                  )}
+                </>
+              );
+            })()}
           </section>
         );
       })}

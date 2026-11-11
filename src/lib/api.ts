@@ -13,6 +13,17 @@ export interface Source {
   omitted?: boolean;
   /** When its text was corrected by hand (ISO date). */
   edited?: string;
+  /** A PDF: the teacher's slides (linked to the recording) or other material. */
+  role?: "slide" | "materiale";
+  /** `role` proposed by the model, not chosen. */
+  roleGuessed?: boolean;
+}
+
+export interface SlideAlignment {
+  recording: string;
+  pdf: string;
+  pages: number;
+  steps: { at: number; page: number }[];
 }
 
 export interface Course {
@@ -203,6 +214,8 @@ export interface Outputs {
   versions: Version[];
   /** source id → pauses Whisper filled with invented words, still to be marked */
   pauses: Record<string, number>;
+  /** slides linked to recordings */
+  slides: SlideAlignment[];
 }
 
 export interface Version {
@@ -292,6 +305,11 @@ export const ai = {
   reclean: (lessonId: string, sourceId: string, from: number, to: number | null, model: string | null) =>
     invoke<{ text: string; usage: Usage; model: string }>("extract_reclean", { lessonId, sourceId, from, to, model }),
   /** Whisper's invented words on a break → a pause line; returns how many. */
+  setRole: (lessonId: string, sourceId: string, role: "slide" | "materiale") => invoke<Lesson>("source_set_role", { lessonId, sourceId, role }),
+  /** Links a PDF of slides to the recordings now; returns how many steps were found. */
+  alignSlides: (lessonId: string, pdfId: string) => invoke<number>("slides_align", { lessonId, pdfId }),
+  /** The bytes of a source (for pdf.js). */
+  sourceBytes: (lessonId: string, sourceId: string) => invoke<ArrayBuffer>("source_read", { lessonId, sourceId }),
   markPauses: (lessonId: string, sourceId: string) => invoke<number>("extract_mark_pauses", { lessonId, sourceId }),
   versionRead: (lessonId: string, area: Version["area"], stamp: string, file: string) => invoke<string>("version_read", { lessonId, area, stamp, file }),
   versionRestore: (lessonId: string, area: Version["area"], stamp: string, file: string | null) => invoke<Lesson>("version_restore", { lessonId, area, stamp, file }),

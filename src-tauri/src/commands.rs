@@ -691,3 +691,45 @@ pub fn extract_mark_pauses(state: State<'_, AppState>, lesson_id: String, source
     let _w = state.writing();
     Ok(pipeline::mark_pauses(&state.library()?, &lesson_id, &source_id)?)
 }
+
+// ---------- slides linked to the recording ----------
+
+#[tauri::command(async)]
+pub fn source_set_role(state: State<'_, AppState>, lesson_id: String, source_id: String, role: crate::library::SourceRole) -> CmdResult<Lesson> {
+    let _w = state.writing();
+    Ok(state.library()?.set_source_role(&lesson_id, &source_id, role, false)?)
+}
+
+/// Links a PDF of slides to the recordings of the lesson now (without processing it again).
+#[tauri::command]
+pub async fn slides_align(state: State<'_, AppState>, lesson_id: String, pdf_id: String) -> CmdResult<usize> {
+    not_busy(&state, &lesson_id)?;
+    let settings = state.settings.lock().unwrap().clone();
+    let model = settings.effective_models().transcribe;
+    let ai = provider(&settings)?;
+    let lib = state.library()?;
+    let lesson = lib.lesson(&lesson_id)?;
+    let out = pipeline::outputs(&lesson);
+    let recs: Vec<String> = lesson.meta.sources.iter().filter(|s| matches!(s.kind, crate::library::SourceKind::Audio | crate::library::SourceKind::Video) && out.extracts.contains_key(&s.id)).map(|s| s.id.clone()).collect();
+    if recs.is_empty() {
+        return Err(anyhow::anyhow!("nella lezione non c'è una registrazione trascritta da collegare").into());
+    }
+    let mut steps = 0;
+    for r in recs {
+        let (a, usage) = crate::slides::align(&ai, &model, &lib, &lesson_id, &r, &pdf_id, &tokio_util::sync::CancellationToken::new()).await?;
+        steps += a.steps.len();
+        let _w = state.writing();
+        crate::slides::save(&lib.lesson(&lesson_id)?.path, a)?;
+        if let Err(e) = crate::costs::record_lesson(&lib, &lesson_id, "slide", [(model.clone(), usage)].into()) {
+            log::warn!("costi: {e:#}");
+        }
+    }
+    Ok(steps)
+}
+
+/// The bytes of a source (the slides' pages are drawn in the app with pdf.js).
+#[tauri::command(async)]
+pub fn source_read(state: State<'_, AppState>, lesson_id: String, source_id: String) -> CmdResult<tauri::ipc::Response> {
+    let p = state.library()?.source_path(&lesson_id, &source_id)?;
+    Ok(tauri::ipc::Response::new(std::fs::read(&p).map_err(|e| anyhow::anyhow!("lettura di {}: {e}", p.display()))?))
+}

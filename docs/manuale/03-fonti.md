@@ -36,6 +36,15 @@ Le fonti sono raggruppate per tipo. Le registrazioni si ascoltano direttamente n
 
 > **Consiglio per gli appunti dal tablet.** Se usi GoodNotes, Notability, OneNote o simili, esporta le pagine della lezione in **PDF**: un PDF di più pagine è una sola fonte e viene letto meglio di tante foto.
 
+## Slide della lezione o altro materiale
+
+Nelle Fonti, sotto ogni PDF, scegli che cos'è:
+
+- **Slide della lezione**: le slide che il docente proiettava mentre parlava. L'app le **collega alla registrazione**: trova in quali minuti il docente passa da una slide all'altra (con il modello di lettura, circa un millesimo di dollaro per lezione). Nella Trascrizione le vedi accanto al testo (vedi [Studiare](05-studiare.md#slide-accanto-alla-trascrizione)).
+- **Altro materiale**: appunti, dispense, esercizi, documenti extra. Restano a parte: entrano nella sintesi, ma non vengono collegati alla registrazione.
+
+Quando legge un PDF, l'app propone da sola il tipo (accanto compare «proposto»); se sbaglia, cambialo con un clic. Il collegamento si fa da solo all'elaborazione; dopo aver cambiato il tipo non serve rielaborare: **Collega alla registrazione** lo fa subito, **Ricollega** lo rifà.
+
 ## Appunti a mano su slide e foto
 
 PDF e foto vengono letti dal modello come immagini, pagina per pagina: vede anche quello che hai scritto a mano sopra una slide stampata o una dispensa, le evidenziature e le frecce. Questi appunti finiscono nel testo letto nel punto in cui sono, ognuno su una riga sua, e nell'app si vedono **in blu, con una matita** davanti, così li distingui dal testo stampato (nel file Markdown sono scritti come *(nota a mano: …)*); per un'evidenziatura viene scritto cosa è evidenziato. Così entrano anche nella sintesi e nelle domande. Una grafia molto difficile può essere letta male: controlla nella scheda Trascrizione, dove ogni fonte ha il suo testo e si corregge con **Modifica**. Con OpenRouter un PDF può pesare fino a 50 MB (provato con 59 pagine di slide annotate, 33 MB: circa mezzo minuto e 3 centesimi).

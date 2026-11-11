@@ -16,6 +16,7 @@ pub mod search;
 pub mod secrets;
 pub mod settings;
 pub mod share;
+pub mod slides;
 pub mod versions;
 
 use std::sync::Mutex;
@@ -140,6 +141,9 @@ pub fn run() {
             terms_set,
             course_glossary,
             extract_mark_pauses,
+            source_set_role,
+            slides_align,
+            source_read,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

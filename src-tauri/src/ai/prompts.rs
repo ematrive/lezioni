@@ -88,13 +88,16 @@ Trascrivi tutto il contenuto in Markdown, nell'ordine di lettura: titoli, elench
 Descrivi grafici, schemi e disegni in corsivo tra parentesi, con assi, etichette e relazioni, così che si capiscano senza vederli. \
 Se è una slide o una pagina stampata con sopra appunti a mano, evidenziature o frecce, trascrivi anche quelli, in corsivo tra parentesi: *(nota a mano: …)*. Se una parte è illeggibile scrivi [illeggibile]. Rispondi solo con il contenuto, senza introduzioni.";
 
-pub const PDF: &str = "Questo è un PDF di una lezione (slide, dispense o appunti). Trascrivi il contenuto in Markdown, pagina per pagina, \
+pub const PDF: &str = "Questo è un PDF di una lezione (slide, dispense o appunti). Nella prima riga scrivi solo TIPO: slide se sono le pagine \
+di una presentazione proiettata in aula (una slide per pagina), altrimenti TIPO: documento. Poi trascrivi il contenuto in Markdown, pagina per pagina, \
 con un titolo ## Pagina N per ogni pagina. Mantieni titoli, elenchi e tabelle; formule in LaTeX; descrivi grafici e schemi in corsivo tra parentesi. \
 Se sopra la pagina ci sono appunti scritti a mano, evidenziature, frecce o sottolineature, trascrivili nel punto in cui sono, in corsivo tra parentesi: *(nota a mano: …)*; per un'evidenziatura scrivi cosa è evidenziato. \
 Se è un testo lungo e già digitale, riportalo fedelmente. Rispondi solo con il contenuto.";
 
 /// `marks`: the student's bookmarks, one per line ("- [F1 00:12:30] importante: nota").
-pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, marks: &str, sources: &str) -> String {
+/// `slides`: when the recording talks about each page of the slides ("- F2 pagina 3 = F1 00:05:10").
+#[allow(clippy::too_many_arguments)]
+pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, marks: &str, slides: &str, sources: &str) -> String {
     let terms = terms_line(terms);
     let notes = if notes.trim().is_empty() { String::new() } else { format!("\nNote dello studente sulla lezione:\n{notes}\n") };
     let marks = if marks.trim().is_empty() {
@@ -105,8 +108,13 @@ pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str,
 e spiega con più calma e con un esempio i punti «non capito»; le note dicono cosa lo studente voleva ricordare:\n{marks}"
         )
     };
+    let slides = if slides.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\nSlide e registrazione: quando il docente parla di ciascuna pagina delle slide. Segui l'ordine delle slide e, dove serve, cita insieme pagina e minuto:\n{slides}")
+    };
     format!(
-        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}{marks}\n\
+        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}{marks}{slides}\n\
 Qui sotto ci sono tutte le fonti della lezione, ognuna con un codice [F1], [F2]…: la trascrizione della registrazione, appunti, foto della lavagna, slide. \
 Collegale tra loro: gli appunti e le slide spesso spiegano o correggono ciò che si sente nella registrazione, e viceversa.\n\n\
 Produci:\n\
@@ -146,6 +154,27 @@ Non riportare note sulle fonti delle singole lezioni (slide mancanti, passaggi i
 e quelle che collegano argomenti diversi. Ognuna con una traccia di risposta e i codici delle lezioni da ripassare (\"lezioni\": [\"L2\", \"L5\"]).\n\n\
 LEZIONI:\n\n{text}"
     )
+}
+
+/// When the teacher moves from one slide to the next, from the transcript's times.
+pub fn align_slides(pages: &str, transcript: &str) -> String {
+    format!(
+        "Qui sotto ci sono le slide che il docente proiettava durante la lezione (una riga per pagina: numero e inizio del testo) \
+e la trascrizione della lezione, con i tempi [hh:mm:ss] all'inizio dei paragrafi.\n\
+Indica i momenti in cui il docente passa a una slide: per ogni passaggio il tempo (quello del paragrafo in cui comincia a parlarne) e il numero della pagina. \
+In ordine di tempo; il docente può saltare pagine o tornare indietro. Se per un tratto non usa le slide, non mettere passaggi in quel tratto. \
+Non inventare: metti una slide solo se il parlato ne tratta davvero il contenuto.\n\nSLIDE:\n{pages}\nTRASCRIZIONE:\n{transcript}"
+    )
+}
+
+pub fn align_slides_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": { "passaggi": { "type": "array", "items": { "type": "object", "properties": {
+            "inizio": { "type": "string" }, "pagina": { "type": "integer" }
+        }, "required": ["inizio", "pagina"] } } },
+        "required": ["passaggi"]
+    })
 }
 
 pub fn course_summary_schema() -> Value {

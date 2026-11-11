@@ -94,6 +94,21 @@ pub struct Source {
     /// When its extract was corrected by hand (cleared when it is extracted again).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edited: Option<DateTime<Utc>>,
+    /// A PDF: the teacher's slides (linked to the recording) or other material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<SourceRole>,
+    /// `role` was proposed by the model, not chosen by the user.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub role_guessed: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceRole {
+    /// The slides the teacher shows in class: linked to the recording.
+    Slide,
+    /// Notes, handouts, other documents: kept apart.
+    Materiale,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -469,6 +484,8 @@ impl Library {
             added: Utc::now(),
             omitted: false,
             edited: None,
+            role: None,
+            role_guessed: false,
         };
         l.meta.sources.push(src.clone());
         Ok(src)
@@ -543,6 +560,7 @@ impl Library {
             }
         }
         crate::bookmarks::remove_source(&l.path, source_id)?;
+        crate::slides::remove_source(&l.path, source_id)?;
         self.save_lesson(&l)?;
         Ok(l)
     }
@@ -555,6 +573,22 @@ impl Library {
             return Ok(l);
         }
         s.edited = when;
+        self.save_lesson(&l)?;
+        Ok(l)
+    }
+
+    /// The role of a PDF. A guess (`guessed`) never replaces the user's choice.
+    pub fn set_source_role(&self, lesson_id: &str, source_id: &str, role: SourceRole, guessed: bool) -> Result<Lesson> {
+        let mut l = self.find_lesson(lesson_id)?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        if guessed && s.role.is_some() && !s.role_guessed {
+            return Ok(l);
+        }
+        if s.role == Some(role) && s.role_guessed == guessed {
+            return Ok(l);
+        }
+        s.role = Some(role);
+        s.role_guessed = guessed;
         self.save_lesson(&l)?;
         Ok(l)
     }

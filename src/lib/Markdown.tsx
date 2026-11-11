@@ -54,9 +54,9 @@ const MARK_STYLE: Record<Mark["kind"], string> = {
 };
 
 /** Each mark goes to the paragraph it falls in: the last one starting at or before it. */
-function marksByParagraph(text: string, marks: Mark[]): Map<number, Mark[]> {
+function marksByParagraph<T extends { at: number }>(text: string, marks: T[]): Map<number, T[]> {
   const starts = [...text.matchAll(new RegExp(String.raw`^\s*\[(${TIME})\]`, "gm"))].map((m) => toSecs(m[1])).sort((a, b) => a - b);
-  const out = new Map<number, Mark[]>();
+  const out = new Map<number, T[]>();
   for (const m of marks) {
     let t: number | undefined;
     for (const s of starts) if (s <= m.at) t = s;
@@ -118,7 +118,15 @@ export function Markdown({
   onLink,
   marks,
   inline,
+  slides,
+  onSlide,
+  pageRefs,
 }: {
+  /** Where the teacher moves to each slide: a "Slide N" chip before that paragraph. */
+  slides?: { at: number; page: number }[];
+  onSlide?: (page: number) => void;
+  /** The text of a PDF of slides: "## Pagina N" gets a link to the minute it is talked about. */
+  pageRefs?: Record<number, { href: string; label: string }>;
   /** A short text inside a line (a flashcard question, a glossary term): no paragraphs. */
   inline?: boolean;
   text: string;
@@ -133,6 +141,7 @@ export function Markdown({
   onLink?: (href: string) => void;
 }) {
   const byParagraph = useMemo(() => (marks?.length ? marksByParagraph(text, marks) : null), [text, marks]);
+  const slidesByParagraph = useMemo(() => (slides?.length ? marksByParagraph(text, slides) : null), [text, slides]);
   const Wrap = inline ? "span" : "div";
   return (
     <Wrap className={inline ? "select-text" : "prose-lezioni select-text"}>
@@ -164,17 +173,50 @@ export function Markdown({
                 </p>
               );
             }
-            const t = byParagraph ? firstTime(node) : null;
+            const t = byParagraph || slidesByParagraph ? firstTime(node) : null;
             const ms = t === null ? undefined : byParagraph?.get(t);
-            if (!ms) return <p>{children}</p>;
+            const sl = t === null ? undefined : slidesByParagraph?.get(t);
+            const chips = sl?.length ? (
+              <span className="mb-1 flex flex-wrap gap-1 select-none">
+                {[...new Set(sl.map((s) => s.page))].map((page) => (
+                  <button key={page} className="rounded border border-violet-300 bg-violet-50 px-1.5 text-xs text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300" onClick={() => onSlide?.(page)} title="Mostra questa slide" data-slide-chip={page}>
+                    ▤ Slide {page}
+                  </button>
+                ))}
+              </span>
+            ) : null;
+            if (!ms)
+              return chips ? (
+                <p>
+                  {chips}
+                  {children}
+                </p>
+              ) : (
+                <p>{children}</p>
+              );
             const top = ms.find((m) => m.kind === "dubbio") ?? ms.find((m) => m.kind === "importante") ?? ms[0];
             return (
               <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]}`} data-mark={top.kind}>
+                {chips}
                 <span className="mr-1 select-none font-semibold" title={ms.map((m) => MARK_LABEL[m.kind] + (m.note ? `: ${m.note}` : "")).join("\n")}>
                   {[...new Set(ms.map((m) => MARK_ICON[m.kind]))].join("")}
                 </span>
                 {children}
               </p>
+            );
+          },
+          h2: ({ node, children }) => {
+            const n = pageRefs ? textOf(node).trim().match(/^Pagina\s+(\d+)$/i) : null;
+            const ref = n ? pageRefs?.[Number(n[1])] : undefined;
+            return (
+              <h2>
+                {children}
+                {ref && (
+                  <button className="ml-2 rounded bg-sky-100 px-1.5 align-middle font-mono text-xs font-normal text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => onRef?.(ref.href)} title="Ascolta da quando il docente ne parla">
+                    ▶ {ref.label}
+                  </button>
+                )}
+              </h2>
             );
           },
           img: ({ src, alt }) => {

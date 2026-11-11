@@ -25,6 +25,25 @@
     return { cards: [...old, ...fresh.slice(0, 20)], due: old.length, new: fresh.length };
   };
   let globalTerms = "";
+  // A real PDF of 3 landscape pages ("slides"), for pdf.js in the side panel.
+  const slidesPdf = (() => {
+    const titles = ["Il metodo del simplesso", "Il pivot", "Degenerazione e regola di Bland"];
+    const objs = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${titles.map((_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${titles.length} >>`];
+    titles.forEach((t, i) => {
+      const stream = `0.85 0.92 1 rg 0 0 640 360 re f 0.05 0.3 0.6 rg BT /F1 30 Tf 40 300 Td (Slide ${i + 1}) Tj ET 0 0 0 rg BT /F1 24 Tf 40 240 Td (${t}) Tj ET`;
+      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 640 360] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${4 + i * 2} 0 R >>`);
+      objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    });
+    let out = "%PDF-1.4\n";
+    const offs = [];
+    objs.forEach((o, i) => {
+      offs.push(out.length);
+      out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    });
+    const x = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("") + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
+    return new TextEncoder().encode(out).buffer;
+  })();
   const courseSummaries = {}; // course id -> summary
   const sortMarks = (lid) => (marks[lid] = (marks[lid] ?? []).sort((x, y) => x.at - y.at));
   const kind = (f) => {
@@ -220,7 +239,7 @@
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
-          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [] };
+          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [], slides: [], ...(outputs[a.id]?.slides && { slides: outputs[a.id].slides }) };
         case "terms_get":
           return globalTerms;
         case "terms_set":
@@ -252,6 +271,15 @@
           }, 300);
           return null;
         }
+        case "source_read":
+          return slidesPdf.slice(0);
+        case "source_set_role": {
+          const s = find(a.lessonId).sources.find((x) => x.id === a.sourceId);
+          Object.assign(s, { role: a.role, roleGuessed: false });
+          return find(a.lessonId);
+        }
+        case "slides_align":
+          return outputs[a.lessonId].slides[0]?.steps.length ?? 0;
         case "extract_mark_pauses": {
           const o = outputs[a.lessonId];
           o.extracts[a.sourceId] = o.extracts[a.sourceId].replace("[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie", "[00:03:10] *(pausa fino a 00:12:30)*");
@@ -298,7 +326,8 @@
             outputs[l.id] = {
               extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
               pauses: audio ? { [audio.id]: 1 } : {},
-              ...(pdf && { pdfText: { [pdf.id]: "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*" } }),
+              ...(pdf && { pdfText: { [pdf.id]: "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*\n\n## Pagina 2\nIl pivot: variabile entrante e test del rapporto minimo.\n\n## Pagina 3\nDegenerazione e regola di Bland." } }),
+              slides: audio && pdf ? [{ recording: audio.id, pdf: pdf.id, pages: 3, steps: [{ at: 5, page: 1 }, { at: 750, page: 2 }] }] : [],
               raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
               summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
               map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
@@ -311,6 +340,7 @@
             };
             versions[l.id] = [{ area: "generati", stamp: "2026-11-10 09-15-00", files: ["info.json", "mappa.json", "mappa.mmd", "sintesi.md", "studio.json"] }];
             Object.assign(outputs[l.id].extracts, outputs[l.id].pdfText ?? {});
+            if (pdf) Object.assign(pdf, { role: "slide", roleGuessed: true });
             delete outputs[l.id].pdfText;
             costs[l.id] = (costs[l.id] ?? []).concat([{ when: now(), total: 0.034 }]);
             send({ event: "done", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, warnings: [] });
