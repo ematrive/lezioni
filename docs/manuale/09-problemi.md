@@ -28,6 +28,8 @@
 
 **Su Mac l'app non si apre («sviluppatore non identificato» o «danneggiata»).** L'app non è firmata da Apple. La prima volta fai clic destro sull'app → **Apri** → **Apri**. Se non basta: Impostazioni di Sistema → Privacy e sicurezza → **Apri comunque**.
 
+**Su Mac compare «"Lezioni" vorrebbe accedere ai file nella cartella Documenti» o chiede la password del Portachiavi.** Succede al primo avvio e dopo un aggiornamento, una volta sola: rispondi **Consenti** e, per il Portachiavi, scrivi la password del Mac e scegli **Consenti sempre**. La password è quella del Mac, non dell'app: serve a leggere la chiave API salvata. Se tieni l'archivio fuori da Documenti, Scrivania e Download (per esempio nella cartella Inizio, `~/Lezioni`), la domanda su Documenti non compare più.
+
 **Su Windows compare «Windows ha protetto il PC».** Clicca **Ulteriori informazioni** → **Esegui comunque**.
 
 **Aggiornamenti.** All'avvio l'app controlla se c'è una versione nuova e chiede se installarla; poi si riavvia da sola.

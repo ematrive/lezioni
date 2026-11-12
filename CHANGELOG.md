@@ -1,5 +1,10 @@
 # Novità
 
+## 1.0.2
+
+- Su Mac l'app non chiede più a ogni avvio l'accesso alla cartella Documenti e la password del Portachiavi: rispondi una volta (**Consenti**, e **Consenti sempre** per il Portachiavi) e se ne ricorda. Dopo un aggiornamento macOS può chiederlo ancora una volta.
+- Le chiavi di Gemini e OpenRouter stanno in un solo elemento del Portachiavi: al massimo una richiesta invece di due.
+
 ## 1.0.1
 
 - Installer per **Windows**: nella 1.0.0 mancava perché la compilazione su Windows non riusciva. Su Mac e Linux non cambia niente.

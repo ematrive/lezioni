@@ -27,6 +27,12 @@ L'app non è firmata né notarizzata (servirebbe l'Apple Developer Program, 99 $
 - clic destro sull'app → **Apri** → **Apri**;
 - se macOS dice che l'app «è danneggiata» o non offre «Apri»: Impostazioni di Sistema → Privacy e sicurezza → in fondo **Apri comunque**; in alternativa nel Terminale `xattr -cr /Applications/Lezioni.app`.
 
+### Firma ad-hoc
+
+L'app è firmata **ad-hoc** (`bundle.macOS.signingIdentity: "-"`), e il workflow di rilascio lo controlla con `codesign`. Senza nessuna firma (fino alla 1.0.1) macOS non riusciva a ricordare «Consenti» per la cartella Documenti e «Consenti sempre» per il Portachiavi, e chiedeva a ogni avvio. Con la firma ad-hoc il permesso vale per quella versione: dopo un aggiornamento macOS chiede di nuovo, una volta.
+
+Un certificato self-signed non toglie quest'ultima richiesta: è stato provato in un altro progetto, e senza Team ID il Portachiavi lega «Consenti sempre» alla singola build. Per arrivare a zero richieste serve un certificato Developer ID (Apple Developer Program). Intanto le due chiavi API stanno in un solo elemento del Portachiavi (`secrets.rs`), così la richiesta è una sola.
+
 ## Windows
 
 L'installer non è firmato: SmartScreen mostra «Windows ha protetto il PC» → **Ulteriori informazioni** → **Esegui comunque**.

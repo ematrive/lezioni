@@ -2,7 +2,7 @@
 
 ## Segreti
 
-- La **chiave API di Gemini** è nel portachiavi del sistema (`secrets.rs`, crate `keyring`: Portachiavi su macOS, Gestione credenziali su Windows, Secret Service su Linux). Non è mai scritta nell'archivio, nelle impostazioni o nei log.
+- Le **chiavi API** di Gemini e OpenRouter sono nel portachiavi del sistema (`secrets.rs`, crate `keyring`: Portachiavi su macOS, Gestione credenziali su Windows, Secret Service su Linux), in **un solo elemento** (account `chiavi-api`, JSON con le due chiavi), così macOS chiede l'accesso una volta sola. I vecchi elementi `gemini-api-key` e `openrouter-api-key` vengono letti una volta per la migrazione e lasciati lì, per un eventuale ritorno a una versione precedente. Le chiavi non sono mai scritte nell'archivio, nelle impostazioni o nei log.
 - La **chiave privata degli aggiornamenti** non è nel repository: sta sul computer di sviluppo e nel segreto `TAURI_SIGNING_PRIVATE_KEY` di GitHub. Nel repository c'è solo la chiave pubblica, usata dall'app per verificare gli aggiornamenti (vedi [../rilascio.md](../rilascio.md)).
 - `.gitignore` esclude `*.key` e i file `.env`.
 

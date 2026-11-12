@@ -65,3 +65,12 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+      # Ad-hoc signature of the whole bundle: without any signature macOS cannot remember
+      # "Allow" (Documents folder) and "Always allow" (keychain) and asks at every launch.
+      - name: Firma ad-hoc dell'app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Lezioni.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | tee sign.txt
+          grep -q "Signature=adhoc" sign.txt
