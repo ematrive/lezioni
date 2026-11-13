@@ -7,6 +7,7 @@
 - Le **foto** (lavagna, appunti) vengono **agganciate al minuto** della registrazione in cui il docente ne parla: dall'orario di scatto quando c'è, altrimenti con il modello. Nella Trascrizione compaiono nel paragrafo giusto e accanto al testo, come le slide; nelle Fonti ogni foto mostra il suo minuto, o **non agganciata** con il motivo.
 - Ogni foto può avere un **titolo** e una **descrizione breve**, scritti da te: aiutano l'aggancio e compaiono al posto del nome del file.
 - **Aggancio a mano**: dal pulsante su un paragrafo della trascrizione (anche al minuto che stai ascoltando) o dalla scheda della foto nelle Fonti, dove si può anche sganciare.
+- L'elaborazione trascrive sempre prima le **registrazioni** e poi legge foto e PDF, in qualunque ordine li hai aggiunti.
 - La **sintesi** può mostrare le foto nel punto in cui aiutano a capire, anche nelle esportazioni HTML, PDF e Markdown.
 
 ## 1.0.3

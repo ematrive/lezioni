@@ -986,7 +986,12 @@ impl<A: Ai> Ctx<'_, A> {
         let mut media_failed = Vec::new();
         // Folder name of the copies of the transcripts corrected by hand, if any is redone.
         let stamp = Utc::now().format("%Y-%m-%d %H-%M-%S").to_string();
-        for (i, s) in lesson.meta.sources.iter().enumerate() {
+        // Recordings first (the longest step, and the transcript is what the rest is read
+        // against), then the other sources in the order they were added. The codes F1, F2…
+        // follow this order: the recording is usually F1.
+        let mut order: Vec<&Source> = lesson.meta.sources.iter().collect();
+        order.sort_by_key(|s| !matches!(s.kind, SourceKind::Audio | SourceKind::Video));
+        for (i, s) in order.into_iter().enumerate() {
             self.check()?;
             let step = (i as u32, total);
             // The folder may have been renamed since the job started.
@@ -1681,6 +1686,19 @@ Con $\nu$ e $\frac{a}{b}$ [F2 00:01:00]\n\n## Scarichi\n### Legge di scarico\n$Q
 
     fn count(ai: &Fake, needle: &str) -> usize {
         ai.prompts.lock().unwrap().iter().filter(|p| p.contains(needle)).count()
+    }
+
+    #[tokio::test]
+    async fn recordings_go_first() {
+        // The photo was added before the recording: still read after it.
+        let st = setup(&[("lavagna.jpg", Some(b"img")), ("reg.wav", None)]);
+        let ai = Fake::default();
+        run(&st, &ai, Options::default()).await.unwrap();
+        let prompts = ai.prompts.lock().unwrap();
+        let first = |needle: &str| prompts.iter().position(|p| p.contains(needle)).unwrap();
+        assert!(first("Questa è la parte") < first("Questa è una foto"), "{prompts:#?}");
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        assert_eq!(outputs(&l).info.unwrap().sources["F1"], l.meta.sources[1].id, "the recording is F1");
     }
 
     #[tokio::test]

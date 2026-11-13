@@ -37,7 +37,7 @@ Premi **Elabora** in alto nella lezione. Una barra mostra a che punto è:
 ![L'elaborazione in corso](img/elaborazione.png)
 
 1. ogni **registrazione** viene divisa in parti di 20 minuti e trascritta sul computer da Whisper, una parte alla volta. Mentre Whisper fa la parte successiva, il modello scelto ripulisce quella già pronta: toglie intercalari e ripetizioni, corregge le parole riconosciute male, divide in paragrafi con titoli, scrive le formule in LaTeX e segna gli interventi degli studenti, mantenendo i minuti;
-2. **foto e PDF** vengono letti, con le formule e la descrizione di grafici e schemi;
+2. **foto e PDF** vengono letti, con le formule e la descrizione di grafici e schemi. Le registrazioni vengono sempre prima, anche se le hai aggiunte dopo: nei riferimenti la registrazione è di solito **F1**;
 3. da **tutte le fonti insieme**, più le tue note, vengono scritte sintesi, mappa, flashcard, domande d'esame e glossario.
 
 Sotto la barra, una seconda riga dice cosa sta aspettando (l'avanzamento di Whisper, la risposta del modello, un nuovo tentativo se il servizio è occupato) e da quanto tempo. Puoi continuare a usare l'app mentre lavora, anche su altre lezioni; **Annulla** la ferma.
