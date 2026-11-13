@@ -74,7 +74,7 @@ La lente a destra delle schede (o **⌘F** sul Mac, **Ctrl+F** su Windows) cerca
 
 ## Sintesi
 
-La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, elenchi, tabelle, formule ed esempi. Alla fine di ogni paragrafo ci sono i **riferimenti**: **F1 00:12:30** vuol dire «fonte 1, al minuto 12:30». Cliccandolo si apre la trascrizione con la registrazione già a quel punto: comodo per riascoltare un passaggio poco chiaro.
+La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, elenchi, tabelle, formule ed esempi. Alla fine di ogni paragrafo ci sono i **riferimenti**: **F1 00:12:30** vuol dire «fonte 1, al minuto 12:30». Cliccandolo si apre la trascrizione con la registrazione già a quel punto: comodo per riascoltare un passaggio poco chiaro. Per i PDF il riferimento può indicare la pagina, come **F2 pag. 3**: cliccandolo si apre quella fonte.
 
 ![La sintesi con i riferimenti alle fonti](img/sintesi.png)
 

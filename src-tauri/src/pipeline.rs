@@ -430,6 +430,97 @@ fn fix_headings(text: &str) -> String {
     RE.replace_all(text, "$2\n\n$1 ").into_owned()
 }
 
+/// Some models escape part of a JSON string twice: the text then holds a literal `\n` where a
+/// line break should be and `\\mu` (a KaTeX line break, then "mu") for `\mu`. Seen on a summary
+/// in Nov 2026, from the middle of the text on. Undone only with proof: a `\n` followed by
+/// something no LaTeX command can be (`\n\n`, `\n#`, `\n- `…). Inside formulas `\n` + letter
+/// stays (`\nu`, `\neq`); `\\` stays unless a letter or `,;:!{}|` follows it.
+pub fn fix_double_escapes(text: &str) -> String {
+    // Code may hold a real `\n\n` ("print(\"a\\n\\nb\")"): no proof there.
+    static CODE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?s)```.*?```|`[^`\n]*`").unwrap());
+    let prose = CODE.replace_all(text, "");
+    let b = prose.as_bytes();
+    let proof = b.windows(3).any(|w| w[0] == b'\\' && w[1] == b'n' && matches!(w[2], b'\\' | b'#' | b'-' | b'*' | b'>' | b'|' | b'$' | b' ' | b'0'..=b'9'))
+        || prose.ends_with("\\n");
+    if !proof {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut math = false;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '$' => {
+                if chars.peek() == Some(&'$') {
+                    chars.next();
+                    out.push('$');
+                }
+                out.push('$');
+                math = !math;
+            }
+            '\\' => match chars.peek().copied() {
+                Some('\\') => {
+                    chars.next();
+                    match chars.peek().copied() {
+                        Some(n) if n.is_ascii_alphabetic() || ",;:!{}|".contains(n) => out.push('\\'),
+                        // `\\\\` is a LaTeX line break escaped twice.
+                        Some('\\') if chars.clone().nth(1) == Some('\\') => {
+                            chars.next();
+                            chars.next();
+                            out.push_str("\\\\");
+                        }
+                        _ => out.push_str("\\\\"),
+                    }
+                }
+                Some('n') => {
+                    chars.next();
+                    let word: String = chars.clone().take_while(|c| c.is_ascii_alphabetic()).collect();
+                    if math && is_n_command(&format!("n{word}")) {
+                        out.push_str("\\n");
+                    } else {
+                        out.push('\n');
+                    }
+                }
+                Some('"') => {
+                    chars.next();
+                    out.push('"');
+                }
+                Some('$') => {
+                    chars.next();
+                    out.push_str("\\$");
+                }
+                _ => out.push('\\'),
+            },
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// LaTeX commands starting with "n", told apart from a line break before a word in a formula.
+fn is_n_command(w: &str) -> bool {
+    matches!(
+        w,
+        "nu" | "ne" | "neq" | "nabla" | "neg" | "not" | "notin" | "ni" | "nmid" | "newline" | "nonumber" | "nleq" | "ngeq" | "nless" | "ngtr" | "nsubseteq" | "nsupseteq" | "nexists" | "nearrow" | "nwarrow" | "natural" | "napprox" | "nsim" | "ncong" | "nparallel" | "nRightarrow" | "nLeftarrow" | "nrightarrow" | "nleftarrow" | "nolimits" | "normalsize"
+    )
+}
+
+fn fix_study(mut s: Study) -> Study {
+    for t in &mut s.glossario {
+        t.termine = fix_double_escapes(&t.termine);
+        t.definizione = fix_double_escapes(&t.definizione);
+    }
+    for c in &mut s.flashcard {
+        c.domanda = fix_double_escapes(&c.domanda);
+        c.risposta = fix_double_escapes(&c.risposta);
+    }
+    for q in &mut s.domande_esame {
+        q.domanda = fix_double_escapes(&q.domanda);
+        q.traccia = fix_double_escapes(&q.traccia);
+    }
+    s
+}
+
 /// A cleaned transcript must keep the content and the times of the raw one: at least half of
 /// the words and of the times, all times inside the part (a few seconds of slack).
 fn plausible_cleanup(raw: &str, cleaned: &str, start: u64, end: u64) -> bool {
@@ -1024,10 +1115,10 @@ impl<A: Ai> Ctx<'_, A> {
 
         self.archive.archive_outputs(lesson_id)?;
         let gdir = Path::new(GENERATED_DIR);
-        self.archive.write(lesson_id, &gdir.join("sintesi.md"), g.sintesi.as_bytes())?;
+        self.archive.write(lesson_id, &gdir.join("sintesi.md"), fix_double_escapes(&g.sintesi).as_bytes())?;
         self.archive.write(lesson_id, &gdir.join("mappa.json"), &serde_json::to_vec_pretty(&g.mappa)?)?;
         self.archive.write(lesson_id, &gdir.join("mappa.mmd"), mermaid(&g.mappa).as_bytes())?;
-        let study = Study { glossario: g.glossario, flashcard: g.flashcard, domande_esame: g.domande_esame };
+        let study = fix_study(Study { glossario: g.glossario, flashcard: g.flashcard, domande_esame: g.domande_esame });
         self.archive.write(lesson_id, &gdir.join("studio.json"), &serde_json::to_vec_pretty(&study)?)?;
         let info = Info {
             generated: Utc::now(),
@@ -1068,7 +1159,7 @@ pub struct Outputs {
 
 /// Just the study material (`generati/studio.json`), for the review.
 pub fn outputs_study(lesson: &Lesson) -> Option<Study> {
-    serde_json::from_slice(&fs::read(lesson.path.join(GENERATED_DIR).join("studio.json")).ok()?).ok()
+    serde_json::from_slice(&fs::read(lesson.path.join(GENERATED_DIR).join("studio.json")).ok()?).ok().map(fix_study)
 }
 
 pub fn outputs(lesson: &Lesson) -> Outputs {
@@ -1088,9 +1179,10 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         extracts,
         // While parts wait for the cleanup, their Whisper text is still in `.parti/`.
         raw: lesson.meta.sources.iter().filter_map(|s| read(&raw_rel(s)).or_else(|| whisper_parts(&lesson.path, s)).map(|t| (s.id.clone(), t))).collect(),
-        summary: read(&gdir.join("sintesi.md")),
+        // Repaired when read too: summaries saved before the fix need no new (paid) run.
+        summary: read(&gdir.join("sintesi.md")).map(|t| fix_double_escapes(&t)),
         map: read(&gdir.join("mappa.json")).and_then(|t| serde_json::from_str(&t).ok()),
-        study: read(&gdir.join("studio.json")).and_then(|t| serde_json::from_str(&t).ok()),
+        study: read(&gdir.join("studio.json")).and_then(|t| serde_json::from_str(&t).ok()).map(fix_study),
         info: read(&gdir.join("info.json")).and_then(|t| serde_json::from_str(&t).ok()),
         bookmarks: crate::bookmarks::read(&lesson.path),
         versions: crate::versions::list(lesson),
@@ -1284,6 +1376,9 @@ mod tests {
         assert_eq!(out.extracts[&l.meta.sources[0].id], "[00:00:01] il simplesso\n\n[00:00:11] il simplesso\n\n[00:00:21] il simplesso");
         assert!(!l.path.join(parts_rel(&l.meta.sources[0])).exists());
         assert!(out.summary.is_some());
+        // A summary saved broken before the fix is shown repaired.
+        fs::write(l.path.join(GENERATED_DIR).join("sintesi.md"), r"## A\n\n## B\n$\\mu$").unwrap();
+        assert_eq!(outputs(&l).summary.unwrap(), "## A\n\n## B\n$\\mu$");
         // Whisper's text stays, to be compared with the cleaned one.
         let raw = &out.raw[&l.meta.sources[0].id];
         assert_eq!(raw, "[00:00:01] ehm allora il simplesso\n\n[00:00:11] ehm allora il simplesso\n\n[00:00:21] ehm allora il simplesso");
@@ -1355,6 +1450,34 @@ mod tests {
         assert_eq!(prompts.len(), n + 1);
         let p = &prompts[n];
         assert!(p.contains("Pezzo:") && p.contains(&hms(ts[1])) && !p.contains(&format!("[{}]", hms(ts[0]))), "{p}");
+    }
+
+    #[test]
+    fn double_escaped_text_is_repaired() {
+        // As in the bug report: a healthy start, then everything escaped twice.
+        let broken = r#"## Dighe
+Con $\nu$ e $\frac{a}{b}$ [F2 00:01:00]\n\n## Scarichi\n### Legge di scarico\n$Q = \\mu L_e \\sqrt{2g}\\, (h-h_0)^{3/2}$\ndove $h$ è la quota.\n- Bazin: $\\mu = 0.4$\n- Creager: $\\mu = 0.48 \\div 0.55$; si dice \"profilo\""#;
+        let fixed = fix_double_escapes(broken);
+        assert_eq!(
+            fixed,
+            "## Dighe\nCon $\\nu$ e $\\frac{a}{b}$ [F2 00:01:00]\n\n## Scarichi\n### Legge di scarico\n$Q = \\mu L_e \\sqrt{2g}\\, (h-h_0)^{3/2}$\ndove $h$ è la quota.\n- Bazin: $\\mu = 0.4$\n- Creager: $\\mu = 0.48 \\div 0.55$; si dice \"profilo\""
+        );
+        assert_eq!(fix_double_escapes(&fixed), fixed, "nothing left to undo");
+        // Healthy texts stay as they are, also one-liners and LaTeX line breaks.
+        for ok in [
+            r"$\nu \neq \nabla f$",
+            r"La viscosità $\nu$ e $\theta$",
+            "## Titolo\nTesto con $\\frac{1}{2}$ e $$\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}$$",
+            r"Costo: 5\$ e $\neg p$",
+            "## Codice\n`print(\"a\\n\\nb\")` e `\\d+`\n```\ns = \"x\\n- y\"\n```",
+        ] {
+            assert_eq!(fix_double_escapes(ok), ok);
+        }
+        // A display formula on its own lines, a LaTeX line break: both escaped twice.
+        assert_eq!(
+            fix_double_escapes(r"Legge:\n$$\nQ = \\nu L\n$$\n- e $a \\\\ b$"),
+            "Legge:\n$$\nQ = \\nu L\n$$\n- e $a \\\\ b$"
+        );
     }
 
     #[test]

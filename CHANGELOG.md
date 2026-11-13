@@ -1,5 +1,10 @@
 # Novità
 
+## In arrivo
+
+- Le **sintesi** non mostrano più `\n` e `##` al posto di a capo e titoli, né formule spezzate su più righe («mu», «sqrt2g»): succedeva quando il modello rovinava il testo a metà risposta. Le sintesi già salvate si vedono di nuovo bene senza rielaborare la lezione; vale anche per glossario, flashcard, domande d'esame e sintesi del corso.
+- I riferimenti alle pagine dei PDF nella sintesi, come **[F1 pag. 2]**, diventano cliccabili e aprono la fonte, come gli altri.
+
 ## 1.0.3
 
 - La **mappa** non resta più con il solo argomento della lezione: il modello di riserva (Gemini Flash-Lite su OpenRouter) a volte rispondeva senza i concetti sotto la radice.

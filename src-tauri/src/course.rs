@@ -126,7 +126,7 @@ pub fn read(lib: &Library, course_id: &str) -> Result<CourseSummary> {
         None => 0,
     };
     Ok(CourseSummary {
-        summary: text("sintesi.md"),
+        summary: text("sintesi.md").map(|t| crate::pipeline::fix_double_escapes(&t)),
         questions: text("domande.json").and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default(),
         info,
         ready: now.len(),
@@ -198,7 +198,7 @@ pub async fn summarize<A: Ai>(ai: &A, model: &str, lib: &Library, course_id: &st
     // Found again: the course folder may have been renamed meanwhile.
     let dir = lib.course(course_id)?.path.join(GENERATED_DIR);
     crate::pipeline::archive_generated(&dir)?;
-    crate::pipeline::write_atomic(&dir, Path::new("sintesi.md"), g.sintesi.trim().as_bytes())?;
+    crate::pipeline::write_atomic(&dir, Path::new("sintesi.md"), crate::pipeline::fix_double_escapes(g.sintesi.trim()).as_bytes())?;
     crate::pipeline::write_atomic(&dir, Path::new("domande.json"), &serde_json::to_vec_pretty(&questions)?)?;
     crate::pipeline::write_atomic(&dir, Path::new("info.json"), &serde_json::to_vec_pretty(&info)?)?;
     Ok((usage, used))

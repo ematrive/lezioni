@@ -12,25 +12,31 @@ export function toSecs(t: string): number {
 }
 
 const TIME = String.raw`\d{1,2}:\d{2}(?::\d{2})?`;
+/** " pag. 3", " pagg. 3-4", " p. 3, 5" after a source code (a page of a PDF). */
+const PAGE = String.raw`\s+(?:pagg?|pp?)\.?\s*\d+(?:\s*[-–,]\s*\d+)*`;
 
 /**
  * Turns the references the model writes into links the app handles:
  * - `[00:12:30]` at the start of a transcript paragraph → `#t=<source>@750` (with `source` set);
  * - `[F1 00:12:30]`, `[F3]`, `[F1 00:12:30; F2]` in the summary → `#t=F1@750`, `#f=F3`;
+ * - `[F1 pag. 2]` (a page of a PDF) → `#f=F1`;
  * - `[L3]` (a lesson, in course answers) → `#l=L3`.
  */
 export function linkRefs(md: string, source?: string): string {
   // `$$…$$` alone on a line is a display formula (remark-math wants the $$ on their own lines).
   md = md.replace(/^[ \t]*\$\$([^\n]+?)\$\$[ \t]*$/gm, (_, f: string) => `$$\n${f.trim()}\n$$`);
-  let out = md.replace(new RegExp(String.raw`\[((?:[FL]\d+(?:\s+${TIME})?\s*[,;]?\s*)+)\]`, "g"), (_, inner: string) =>
+  let out = md.replace(new RegExp(String.raw`\[((?:[FL]\d+(?:\s+${TIME}|${PAGE})?\s*[,;]?\s*)+)\]`, "g"), (_, inner: string) =>
     inner
-      .split(/[,;]/)
+      .split(/;|,(?!\s*\d)/)
       .map((p) => p.trim())
       .filter(Boolean)
       .map((p) => {
-        const [code, time] = p.split(/\s+/);
+        const code = p.split(/\s+/)[0];
+        const rest = p.slice(code.length).trim();
         if (code.startsWith("L")) return `[${code}](#l=${code})`;
-        return time ? `[${code} ${time}](#t=${code}@${toSecs(time)})` : `[${code}](#f=${code})`;
+        if (new RegExp(`^${TIME}$`).test(rest)) return `[${code} ${rest}](#t=${code}@${toSecs(rest)})`;
+        // "F1 pag. 3": a page of a PDF; the link opens the source.
+        return rest ? `[${code} ${rest.replace(/\s+/g, " ")}](#f=${code})` : `[${code}](#f=${code})`;
       })
       .join(" "),
   );
