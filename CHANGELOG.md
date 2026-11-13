@@ -1,6 +1,6 @@
 # Novità
 
-## Prossima versione
+## 1.0.3
 
 - La **mappa** non resta più con il solo argomento della lezione: il modello di riserva (Gemini Flash-Lite su OpenRouter) a volte rispondeva senza i concetti sotto la radice.
 - Se una slide non si riesce a disegnare accanto alla trascrizione, sotto la pagina compare il motivo invece di un riquadro bianco.
