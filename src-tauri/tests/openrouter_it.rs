@@ -7,6 +7,7 @@
 use std::time::Instant;
 
 use lezioni_lib::ai::{OpenRouter, Part, Request, Usage, prompts};
+use lezioni_lib::lang::Lang::It;
 use tokio_util::sync::CancellationToken;
 
 /// Whisper-like text: fillers, a misheard term ("variabile entrante" → "variabile e trante").
@@ -42,7 +43,7 @@ async fn compare_models() {
         eprintln!("\n===== {model}");
         // 1. Cleanup of Whisper's text.
         let t = Instant::now();
-        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompts::clean_transcript(1, 1, &course, &title, &terms, &raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+        let req = Request { system: Some(prompts::system(It)), parts: vec![Part::Text(prompts::clean_transcript(It, 1, 1, &course, &title, &terms, &raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
         let clean = match o.generate(model, &req, &cancel).await {
             Ok(a) => a,
             Err(e) => {
@@ -57,7 +58,7 @@ async fn compare_models() {
         let (mut tp, mut cp) = (0.0, 0.0);
         if let Some(p) = &pdf {
             let t = Instant::now();
-            let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Inline { mime: "application/pdf".into(), data: p.clone() }, Part::Text(prompts::PDF.into())], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
+            let req = Request { system: Some(prompts::system(It)), parts: vec![Part::Inline { mime: "application/pdf".into(), data: p.clone() }, Part::Text(prompts::pdf(It))], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
             match o.generate(model, &req, &cancel).await {
                 Ok(a) => {
                     tp = t.elapsed().as_secs_f64();
@@ -71,15 +72,15 @@ async fn compare_models() {
         // 3. Summary with the real schema.
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
-            system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", "", "", &sources))],
+            system: Some(prompts::system(It)),
+            parts: vec![Part::Text(prompts::generate(It, It, &course, &title, "2026-11-10", "", &terms, "", "", "", &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()
         };
         if let Ok(dir) = std::env::var("LEZIONI_IT_OUT") {
             let Part::Text(prompt) = &req.parts[0] else { unreachable!() };
-            let dump = serde_json::json!({ "system": prompts::SYSTEM, "prompt": prompt, "schema": prompts::generate_schema() });
+            let dump = serde_json::json!({ "system": prompts::system(It), "prompt": prompt, "schema": prompts::generate_schema() });
             std::fs::write(format!("{dir}/{}.richiesta.json", model.replace('/', "_")), dump.to_string()).unwrap();
         }
         let t = Instant::now();
@@ -245,8 +246,8 @@ async fn photos_linked() {
     let photo_lines = "- F2 foto «IMG_2041.jpg» = F1 00:21:30\n";
     let sources = format!("[F1] lezione.m4a (registrazione)\n{RAW}\n\n[F2] IMG_2041.jpg (foto/appunti)\n{}\n", photos[0].text);
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Metodo del simplesso", "2026-11-10", "", "", "", "", photo_lines, &sources))],
+        system: Some(prompts::system(It)),
+        parts: vec![Part::Text(prompts::generate(It, It, "Ricerca operativa", "Metodo del simplesso", "2026-11-10", "", "", "", "", photo_lines, &sources))],
         schema: Some(prompts::generate_schema()),
         max_output_tokens: Some(16000),
         ..Default::default()
@@ -257,4 +258,78 @@ async fn photos_linked() {
     let sintesi = v["sintesi"].as_str().unwrap();
     eprintln!("--- sintesi ({summary_model}, {:.1} s, {:.5} $):\n{sintesi}", t.elapsed().as_secs_f64(), cost(&a.usage));
     assert!(sintesi.contains("](F2)"), "la foto non è nella sintesi");
+}
+
+/// An English lecture: cleanup in English (no translation, times and pause kept), the PDF read
+/// with the English prompt (`TIPO:` line and `## Page N`, text in its own language) and a summary
+/// in Italian (materials in Italian).
+///   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… [LEZIONI_IT_PDF=slide.pdf] cargo test --test openrouter_it english_lecture -- --nocapture
+#[tokio::test]
+async fn english_lecture() {
+    use lezioni_lib::lang::Lang::En;
+    if std::env::var("LEZIONI_IT_OPENROUTER").is_err() {
+        return;
+    }
+    let o = OpenRouter::new(std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY"));
+    let model = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite".into());
+    let model = model.split(',').next().unwrap();
+    let cancel = CancellationToken::new();
+    let raw = "[00:20:00] So, um, where were we? Yeah, so, the standard form. So we have the problem max z equals c transpose x, with a x equals b and x greater or equal to zero. Okay.
+
+[00:20:41] So, the simplex method, I mean, the idea is that we start from a basic feasible solution, which is a vertex of the polyhedron, and we move, uh, to an adjacent vertex only if the objective improves. So how do I choose the entering variable? I look at the reduced costs and take the most negative one.
+
+[00:21:30] *(pause until 00:25:00)*
+
+[00:25:00] And who leaves? The leaving variable comes from the minimum ratio test, b i over a i j, only on the rows where a i j is positive. If no a i j is positive, the problem is unbounded. Question?
+
+[00:25:40] Professor, what if two ratios are equal? Good question, then the solution is degenerate and we can cycle. To avoid it we use Bland's rule, which we'll see next time.";
+    let req = Request { system: Some(prompts::system(En)), parts: vec![Part::Text(prompts::clean_transcript(En, 1, 1, "Operations research", "The simplex method", "Bland", raw))], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+    let clean = o.generate(model, &req, &cancel).await.unwrap();
+    eprintln!("--- cleanup ({:.5} $):\n{}", cost(&clean.usage), clean.text);
+    for t in ["[00:20:00]", "[00:20:41]", "[00:25:00]", "[00:25:40]"] {
+        assert!(clean.text.contains(t), "time {t} lost");
+    }
+    assert!(clean.text.contains("pause until 00:25:00"), "pause line lost");
+    assert!(clean.text.contains("simplex") && !clean.text.contains("simplesso"), "translated?");
+
+    let mut pdf_text = String::new();
+    if let Ok(p) = std::env::var("LEZIONI_IT_PDF") {
+        let req = Request { system: Some(prompts::system(En)), parts: vec![Part::Inline { mime: "application/pdf".into(), data: std::fs::read(p).unwrap() }, Part::Text(prompts::pdf(En))], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
+        let a = o.generate(model, &req, &cancel).await.unwrap();
+        eprintln!("--- PDF ({:.5} $):\n{}", cost(&a.usage), a.text.chars().take(1500).collect::<String>());
+        let first = a.text.trim_start().lines().next().unwrap_or("").to_lowercase();
+        assert!(first.trim_matches(['*', '_']).starts_with("tipo:"), "first line: {first}");
+        assert!(a.text.contains("## Page 1"), "no ## Page N headings");
+        pdf_text = a.text;
+    }
+
+    let sources = format!("[F1] lecture.m4a (recording)\n{}\n\n[F2] slides.pdf (PDF)\n{pdf_text}\n", clean.text);
+    let req = Request {
+        system: Some(prompts::system(It)),
+        parts: vec![Part::Text(prompts::generate(It, En, "Operations research", "The simplex method", "2026-11-13", "", "", "", "", "", &sources))],
+        schema: Some(prompts::generate_schema()),
+        max_output_tokens: Some(16000),
+        ..Default::default()
+    };
+    let a = o.generate(model, &req, &cancel).await.unwrap();
+    let v: serde_json::Value = serde_json::from_str(&a.text).unwrap();
+    let summary = v["sintesi"].as_str().unwrap_or("");
+    eprintln!("--- summary in Italian ({:.5} $):\n{summary}\nflashcard: {}", cost(&a.usage), v["flashcard"][0]);
+    let it_words = [" il ", " la ", " di ", " che "].iter().filter(|w| summary.contains(*w)).count();
+    assert!(it_words >= 3, "the summary is not in Italian");
+
+    // Materials in English too (the main path for an English user), with the slides linked.
+    let req = Request {
+        system: Some(prompts::system(En)),
+        parts: vec![Part::Text(prompts::generate(En, En, "Operations research", "The simplex method", "2026-11-13", "", "", "", "- F2 page 1 = F1 00:20:41\n", "", &sources))],
+        schema: Some(prompts::generate_schema()),
+        max_output_tokens: Some(16000),
+        ..Default::default()
+    };
+    let a = o.generate(model, &req, &cancel).await.unwrap();
+    let v: serde_json::Value = serde_json::from_str(&a.text).unwrap();
+    let summary = v["sintesi"].as_str().unwrap_or("");
+    eprintln!("--- summary in English ({:.5} $):\n{summary}\ntitle: {}", cost(&a.usage), v["titolo"]);
+    let en_words = [" the ", " of ", " is ", " and "].iter().filter(|w| summary.contains(*w)).count();
+    assert!(en_words >= 3, "the summary is not in English");
 }

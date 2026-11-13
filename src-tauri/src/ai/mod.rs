@@ -105,7 +105,7 @@ impl Ai for Provider {
     async fn count_tokens(&self, model: &str, parts: &[Part], cancel: &CancellationToken) -> Result<u64> {
         match self {
             Provider::Gemini(g) => g.count_tokens(model, parts, cancel).await,
-            Provider::OpenRouter(_) => bail!("con OpenRouter le registrazioni si trascrivono sul computer"),
+            Provider::OpenRouter(_) => bail!(crate::tr!("con OpenRouter le registrazioni si trascrivono sul computer", "with OpenRouter the recordings are transcribed on the computer")),
         }
     }
     async fn upload(&self, path: &Path, mime: &str, cancel: &CancellationToken) -> Result<RemoteFile> {
@@ -113,7 +113,7 @@ impl Ai for Provider {
             Provider::Gemini(g) => g.upload(path, mime, cancel).await,
             Provider::OpenRouter(_) => {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                bail!("{name} è troppo grande per OpenRouter (oltre {} MB): dividilo o riducilo", openrouter::INLINE_MAX / 1024 / 1024)
+                bail!(crate::tr!("{name} è troppo grande per OpenRouter (oltre {} MB): dividilo o riducilo", "{name} is too large for OpenRouter (over {} MB): split it or make it smaller", openrouter::INLINE_MAX / 1024 / 1024))
             }
         }
     }

@@ -1,8 +1,8 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open } from "@tauri-apps/plugin-dialog";
-import { ClipboardPaste, ChevronDown, Search, Maximize2, Minimize2, MoreHorizontal, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
+import { Check, ClipboardPaste, ChevronDown, Search, Maximize2, Minimize2, MoreHorizontal, ExternalLink, Share2, Sparkles, FileAudio, FileText, FileVideo, FolderOpen, Image as ImageIcon, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
+import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lang, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
 import { ShareDialog } from "../share/ShareDialog";
 import { ChatTab } from "./ChatTab";
 import { PhotoCard } from "./PhotoCard";
@@ -10,14 +10,15 @@ import { JobBar, MapTab, startProcessing, StudyTab, SummaryTab, TranscriptTab, u
 import { Modal } from "../../lib/Modal";
 import { FindBar } from "../../lib/findInPage";
 import { toast } from "../../lib/toast";
+import { t, tn } from "../../i18n";
 
 const TABS = [
-  { id: "sources", label: "Fonti" },
-  { id: "transcript", label: "Trascrizione" },
-  { id: "summary", label: "Sintesi" },
-  { id: "map", label: "Mappa" },
-  { id: "study", label: "Studio" },
-  { id: "chat", label: "Domande" },
+  { id: "sources", label: () => t("Fonti") },
+  { id: "transcript", label: () => t("Trascrizione") },
+  { id: "summary", label: () => t("Sintesi") },
+  { id: "map", label: () => t("Mappa") },
+  { id: "study", label: () => t("Studio") },
+  { id: "chat", label: () => t("Domande") },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -125,7 +126,7 @@ export function LessonView({
         const r = await api.addFiles(lessonId, paths);
         changed(r.lesson);
         const n = paths.length - r.warnings.length;
-        if (n) toast(n === 1 ? "1 file aggiunto." : `${n} file aggiunti.`);
+        if (n) toast(tn(n, "1 file aggiunto.", "{n} file aggiunti."));
         if (r.warnings.length) toast(r.warnings.join("\n"), "error");
       } catch (e) {
         toast(toAppError(e).message, "error");
@@ -174,11 +175,11 @@ export function LessonView({
         for (const [i, f] of files.entries()) {
           const ext = MIME_EXT[f.type] ?? f.name.split(".").pop() ?? "bin";
           // Header values must be ASCII: the name is ours, the original one (if any) is not kept.
-          const name = `incollato-${stamp()}${files.length > 1 ? `-${i + 1}` : ""}.${ext}`;
+          const name = `${t("incollato|nome del file")}-${stamp()}${files.length > 1 ? `-${i + 1}` : ""}.${ext}`;
           l = await api.addBytes(lessonId, name, new Uint8Array(await f.arrayBuffer()));
         }
         if (l) changed(l);
-        toast(files.length === 1 ? "Incollato." : `${files.length} file incollati.`);
+        toast(tn(files.length, "Incollato.", "{n} file incollati."));
       } catch (err) {
         toast(toAppError(err).message, "error");
       } finally {
@@ -212,19 +213,19 @@ export function LessonView({
     const edited = lesson.sources.filter((s) => s.edited);
     if (edited.length) {
       const names = edited.map((s) => `• ${s.originalName}`).join("\n");
-      const ok = await ask(`Hai corretto a mano:\n${names}\n\nQueste trascrizioni verranno rifatte da capo. La versione corretta resta in estratti/versioni nella cartella della lezione.`, {
-        title: "Rielabora anche le fonti",
+      const ok = await ask(t("Hai corretto a mano:\n{names}\n\nQueste trascrizioni verranno rifatte da capo. La versione corretta resta in estratti/versioni nella cartella della lezione.", { names }), {
+        title: t("Rielabora anche le fonti"),
         kind: "warning",
-        okLabel: "Rielabora",
-        cancelLabel: "Annulla",
+        okLabel: t("Rielabora"),
+        cancelLabel: t("Annulla"),
       });
       if (!ok) return;
     }
     process(true);
   };
   const processButton = (
-    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={!lesson.sources.length ? "Aggiungi prima le fonti" : processed ? "Rifà sintesi, mappa e materiale di studio dalle trascrizioni attuali (comprese le tue correzioni). Le trascrizioni non vengono rifatte: per quello c'è «Rielabora anche le fonti»." : "Trascrivi, leggi le fonti e genera sintesi, mappa e studio"}>
-      <Sparkles className="size-4" /> {processed ? "Rigenera" : "Elabora"}
+    <button className="btn btn-primary" disabled={!!job || !lesson.sources.length} onClick={() => process(false)} title={!lesson.sources.length ? t("Aggiungi prima le fonti") : processed ? t("Rifà sintesi, mappa e materiale di studio dalle trascrizioni attuali (comprese le tue correzioni). Le trascrizioni non vengono rifatte: per quello c'è «Rielabora anche le fonti».") : t("Trascrivi, leggi le fonti e genera sintesi, mappa e studio")}>
+      <Sparkles className="size-4" /> {processed ? t("Rigenera") : t("Elabora")}
     </button>
   );
 
@@ -238,7 +239,7 @@ export function LessonView({
   };
 
   const pick = async () => {
-    const r = await open({ multiple: true, title: "Aggiungi file alla lezione" });
+    const r = await open({ multiple: true, title: t("Aggiungi file alla lezione") });
     if (Array.isArray(r)) addFiles(r);
     else if (typeof r === "string") addFiles([r]);
   };
@@ -252,11 +253,11 @@ export function LessonView({
       <Header lesson={lesson} onChanged={changed} onDelete={remove} actions={
           <>
             <ProcessMenu main={processButton} disabled={!!job || !lesson.sources.length} onForce={processAgain} />
-            <button className="btn" disabled={!course} onClick={() => setSharing(true)} title="Condividi: pacchetto, PDF, pagina web, Markdown, Anki">
-              <Share2 className="size-4" /> Condividi
+            <button className="btn" disabled={!course} onClick={() => setSharing(true)} title={t("Condividi: pacchetto, PDF, pagina web, Markdown, Anki")}>
+              <Share2 className="size-4" /> {t("Condividi")}
             </button>
             {onFull && (
-              <button className="btn" onClick={() => onFull(!full)} title={full ? "Esci dal tutto schermo (Esc)" : "Tutto schermo: nasconde corsi e lezioni"} aria-label={full ? "Esci dal tutto schermo" : "Tutto schermo"}>
+              <button className="btn" onClick={() => onFull(!full)} title={full ? t("Esci dal tutto schermo (Esc)") : t("Tutto schermo: nasconde corsi e lezioni")} aria-label={full ? t("Esci dal tutto schermo") : t("Tutto schermo")}>
                 {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
               </button>
             )}
@@ -266,20 +267,20 @@ export function LessonView({
       {sharing && course && <ShareDialog course={course} lesson={lesson} onClose={() => setSharing(false)} />}
       {job && <JobBar job={job} />}
       <nav className="flex flex-wrap gap-1 border-b border-zinc-200 px-4 dark:border-zinc-800">
-        {TABS.map((t) => (
+        {TABS.map((tb) => (
           <button
-            key={t.id}
-            className={`-mb-px border-b-2 px-3 py-2 ${tab === t.id ? "border-sky-600 font-medium text-sky-700 dark:text-sky-400" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"}`}
-            onClick={() => setTab(t.id)}
+            key={tb.id}
+            className={`-mb-px border-b-2 px-3 py-2 ${tab === tb.id ? "border-sky-600 font-medium text-sky-700 dark:text-sky-400" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"}`}
+            onClick={() => setTab(tb.id)}
           >
-            {t.label}
+            {tb.label()}
           </button>
         ))}
         <div className="ml-auto self-center py-1">
           {finding ? (
             <FindBar root={contentEl} resetKey={`${tab}|${outputs ? 1 : 0}`} onClose={() => setFinding(false)} />
           ) : (
-            <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setFinding(true)} title="Cerca nella lezione (⌘F / Ctrl+F)" aria-label="Cerca nella lezione">
+            <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setFinding(true)} title={t("Cerca nella lezione (⌘F / Ctrl+F)")} aria-label={t("Cerca nella lezione")}>
               <Search className="size-4" />
             </button>
           )}
@@ -309,7 +310,7 @@ export function LessonView({
       </div>
       {dragging && (
         <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-sky-500 bg-sky-500/10 text-lg font-medium text-sky-700 dark:text-sky-300">
-          <Upload className="mr-2 size-6" /> Rilascia per aggiungere a «{lesson.title}»
+          <Upload className="mr-2 size-6" /> {t("Rilascia per aggiungere a «{title}»", { title: lesson.title })}
         </div>
       )}
       {textDraft !== null && (
@@ -335,7 +336,7 @@ function ProcessMenu({ main, disabled, onForce }: { main: React.ReactNode; disab
   return (
     <div className="relative flex [&>button:first-child]:rounded-r-none">
       {main}
-      <button className="btn btn-primary -ml-px rounded-l-none border-l-sky-700 px-1.5" disabled={disabled} onClick={() => setOpen(!open)} title="Altre opzioni">
+      <button className="btn btn-primary -ml-px rounded-l-none border-l-sky-700 px-1.5" disabled={disabled} onClick={() => setOpen(!open)} title={t("Altre opzioni")}>
         <ChevronDown className="size-4" />
       </button>
       {open && (
@@ -349,8 +350,8 @@ function ProcessMenu({ main, disabled, onForce }: { main: React.ReactNode; disab
                 onForce();
               }}
             >
-              <div className="font-medium">Rielabora anche le fonti</div>
-              <div className="text-xs text-zinc-500">Trascrive e rilegge di nuovo tutto, anche ciò che era già stato estratto (usa più quota).</div>
+              <div className="font-medium">{t("Rielabora anche le fonti")}</div>
+              <div className="text-xs text-zinc-500">{t("Trascrive e rilegge di nuovo tutto, anche ciò che era già stato estratto (usa più quota).")}</div>
             </button>
           </div>
         </>
@@ -363,7 +364,7 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
   const [title, setTitle] = useState(lesson.title);
   const [menu, setMenu] = useState(false);
   useEffect(() => setTitle(lesson.title), [lesson.title]);
-  const save = async (patch: { title?: string; date?: string }) => {
+  const save = async (patch: { title?: string; date?: string; language?: Lang | null }) => {
     try {
       onChanged(await api.updateLesson(lesson.id, patch));
     } catch (e) {
@@ -379,18 +380,42 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
         onChange={(e) => setTitle(e.target.value)}
         onBlur={() => title.trim() !== lesson.title && (title.trim() ? save({ title }) : setTitle(lesson.title))}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        title="Titolo della lezione"
+        title={t("Titolo della lezione")}
       />
       {actions}
-      <input className="field w-auto" type="date" value={lesson.date} onChange={(e) => e.target.value && save({ date: e.target.value })} title="Data della lezione" />
+      <input className="field w-auto" type="date" value={lesson.date} onChange={(e) => e.target.value && save({ date: e.target.value })} title={t("Data della lezione")} />
       <div className="relative">
-        <button className="btn px-2" title="Altre azioni sulla lezione" aria-label="Altre azioni sulla lezione" onClick={() => setMenu(!menu)}>
+        <button className="btn px-2" title={t("Altre azioni sulla lezione")} aria-label={t("Altre azioni sulla lezione")} onClick={() => setMenu(!menu)}>
           <MoreHorizontal className="size-4" />
         </button>
         {menu && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
             <div className="anim-pop absolute top-full right-0 z-40 mt-1 w-56 rounded-md border border-zinc-200 bg-white p-1 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900" role="menu">
+              <div className="px-2 pt-1 pb-0.5 text-xs text-zinc-500">{t("Lingua parlata nella lezione")}</div>
+              {(
+                [
+                  ["", t("Lingua del corso")],
+                  ["it", t("Italiano")],
+                  ["en", t("Inglese")],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  role="menuitemradio"
+                  aria-checked={(lesson.language ?? "") === v}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  onClick={() => {
+                    setMenu(false);
+                    if ((lesson.language ?? "") === v) return;
+                    save({ language: (v || null) as Lang | null });
+                    toast(t("Lingua cambiata: rielabora anche le fonti per trascrivere di nuovo la registrazione."));
+                  }}
+                >
+                  <Check className={`size-4 ${(lesson.language ?? "") === v ? "" : "invisible"}`} /> {label}
+                </button>
+              ))}
+              <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
               <button
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 onClick={() => {
@@ -398,7 +423,7 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
                   api.reveal(lesson.path);
                 }}
               >
-                <FolderOpen className="size-4" /> Mostra la cartella
+                <FolderOpen className="size-4" /> {t("Mostra la cartella")}
               </button>
               <button
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -407,7 +432,7 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
                   onDelete();
                 }}
               >
-                <Trash2 className="size-4" /> Elimina la lezione
+                <Trash2 className="size-4" /> {t("Elimina la lezione")}
               </button>
             </div>
           </>
@@ -417,15 +442,17 @@ function Header({ lesson, onChanged, onDelete, actions }: { lesson: Lesson; onCh
   );
 }
 
-const KIND_LABEL: Record<SourceKind, string> = {
-  audio: "Registrazioni",
-  video: "Video",
-  pdf: "PDF e slide",
-  image: "Foto e appunti a mano",
-  text: "Testi",
-  document: "Documenti",
-  other: "Altri file",
-};
+// A function: the labels follow the interface language.
+const kindLabel = (k: SourceKind): string =>
+  ({
+    audio: t("Registrazioni"),
+    video: t("Video"),
+    pdf: t("PDF e slide"),
+    image: t("Foto e appunti a mano"),
+    text: t("Testi"),
+    document: t("Documenti"),
+    other: t("Altri file"),
+  })[k];
 const KIND_ORDER: SourceKind[] = ["audio", "video", "image", "pdf", "document", "text", "other"];
 
 function KindIcon({ kind, className }: { kind: SourceKind; className?: string }) {
@@ -447,7 +474,7 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
     setLinking(s.id);
     try {
       const n = await ai.alignSlides(lesson.id, s.id);
-      toast(`Slide collegate alla registrazione: ${n} passaggi da una slide all'altra.`);
+      toast(tn(n, "Slide collegate alla registrazione: 1 passaggio da una slide all'altra.", "Slide collegate alla registrazione: {n} passaggi da una slide all'altra."));
       onLinked();
     } catch (e) {
       toast(toAppError(e).message, "error");
@@ -459,7 +486,7 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
     setLinking("photos");
     try {
       const warnings = await ai.linkPhotos(lesson.id);
-      toast(warnings.length ? warnings.join("\n") : "Foto agganciate alla registrazione.", warnings.length ? "error" : undefined);
+      toast(warnings.length ? warnings.join("\n") : t("Foto agganciate alla registrazione."), warnings.length ? "error" : undefined);
       onLinked();
     } catch (e) {
       toast(toAppError(e).message, "error");
@@ -469,8 +496,9 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
   };
   const [notes, setNotes] = useState(lesson.notes);
   const remove = async (s: Source) => {
-    const extracted = s.kind === "audio" || s.kind === "video" ? " e la sua trascrizione" : s.kind === "text" ? "" : " e il testo estratto";
-    const ok = await ask(`Rimuovere «${s.originalName}»${extracted} dalla lezione?\n\nVa nel Cestino la copia che Lezioni tiene nella cartella dell'archivio: il file originale che avevi aggiunto resta dov'era.`, { title: "Rimuovi fonte", kind: "warning", okLabel: "Rimuovi", cancelLabel: "Annulla" });
+    const name = s.originalName;
+    const question = s.kind === "audio" || s.kind === "video" ? t("Rimuovere «{name}» e la sua trascrizione dalla lezione?", { name }) : s.kind === "text" ? t("Rimuovere «{name}» dalla lezione?", { name }) : t("Rimuovere «{name}» e il testo estratto dalla lezione?", { name });
+    const ok = await ask(`${question}\n\n${t("Va nel Cestino la copia che Lezioni tiene nella cartella dell'archivio: il file originale che avevi aggiunto resta dov'era.")}`, { title: t("Rimuovi fonte"), kind: "warning", okLabel: t("Rimuovi"), cancelLabel: t("Annulla") });
     if (!ok) return;
     try {
       onChanged(await api.removeSource(lesson.id, s.id));
@@ -493,28 +521,28 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="rounded-xl border-2 border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
         <Upload className="mx-auto mb-2 size-7 text-zinc-400" />
-        <p className="font-medium">Trascina qui registrazioni, PDF, foto e appunti</p>
+        <p className="font-medium">{t("Trascina qui registrazioni, PDF, foto e appunti")}</p>
         <p className="mt-1 text-sm text-zinc-500">
-          oppure incolla con <kbd className="rounded border border-zinc-300 px-1 text-xs dark:border-zinc-700">{navigator.platform.startsWith("Mac") ? "⌘V" : "Ctrl+V"}</kbd> uno screenshot, un'immagine o del testo
+          {t("oppure incolla con")} <kbd className="rounded border border-zinc-300 px-1 text-xs dark:border-zinc-700">{navigator.platform.startsWith("Mac") ? "⌘V" : "Ctrl+V"}</kbd> {t("uno screenshot, un'immagine o del testo")}
         </p>
         <div className="mt-4 flex justify-center gap-2">
           <button className="btn" onClick={onPick} disabled={busy}>
-            <Plus className="size-4" /> Aggiungi file…
+            <Plus className="size-4" /> {t("Aggiungi file…")}
           </button>
           <button className="btn" onClick={onPasteText} disabled={busy}>
-            <ClipboardPaste className="size-4" /> Scrivi o incolla testo…
+            <ClipboardPaste className="size-4" /> {t("Scrivi o incolla testo…")}
           </button>
         </div>
-        {busy && <p className="mt-3 text-sm text-sky-600">Copia in corso…</p>}
+        {busy && <p className="mt-3 text-sm text-sky-600">{t("Copia in corso…")}</p>}
       </div>
 
       {groups.map(([kind, list]) => (
         <section key={kind}>
           <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-            <KindIcon kind={kind} className="size-4" /> {KIND_LABEL[kind]} <span className="font-normal text-zinc-400">{list.length}</span>
+            <KindIcon kind={kind} className="size-4" /> {kindLabel(kind)} <span className="font-normal text-zinc-400">{list.length}</span>
             {kind === "image" && hasRecording && list.some((s) => outputs?.extracts[s.id] !== undefined) && (
-              <button className="btn btn-sm ml-auto font-normal" disabled={linking === "photos" || busy} onClick={linkPhotos} title="Cerca di nuovo il minuto di ogni foto (non tocca quelle che hai agganciato tu)">
-                {linking === "photos" ? "Aggancio…" : "Aggancia le foto alla registrazione"}
+              <button className="btn btn-sm ml-auto font-normal" disabled={linking === "photos" || busy} onClick={linkPhotos} title={t("Cerca di nuovo il minuto di ogni foto (non tocca quelle che hai agganciato tu)")}>
+                {linking === "photos" ? t("Aggancio…") : t("Aggancia le foto alla registrazione")}
               </button>
             )}
           </h3>
@@ -534,48 +562,48 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
                       {s.originalName}
                     </span>
                     {s.omitted ? (
-                      <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800" title="Il file non era nel pacchetto ricevuto: c'è solo il testo estratto">
-                        file non incluso
+                      <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800" title={t("Il file non era nel pacchetto ricevuto: c'è solo il testo estratto")}>
+                        {t("file non incluso")}
                       </span>
                     ) : (
                       <>
                         <span className="text-xs text-zinc-400">{fmtSize(s.size)}</span>
-                        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Apri con l'app di sistema" onClick={() => api.openSource(lesson.id, s.id)}>
+                        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title={t("Apri con l'app di sistema")} onClick={() => api.openSource(lesson.id, s.id)}>
                           <ExternalLink className="size-4" />
                         </button>
                       </>
                     )}
-                    <button className="rounded p-1 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950" title="Rimuovi" onClick={() => remove(s)}>
+                    <button className="rounded p-1 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950" title={t("Rimuovi")} onClick={() => remove(s)}>
                       <Trash2 className="size-4" />
                     </button>
                   </div>
                   {s.kind === "audio" && !s.omitted && <audio className="mt-2 w-full" controls preload="none" src={fileUrl(sourceFile(lesson, s))} />}
                   {s.kind === "pdf" && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs text-zinc-500">
-                      <div className="flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label={`Che cos'è ${s.originalName}`}>
+                      <div className="flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label={t("Che cos'è {name}", { name: s.originalName })}>
                         {(["slide", "materiale"] as const).map((r) => (
                           <button
                             key={r}
                             className={`rounded px-2 py-0.5 ${(s.role ?? "materiale") === r ? "bg-sky-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
                             onClick={() => setRole(s, r)}
-                            title={r === "slide" ? "Le slide che il docente proiettava: si collegano alla registrazione, slide per slide" : "Appunti, dispense, altri documenti: restano a parte"}
+                            title={r === "slide" ? t("Le slide che il docente proiettava: si collegano alla registrazione, slide per slide") : t("Appunti, dispense, altri documenti: restano a parte")}
                           >
-                            {r === "slide" ? "Slide della lezione" : "Altro materiale"}
+                            {r === "slide" ? t("Slide della lezione") : t("Altro materiale")}
                           </button>
                         ))}
                       </div>
-                      {s.roleGuessed && <span title="Proposto dall'app leggendo il PDF: cambialo se non è giusto">proposto</span>}
+                      {s.roleGuessed && <span title={t("Proposto dall'app leggendo il PDF: cambialo se non è giusto")}>{t("proposto")}</span>}
                       {s.role === "slide" &&
                         (() => {
                           const al = outputs?.slides.find((a) => a.pdf === s.id);
                           const read = outputs?.extracts[s.id] !== undefined;
-                          if (!read) return <span>si collegherà alla registrazione quando elabori la lezione</span>;
-                          if (!hasRecording) return <span>nessuna registrazione trascritta da collegare</span>;
+                          if (!read) return <span>{t("si collegherà alla registrazione quando elabori la lezione")}</span>;
+                          if (!hasRecording) return <span>{t("nessuna registrazione trascritta da collegare")}</span>;
                           return (
                             <>
-                              {al && <span>collegata: {al.steps.length} passaggi</span>}
+                              {al && <span>{tn(al.steps.length, "collegata: 1 passaggio", "collegata: {n} passaggi")}</span>}
                               <button className="btn btn-sm" disabled={linking === s.id || busy} onClick={() => link(s)}>
-                                {linking === s.id ? "Collego…" : al ? "Ricollega" : "Collega alla registrazione"}
+                                {linking === s.id ? t("Collego…") : al ? t("Ricollega") : t("Collega alla registrazione")}
                               </button>
                             </>
                           );
@@ -590,10 +618,10 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
       ))}
 
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">Note sulla lezione</h3>
+        <h3 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">{t("Note sulla lezione")}</h3>
         <textarea
           className="field min-h-24"
-          placeholder="Argomenti, cose da rivedere, compiti per la prossima volta…"
+          placeholder={t("Argomenti, cose da rivedere, compiti per la prossima volta…")}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={saveNotes}
@@ -609,26 +637,26 @@ function TextDialog({ initial, onClose, onSave }: { initial: string; onClose: ()
   return (
     <Modal
       wide
-      title="Aggiungi testo"
+      title={t("Aggiungi testo")}
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Annulla
+            {t("Annulla")}
           </button>
           <button className="btn btn-primary" disabled={!text.trim()} onClick={() => onSave(title, text)}>
-            Aggiungi
+            {t("Aggiungi")}
           </button>
         </>
       }
     >
       <div className="space-y-3">
         <label className="block">
-          <span className="label">Titolo</span>
-          <input className="field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Testo incollato" autoFocus={!!initial} />
+          <span className="label">{t("Titolo")}</span>
+          <input className="field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Testo incollato")} autoFocus={!!initial} />
         </label>
         <label className="block">
-          <span className="label">Testo (anche Markdown)</span>
+          <span className="label">{t("Testo (anche Markdown)")}</span>
           <textarea className="field min-h-64 font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} autoFocus={!initial} />
         </label>
       </div>
@@ -638,7 +666,7 @@ function TextDialog({ initial, onClose, onSave }: { initial: string; onClose: ()
 
 /** Asks, then moves a lesson to the Trash; true when it went. */
 export async function deleteLesson(lesson: Lesson): Promise<boolean> {
-  const ok = await ask(`Spostare nel Cestino la lezione «${lesson.title}» e tutti i suoi file?`, { title: "Elimina lezione", kind: "warning", okLabel: "Sposta nel Cestino", cancelLabel: "Annulla" });
+  const ok = await ask(t("Spostare nel Cestino la lezione «{title}» e tutti i suoi file?", { title: lesson.title }), { title: t("Elimina lezione"), kind: "warning", okLabel: t("Sposta nel Cestino"), cancelLabel: t("Annulla") });
   if (!ok) return false;
   try {
     await api.deleteLesson(lesson.id);

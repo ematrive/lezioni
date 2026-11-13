@@ -15,6 +15,8 @@ use futures::StreamExt;
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
+use crate::lang::Lang;
+
 pub struct ModelFile {
     pub file: &'static str,
     pub url: &'static str,
@@ -40,17 +42,17 @@ async fn download(dir: &Path, model: &ModelFile, notify: &(dyn Fn(String) + Send
     if dest.is_file() {
         return Ok(dest);
     }
-    fs::create_dir_all(dir).with_context(|| format!("creazione di {}", dir.display()))?;
+    fs::create_dir_all(dir).with_context(|| crate::tr!("creazione di {}", "creating {}", dir.display()))?;
     let part = dir.join(format!("{}.part", model.file));
     let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(60)).build()?;
     let resp = tokio::select! {
-        r = http.get(model.url).send() => r.context("download del modello di trascrizione")?,
+        r = http.get(model.url).send() => r.with_context(|| crate::tr!("download del modello di trascrizione", "downloading the transcription model"))?,
         _ = cancel.cancelled() => bail!("annullato"),
     };
     if !resp.status().is_success() {
-        bail!("download del modello di trascrizione non riuscito (HTTP {})", resp.status().as_u16());
+        bail!(crate::tr!("download del modello di trascrizione non riuscito (HTTP {})", "downloading the transcription model failed (HTTP {})", resp.status().as_u16()));
     }
-    let mut out = fs::File::create(&part).with_context(|| format!("creazione di {}", part.display()))?;
+    let mut out = fs::File::create(&part).with_context(|| crate::tr!("creazione di {}", "creating {}", part.display()))?;
     let mut hash = Sha256::new();
     let mut got = 0u64;
     let mut stream = resp.bytes_stream();
@@ -66,13 +68,13 @@ async fn download(dir: &Path, model: &ModelFile, notify: &(dyn Fn(String) + Send
             }
         };
         let Some(chunk) = chunk else { break };
-        let chunk = chunk.context("download del modello di trascrizione interrotto")?;
+        let chunk = chunk.with_context(|| crate::tr!("download del modello di trascrizione interrotto", "download of the transcription model interrupted"))?;
         out.write_all(&chunk)?;
         hash.update(&chunk);
         got += chunk.len() as u64;
         if last.elapsed() > Duration::from_secs(1) {
             last = Instant::now();
-            notify(format!("Download del modello di trascrizione (una volta sola): {} di {} MB", mb(got), mb(model.size)));
+            notify(crate::tr!("Download del modello di trascrizione (una volta sola): {} di {} MB", "Downloading the transcription model (only once): {} of {} MB", mb(got), mb(model.size)));
         }
     }
     out.flush()?;
@@ -80,7 +82,7 @@ async fn download(dir: &Path, model: &ModelFile, notify: &(dyn Fn(String) + Send
     let sum = format!("{:x}", hash.finalize());
     if got != model.size || sum != model.sha256 {
         let _ = fs::remove_file(&part);
-        bail!("il modello di trascrizione scaricato è incompleto o danneggiato ({} di {} MB): riprova", mb(got), mb(model.size));
+        bail!(crate::tr!("il modello di trascrizione scaricato è incompleto o danneggiato ({} di {} MB): riprova", "the downloaded transcription model is incomplete or damaged ({} of {} MB): try again", mb(got), mb(model.size)));
     }
     fs::rename(&part, &dest)?;
     log::info!("modello di trascrizione scaricato in {}", dest.display());
@@ -137,7 +139,7 @@ impl Loader {
             return;
         }
         // Shown at once, before the task gets the lock.
-        *self.progress.lock().unwrap() = Some("Avvio del download…".into());
+        *self.progress.lock().unwrap() = Some(crate::tr!("Avvio del download…", "Starting the download…"));
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
             let _ = me.download(&|_| {}, &CancellationToken::new()).await;
@@ -173,7 +175,7 @@ impl Loader {
         let token = cancel.child_token();
         *self.cancel.lock().unwrap() = Some(token.clone());
         *self.error.lock().unwrap() = None;
-        *self.progress.lock().unwrap() = Some("Avvio del download…".into());
+        *self.progress.lock().unwrap() = Some(crate::tr!("Avvio del download…", "Starting the download…"));
         let both = |m: String| {
             *self.progress.lock().unwrap() = Some(m.clone());
             notify(m);
@@ -183,7 +185,7 @@ impl Loader {
         *self.cancel.lock().unwrap() = None;
         if let Err(e) = &r {
             log::warn!("download del modello: {e:#}");
-            *self.error.lock().unwrap() = Some(if e.to_string() == "annullato" { "Download annullato.".into() } else { format!("{e:#}") });
+            *self.error.lock().unwrap() = Some(if e.to_string() == "annullato" { crate::tr!("Download annullato.", "Download cancelled.") } else { format!("{e:#}") });
         }
         r
     }
@@ -194,18 +196,18 @@ impl Loader {
             return Ok(w.clone());
         }
         let path = self.download(notify, cancel).await?;
-        notify("Caricamento del modello di trascrizione…".into());
+        notify(crate::tr!("Caricamento del modello di trascrizione…", "Loading the transcription model…"));
         let w = Arc::new(tokio::task::spawn_blocking(move || Whisper::load(&path)).await??);
         *g = Some(w.clone());
         Ok(w)
     }
 
     pub fn delete(&self) -> Result<()> {
-        let mut g = self.loaded.try_lock().map_err(|_| anyhow!("il modello di trascrizione è in uso: riprova al termine dell'elaborazione"))?;
+        let mut g = self.loaded.try_lock().map_err(|_| anyhow!(crate::tr!("il modello di trascrizione è in uso: riprova al termine dell'elaborazione", "the transcription model is in use: try again when processing is over")))?;
         *g = None;
         let p = self.path();
         if p.exists() {
-            fs::remove_file(&p).with_context(|| format!("eliminazione di {}", p.display()))?;
+            fs::remove_file(&p).with_context(|| crate::tr!("eliminazione di {}", "deleting {}", p.display()))?;
         }
         Ok(())
     }
@@ -222,7 +224,9 @@ pub struct Segment {
 /// Speech to text on one 16 kHz mono WAV part. Blocking: call it from `spawn_blocking`.
 pub trait Asr: Send + Sync {
     /// `progress` gets 0–100; `cancel` stops it between steps.
-    fn transcribe(&self, wav: &Path, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>>;
+    /// `lang`: what is spoken (never guessed: on a lesson, Whisper's guess on silence or on a
+    /// slide read aloud in another language goes wrong).
+    fn transcribe(&self, wav: &Path, lang: Lang, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>>;
 }
 
 pub struct Whisper {
@@ -237,7 +241,7 @@ fn load_ctx(model: &Path, gpu: bool) -> Result<whisper_rs::WhisperContext> {
     let t = Instant::now();
     let mut params = whisper_rs::WhisperContextParameters::default();
     params.use_gpu(gpu && params.use_gpu);
-    let ctx = whisper_rs::WhisperContext::new_with_params(model, params).map_err(|e| anyhow!("caricamento del modello di trascrizione: {e}"))?;
+    let ctx = whisper_rs::WhisperContext::new_with_params(model, params).map_err(|e| anyhow!(crate::tr!("caricamento del modello di trascrizione: {e}", "loading the transcription model: {e}")))?;
     log::info!("modello di trascrizione caricato in {:.1} s ({})", t.elapsed().as_secs_f64(), if gpu && cfg!(target_os = "macos") { "GPU" } else { "processore" });
     Ok(ctx)
 }
@@ -252,10 +256,10 @@ impl Whisper {
 }
 
 fn read_wav(path: &Path) -> Result<Vec<f32>> {
-    let mut r = hound::WavReader::open(path).with_context(|| format!("lettura di {}", path.display()))?;
+    let mut r = hound::WavReader::open(path).with_context(|| crate::tr!("lettura di {}", "reading {}", path.display()))?;
     let spec = r.spec();
     if spec.channels != 1 || spec.sample_rate != crate::audio::RATE || spec.bits_per_sample != 16 {
-        bail!("formato audio inatteso in {}", path.display());
+        bail!(crate::tr!("formato audio inatteso in {}", "unexpected audio format in {}", path.display()));
     }
     r.samples::<i16>().map(|s| Ok(s? as f32 / 32768.0)).collect()
 }
@@ -267,10 +271,10 @@ unsafe extern "C" fn abort_flag(data: *mut std::ffi::c_void) -> bool {
     unsafe { (*(data as *const AtomicBool)).load(Ordering::Relaxed) }
 }
 
-fn run(ctx: &whisper_rs::WhisperContext, samples: &[f32], prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
-    let mut state = ctx.create_state().map_err(|e| anyhow!("trascrizione: {e}"))?;
+fn run(ctx: &whisper_rs::WhisperContext, samples: &[f32], lang: Lang, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
+    let mut state = ctx.create_state().map_err(|e| anyhow!(crate::tr!("trascrizione: {e}", "transcription: {e}")))?;
     let mut p = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
-    p.set_language(Some("it"));
+    p.set_language(Some(lang.code()));
     p.set_n_threads(std::thread::available_parallelism().map(|n| n.get().min(8) as i32).unwrap_or(4));
     p.set_initial_prompt(prompt);
     p.set_print_progress(false);
@@ -313,12 +317,12 @@ fn run(ctx: &whisper_rs::WhisperContext, samples: &[f32], prompt: &str, cancel: 
     if cancel.is_cancelled() {
         bail!("annullato");
     }
-    res.map_err(|e| anyhow!("trascrizione: {e}"))?;
+    res.map_err(|e| anyhow!(crate::tr!("trascrizione: {e}", "transcription: {e}")))?;
     let secs = samples.len() as f64 / crate::audio::RATE as f64;
     log::info!("whisper: {:.0} s di audio in {:.0} s", secs, t.elapsed().as_secs_f64());
     let mut out = Vec::new();
     for seg in state.as_iter() {
-        let text = seg.to_str_lossy().map_err(|e| anyhow!("trascrizione: {e}"))?.trim().to_string();
+        let text = seg.to_str_lossy().map_err(|e| anyhow!(crate::tr!("trascrizione: {e}", "transcription: {e}")))?.trim().to_string();
         if !text.is_empty() {
             out.push(Segment { start: seg.start_timestamp() as f64 / 100.0, end: seg.end_timestamp() as f64 / 100.0, text });
         }
@@ -327,12 +331,12 @@ fn run(ctx: &whisper_rs::WhisperContext, samples: &[f32], prompt: &str, cancel: 
 }
 
 impl Asr for Whisper {
-    fn transcribe(&self, wav: &Path, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
+    fn transcribe(&self, wav: &Path, lang: Lang, prompt: &str, cancel: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<Segment>> {
         let samples = read_wav(wav)?;
         if let Some(cpu) = self.cpu.get() {
-            return run(cpu, &samples, prompt, cancel, progress);
+            return run(cpu, &samples, lang, prompt, cancel, progress);
         }
-        match run(&self.ctx, &samples, prompt, cancel, progress) {
+        match run(&self.ctx, &samples, lang, prompt, cancel, progress) {
             Err(e) if cfg!(target_os = "macos") && e.to_string() != "annullato" => {
                 // The GPU failed (Metal): the processor is slower but works.
                 log::warn!("whisper sulla GPU: {e:#}; riprovo sul processore");
@@ -343,18 +347,20 @@ impl Asr for Whisper {
                         self.cpu.get_or_init(|| c)
                     }
                 };
-                run(cpu, &samples, prompt, cancel, progress)
+                run(cpu, &samples, lang, prompt, cancel, progress)
             }
             r => r,
         }
     }
 }
 
-/// Words Whisper writes on silence or noise (it was trained on subtitles).
+/// Words Whisper writes on silence or noise (it was trained on subtitles), in both languages:
+/// none of them is said in a lesson.
 fn is_hallucination(t: &str) -> bool {
     let l = t.to_lowercase();
     let l = l.trim_matches(|c: char| !c.is_alphanumeric());
-    l.is_empty() || ["sottotitoli", "amara.org", "grazie per la visione", "iscriviti al canale"].iter().any(|h| l.contains(h))
+    l.is_empty()
+        || ["sottotitoli", "amara.org", "grazie per la visione", "iscriviti al canale", "subtitles by", "thanks for watching", "thank you for watching", "please subscribe"].iter().any(|h| l.contains(h))
 }
 
 /// Segments → Markdown paragraphs that start with `[hh:mm:ss]` (absolute: `offset` is the start of

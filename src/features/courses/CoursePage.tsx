@@ -5,14 +5,11 @@ import { Markdown } from "../../lib/Markdown";
 import { addCourseTerm, JobBar, startCourseSummary, useJob } from "../lesson/Outputs";
 import { ReviewSession } from "../study/Review";
 import { toast } from "../../lib/toast";
+import { locale, t, tn } from "../../i18n";
 
-const TABS = [
-  { id: "review", label: "Ripasso" },
-  { id: "summary", label: "Sintesi del corso" },
-  { id: "glossary", label: "Glossario" },
-  { id: "costs", label: "Costi" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
+const TABS = ["review", "summary", "glossary", "costs"] as const;
+type Tab = (typeof TABS)[number];
+const tabLabel = (id: Tab) => ({ review: t("Ripasso"), summary: t("Sintesi del corso"), glossary: t("Glossario"), costs: t("Costi") })[id];
 
 /** What belongs to the whole course: shown when no lesson is chosen. */
 export function CoursePage({ course, rev, onOpenLesson, onReviewed, onCourseChanged }: { course: Course; rev: number; onOpenLesson: (id: string) => void; onReviewed?: () => void; onCourseChanged?: () => void }) {
@@ -24,25 +21,25 @@ export function CoursePage({ course, rev, onOpenLesson, onReviewed, onCourseChan
       <header className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h1 className="text-lg font-semibold">{course.name}</h1>
         <p className="text-xs text-zinc-500">
-          {course.lessons} {course.lessons === 1 ? "lezione" : "lezioni"}
+          {tn(course.lessons, "1 lezione", "{n} lezioni")}
           {course.teacher && <> · {course.teacher}</>}
         </p>
       </header>
       <nav className="flex gap-1 border-b border-zinc-200 px-4 dark:border-zinc-800">
-        {TABS.map((t) => (
+        {TABS.map((id) => (
           <button
-            key={t.id}
-            className={`-mb-px border-b-2 px-3 py-2 ${tab === t.id ? "border-sky-600 font-medium text-sky-700 dark:text-sky-400" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"}`}
-            onClick={() => setTab(t.id)}
+            key={id}
+            className={`-mb-px border-b-2 px-3 py-2 ${tab === id ? "border-sky-600 font-medium text-sky-700 dark:text-sky-400" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"}`}
+            onClick={() => setTab(id)}
           >
-            {t.label}
+            {tabLabel(id)}
           </button>
         ))}
       </nav>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {tab === "review" && (
           <div className="mx-auto max-w-2xl">
-            <p className="mb-4 text-sm text-zinc-500">Le flashcard di tutte le lezioni del corso da ripassare oggi. Quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni; quelle che non sai tornano subito.</p>
+            <p className="mb-4 text-sm text-zinc-500">{t("Le flashcard di tutte le lezioni del corso da ripassare oggi. Quelle che sai tornano dopo 1, 3, 7, 14 e 30 giorni; quelle che non sai tornano subito.")}</p>
             <ReviewSession scope="course" id={course.id} showLesson onOpenLesson={onOpenLesson} onDone={onReviewed} />
           </div>
         )}
@@ -54,10 +51,9 @@ export function CoursePage({ course, rev, onOpenLesson, onReviewed, onCourseChan
   );
 }
 
-const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 const monthName = (m: string) => {
-  const [y, n] = m.split("-");
-  return `${MONTHS[Number(n) - 1] ?? n} ${y}`;
+  const [y, n] = m.split("-").map(Number);
+  return y && n ? new Date(y, n - 1, 1).toLocaleDateString(locale(), { month: "long", year: "numeric" }) : m;
 };
 
 function CostsTab({ course, rev, onOpenLesson }: { course: Course; rev: number; onOpenLesson: (id: string) => void }) {
@@ -80,13 +76,13 @@ function CostsTab({ course, rev, onOpenLesson }: { course: Course; rev: number; 
       <div>
         <p className="text-3xl font-semibold tabular-nums">{fmtUsd(costs.total)}</p>
         <p className="text-sm text-zinc-500">
-          spesi con l'AI per questo corso: elaborazioni, domande, ripuliture{costs.course > 0 && " e sintesi del corso"}.
-          {costs.estimated && " Con Gemini il costo non arriva dalla risposta: per quelle voci è una stima al prezzo del piano a pagamento."}
+          {costs.course > 0 ? t("spesi con l'AI per questo corso: elaborazioni, domande, ripuliture e sintesi del corso.") : t("spesi con l'AI per questo corso: elaborazioni, domande, ripuliture.")}
+          {costs.estimated && " " + t("Con Gemini il costo non arriva dalla risposta: per quelle voci è una stima al prezzo del piano a pagamento.")}
         </p>
       </div>
       {costs.months.length > 0 && (
         <section>
-          <h2 className="mb-2 font-semibold">Per mese</h2>
+          <h2 className="mb-2 font-semibold">{t("Per mese")}</h2>
           <table className="w-full text-sm">
             <tbody>
               {costs.months.map((m) => (
@@ -100,7 +96,7 @@ function CostsTab({ course, rev, onOpenLesson }: { course: Course; rev: number; 
         </section>
       )}
       <section>
-        <h2 className="mb-2 font-semibold">Per lezione</h2>
+        <h2 className="mb-2 font-semibold">{t("Per lezione")}</h2>
         <table className="w-full text-sm">
           <tbody>
             {costs.lessons.map((l) => (
@@ -117,7 +113,7 @@ function CostsTab({ course, rev, onOpenLesson }: { course: Course; rev: number; 
             {costs.course > 0 && (
               <tr className="border-b border-zinc-100 dark:border-zinc-800">
                 <td className="py-1.5" colSpan={2}>
-                  Sintesi del corso
+                  {t("Sintesi del corso")}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">{fmtUsd(costs.course)}</td>
               </tr>
@@ -149,15 +145,15 @@ function SummaryTab({ course, rev, busy, onOpenLesson }: { course: Course; rev: 
   const go = () => startCourseSummary(course, load);
   const button = (
     <button className="btn btn-primary" disabled={busy || !data.ready} onClick={go}>
-      <Sparkles className="size-4" /> {data.summary ? "Rigenera" : "Genera la sintesi del corso"}
+      <Sparkles className="size-4" /> {data.summary ? t("Rigenera") : t("Genera la sintesi del corso")}
     </button>
   );
   if (!data.summary)
     return (
       <div className="mx-auto max-w-lg pt-12 text-center text-zinc-500">
         <p>
-          Una sintesi di tutto il corso, organizzata per argomenti, con le domande d'esame più ricorrenti. È fatta dalle sintesi delle lezioni:{" "}
-          {data.ready ? `ne ${data.ready === 1 ? "è pronta 1" : `sono pronte ${data.ready}`}.` : "elabora prima qualche lezione."}
+          {t("Una sintesi di tutto il corso, organizzata per argomenti, con le domande d'esame più ricorrenti. È fatta dalle sintesi delle lezioni:")}{" "}
+          {data.ready ? tn(data.ready, "ne è pronta 1.", "ne sono pronte {n}.") : t("elabora prima qualche lezione.")}
         </p>
         <div className="mt-4">{button}</div>
       </div>
@@ -166,13 +162,13 @@ function SummaryTab({ course, rev, busy, onOpenLesson }: { course: Course; rev: 
     <div className="mx-auto max-w-3xl">
       {data.changed > 0 && (
         <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          {data.changed === 1 ? "Una lezione è nuova o ha una sintesi nuova" : `${data.changed} lezioni sono nuove o hanno una sintesi nuova`} rispetto alla sintesi del corso: premi <b>Rigenera</b> per aggiornarla.
+          {tn(data.changed, "Una lezione è nuova o ha una sintesi nuova rispetto alla sintesi del corso: premi", "{n} lezioni sono nuove o hanno una sintesi nuova rispetto alla sintesi del corso: premi")} <b>{t("Rigenera")}</b> {t("per aggiornarla.")}
         </p>
       )}
       <div className="mb-4 flex items-start gap-3">
         {data.info && (
           <p className="flex-1 text-xs text-zinc-500">
-            Fatta il {new Date(data.info.generated).toLocaleString("it-IT")} con {data.info.model} ({costLine(data.info.usage)}) dalle sintesi di {Object.keys(refs).length === 1 ? "1 lezione" : `${Object.keys(refs).length} lezioni`}. I riferimenti [L3] aprono la lezione.
+            {tn(Object.keys(refs).length, "Fatta il {date} con {model} ({cost}) dalle sintesi di 1 lezione. I riferimenti [L3] aprono la lezione.", "Fatta il {date} con {model} ({cost}) dalle sintesi di {n} lezioni. I riferimenti [L3] aprono la lezione.", { date: new Date(data.info.generated).toLocaleString(locale()), model: data.info.model, cost: costLine(data.info.usage) })}
           </p>
         )}
         {button}
@@ -180,7 +176,7 @@ function SummaryTab({ course, rev, busy, onOpenLesson }: { course: Course; rev: 
       <Markdown text={data.summary} onRef={openRef} />
       {data.questions.length > 0 && (
         <section className="mt-10">
-          <h3 className="mb-3 font-semibold">Domande d'esame del corso</h3>
+          <h3 className="mb-3 font-semibold">{t("Domande d'esame del corso")}</h3>
           <ul className="space-y-2">
             {data.questions.map((q, i) => (
               <li key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -195,7 +191,7 @@ function SummaryTab({ course, rev, busy, onOpenLesson }: { course: Course; rev: 
                     <Markdown text={q.traccia} />
                     {q.lezioni.length > 0 && (
                       <p className="mt-2 text-xs text-zinc-500">
-                        Da ripassare:{" "}
+                        {t("Da ripassare:")}{" "}
                         {q.lezioni.map((c) => (
                           <button key={c} className="mx-0.5 rounded bg-sky-100 px-1 font-mono text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => refs[c] && onOpenLesson(refs[c])}>
                             {c}
@@ -237,54 +233,54 @@ function GlossaryTab({ course, rev, onOpenLesson, onCourseChanged }: { course: C
     <div className="mx-auto max-w-3xl space-y-8">
       <section>
         <label className="mb-1 block font-semibold" htmlFor="course-terms">
-          Parole del corso
+          {t("Parole del corso")}
         </label>
         <textarea
           id="course-terms"
           className="field min-h-20 text-sm"
-          placeholder="Termini tecnici e nomi che tornano spesso, scritti giusti e separati da virgole: per esempio ARERA, colpo d'ariete, Gauckler-Strickler"
+          placeholder={t("Termini tecnici e nomi che tornano spesso, scritti giusti e separati da virgole: per esempio ARERA, colpo d'ariete, Gauckler-Strickler")}
           value={terms}
           onChange={(e) => setTerms(e.target.value)}
           onBlur={() => {
             if (terms.trim() === course.terms.trim()) return;
             api.updateCourse(course.id, course.name, course.teacher, terms).then(
               () => {
-                toast("Parole del corso salvate: valgono dalle prossime elaborazioni.");
+                toast(t("Parole del corso salvate: valgono dalle prossime elaborazioni."));
                 onCourseChanged?.();
               },
               (e) => toast(toAppError(e).message, "error"),
             );
           }}
         />
-        <p className="mt-1 text-xs text-zinc-500">Le suggeriamo a Whisper, alla ripulitura e alla sintesi delle lezioni di questo corso. Quelle che valgono per tutti i corsi sono nelle Impostazioni.</p>
+        <p className="mt-1 text-xs text-zinc-500">{t("Le suggeriamo a Whisper, alla ripulitura e alla sintesi delle lezioni di questo corso. Quelle che valgono per tutti i corsi sono nelle Impostazioni.")}</p>
       </section>
       <section>
         <div className="mb-2 flex items-center gap-3">
           <h3 className="flex-1 font-semibold">
-            Termini delle lezioni {items && <span className="font-normal text-zinc-400">{items.length}</span>}
+            {t("Termini delle lezioni")} {items && <span className="font-normal text-zinc-400">{items.length}</span>}
           </h3>
-          {(items?.length ?? 0) > 8 && <input className="field max-w-56" placeholder="Filtra i termini" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+          {(items?.length ?? 0) > 8 && <input className="field max-w-56" placeholder={t("Filtra i termini")} value={filter} onChange={(e) => setFilter(e.target.value)} />}
         </div>
-        {items && !items.length && <p className="text-sm text-zinc-500">I glossari delle lezioni compaiono qui quando le lezioni sono elaborate.</p>}
+        {items && !items.length && <p className="text-sm text-zinc-500">{t("I glossari delle lezioni compaiono qui quando le lezioni sono elaborate.")}</p>}
         <dl className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-          {shown.map((t) => (
-            <div key={t.termine} className="group grid grid-cols-[minmax(8rem,14rem)_1fr] gap-3 px-3 py-2 text-sm">
+          {shown.map((g) => (
+            <div key={g.termine} className="group grid grid-cols-[minmax(8rem,14rem)_1fr] gap-3 px-3 py-2 text-sm">
               <dt className="font-medium">
-                <Markdown text={t.termine} inline />
-                {!have.has(t.termine.toLowerCase()) && (
+                <Markdown text={g.termine} inline />
+                {!have.has(g.termine.toLowerCase()) && (
                   <button
                     className="ml-2 text-xs font-normal text-sky-700 opacity-0 group-hover:opacity-100 hover:underline dark:text-sky-400"
-                    onClick={() => addCourseTerm(course.id, t.termine).then(() => onCourseChanged?.(), (e) => toast(toAppError(e).message, "error"))}
-                    title="Aggiungi alle parole del corso"
+                    onClick={() => addCourseTerm(course.id, g.termine).then(() => onCourseChanged?.(), (e) => toast(toAppError(e).message, "error"))}
+                    title={t("Aggiungi alle parole del corso")}
                   >
-                    + parole del corso
+                    {t("+ parole del corso")}
                   </button>
                 )}
               </dt>
               <dd className="text-zinc-700 dark:text-zinc-300">
-                <Markdown text={t.definizione} inline />
+                <Markdown text={g.definizione} inline />
                 <span className="ml-2 text-xs text-zinc-400">
-                  {t.lessons.map(([id, title], i) => (
+                  {g.lessons.map(([id, title], i) => (
                     <button key={id} className="hover:underline" onClick={() => onOpenLesson(id)}>
                       {i > 0 && ", "}
                       {title}

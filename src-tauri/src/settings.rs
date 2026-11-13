@@ -46,6 +46,9 @@ pub struct Settings {
     pub provider: ProviderKind,
     #[serde(default)]
     pub openrouter: ModelSet,
+    /// Interface language ("system" by default).
+    #[serde(default)]
+    pub language: crate::lang::UiLang,
 }
 
 impl Settings {
@@ -66,7 +69,7 @@ impl Settings {
         if let Some(d) = path.parent() {
             fs::create_dir_all(d)?;
         }
-        fs::write(path, serde_json::to_vec_pretty(self)?).with_context(|| format!("scrittura di {}", path.display()))
+        fs::write(path, serde_json::to_vec_pretty(self)?).with_context(|| crate::tr!("scrittura di {}", "writing {}", path.display()))
     }
 }
 

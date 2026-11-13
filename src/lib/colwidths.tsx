@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
 
 export const MIN_COL_W = 40;
 export const MAX_COL_W = 1200;
@@ -68,7 +69,7 @@ export function ResizeHandle({ width, onResize, onFit }: { width: number; onResi
   return (
     <div
       className="absolute top-0 right-0 bottom-0 z-10 w-[6px] cursor-col-resize hover:bg-sky-500/60 active:bg-sky-500"
-      title="Trascina per ridimensionare · doppio clic per adattare"
+      title={t("Trascina per ridimensionare · doppio clic per adattare")}
       onPointerDown={(e) => {
         e.stopPropagation();
         e.preventDefault();

@@ -1,6 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { FileDown, FileText, Globe, Layers, Package } from "lucide-react";
 import { useState } from "react";
+import { t, tn } from "../../i18n";
 import { ai, api, share, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
@@ -8,15 +9,16 @@ import { buildHtml, type ExportParts, summaryPhotos } from "./html";
 
 type Format = "package" | "pdf" | "html" | "markdown" | "anki";
 
-const FORMATS: { id: Format; label: string; hint: string; icon: React.ReactNode }[] = [
-  { id: "package", label: "Pacchetto .lezione", hint: "Per chi usa Lezioni: si apre con doppio clic, con fonti, trascrizioni e sintesi già pronte.", icon: <Package className="size-5" /> },
-  { id: "pdf", label: "PDF", hint: "Dispensa per chiunque. Si apre il browser con la stampa: scegli «Salva come PDF».", icon: <FileDown className="size-5" /> },
-  { id: "html", label: "Pagina web", hint: "Un file .html che si apre in qualsiasi browser, anche dal telefono, con flashcard cliccabili.", icon: <Globe className="size-5" /> },
-  { id: "markdown", label: "Markdown (Obsidian, NotebookLM)", hint: "Una cartella per lezione con file .md: da mettere in un vault di Obsidian o caricare su NotebookLM.", icon: <FileText className="size-5" /> },
-  { id: "anki", label: "Flashcard per Anki", hint: "File di testo da importare in Anki (File → Importa): flashcard e domande d'esame.", icon: <Layers className="size-5" /> },
+/** The formats, in the interface language (a function: the language can change). */
+const formats = (): { id: Format; label: string; hint: string; icon: React.ReactNode }[] => [
+  { id: "package", label: t("Pacchetto .lezione"), hint: t("Per chi usa Lezioni: si apre con doppio clic, con fonti, trascrizioni e sintesi già pronte."), icon: <Package className="size-5" /> },
+  { id: "pdf", label: "PDF", hint: t("Dispensa per chiunque. Si apre il browser con la stampa: scegli «Salva come PDF»."), icon: <FileDown className="size-5" /> },
+  { id: "html", label: t("Pagina web"), hint: t("Un file .html che si apre in qualsiasi browser, anche dal telefono, con flashcard cliccabili."), icon: <Globe className="size-5" /> },
+  { id: "markdown", label: "Markdown (Obsidian, NotebookLM)", hint: t("Una cartella per lezione con file .md: da mettere in un vault di Obsidian o caricare su NotebookLM."), icon: <FileText className="size-5" /> },
+  { id: "anki", label: t("Flashcard per Anki"), hint: t("File di testo da importare in Anki (File → Importa): flashcard e domande d'esame."), icon: <Layers className="size-5" /> },
 ];
 
-const slug = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, " ") || "lezione";
+const slug = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, " ") || t("lezione|nome di file");
 
 /** Export one lesson, or a whole course (`lesson` null). */
 export function ShareDialog({ course, lesson, onClose }: { course: Course; lesson: Lesson | null; onClose: () => void }) {
@@ -34,13 +36,13 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
     setBusy(true);
     try {
       const ls = await lessons();
-      if (!ls.length) throw { message: "Il corso non ha lezioni" };
+      if (!ls.length) throw { message: t("Il corso non ha lezioni") };
       const ids = ls.map((l) => l.id);
       if (format === "package") {
-        const dest = await save({ title: "Salva il pacchetto", defaultPath: `${slug(name)}.lezione`, filters: [{ name: "Lezione", extensions: ["lezione"] }] });
+        const dest = await save({ title: t("Salva il pacchetto"), defaultPath: `${slug(name)}.lezione`, filters: [{ name: t("Lezione"), extensions: ["lezione"] }] });
         if (!dest) return;
         await share.exportPackage(ids, { media, files, notes }, dest);
-        toast(`Pacchetto salvato: ${ls.length === 1 ? "1 lezione" : `${ls.length} lezioni`}. Mandalo come un normale file (WhatsApp, mail, Drive).`);
+        toast(t("Pacchetto salvato: {lessons}. Mandalo come un normale file (WhatsApp, mail, Drive).", { lessons: tn(ls.length, "1 lezione", "{n} lezioni") }));
       } else if (format === "pdf" || format === "html") {
         const docs = await Promise.all(
           ls.map(async (l) => {
@@ -48,27 +50,27 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
             return { lesson: l, outputs, photos: parts.summary ? await summaryPhotos(l, outputs) : undefined };
           }),
         );
-        if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length)) throw { message: "Niente da esportare: elabora prima la lezione con Gemini" };
+        if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length)) throw { message: t("Niente da esportare: elabora prima la lezione con Gemini") };
         if (format === "pdf") {
           await share.print(slug(name), buildHtml(course, docs, parts, true));
-          toast("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF».");
+          toast(t("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF»."));
         } else {
-          const dest = await save({ title: "Salva la pagina", defaultPath: `${slug(name)}.html`, filters: [{ name: "Pagina web", extensions: ["html"] }] });
+          const dest = await save({ title: t("Salva la pagina"), defaultPath: `${slug(name)}.html`, filters: [{ name: t("Pagina web"), extensions: ["html"] }] });
           if (!dest) return;
           await share.writeText(dest, buildHtml(course, docs, parts, false));
-          toast("Pagina salvata.");
+          toast(t("Pagina salvata."));
         }
       } else if (format === "markdown") {
-        const dest = await open({ directory: true, title: "Cartella in cui creare i file Markdown (ad esempio il vault di Obsidian)" });
+        const dest = await open({ directory: true, title: t("Cartella in cui creare i file Markdown (ad esempio il vault di Obsidian)") });
         if (typeof dest !== "string") return;
         const n = await share.markdown(ids, dest);
-        toast(n === 1 ? "Creata 1 cartella di file Markdown." : `Create ${n} cartelle di file Markdown.`);
+        toast(tn(n, "Creata 1 cartella di file Markdown.", "Create {n} cartelle di file Markdown."));
         api.reveal(dest);
       } else {
-        const dest = await save({ title: "Salva le flashcard per Anki", defaultPath: `${slug(name)} - Anki.txt`, filters: [{ name: "Testo", extensions: ["txt"] }] });
+        const dest = await save({ title: t("Salva le flashcard per Anki"), defaultPath: `${slug(name)} - Anki.txt`, filters: [{ name: t("Testo"), extensions: ["txt"] }] });
         if (!dest) return;
         const n = await share.anki(ids, dest);
-        toast(`${n} carte salvate. In Anki: File → Importa e scegli il file.`);
+        toast(tn(n, "1 carta salvata. In Anki: File → Importa e scegli il file.", "{n} carte salvate. In Anki: File → Importa e scegli il file."));
       }
       onClose();
     } catch (e) {
@@ -91,22 +93,22 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
   return (
     <Modal
       wide
-      title={lesson ? `Condividi «${lesson.title}»` : `Esporta il corso «${course.name}»`}
+      title={lesson ? t("Condividi «{title}»", { title: lesson.title }) : t("Esporta il corso «{name}»", { name: course.name })}
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Annulla
+            {t("Annulla")}
           </button>
           <button className="btn btn-primary" disabled={busy} onClick={run}>
-            {busy ? "Esportazione…" : "Esporta…"}
+            {busy ? t("Esportazione…") : t("Esporta…")}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="grid gap-2">
-          {FORMATS.map((f) => (
+          {formats().map((f) => (
             <label key={f.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${format === f.id ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40" : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"}`}>
               <input type="radio" name="format" className="sr-only" checked={format === f.id} onChange={() => setFormat(f.id)} />
               <span className="mt-0.5 text-sky-600">{f.icon}</span>
@@ -119,17 +121,17 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
         </div>
         {format === "package" && (
           <div className="space-y-2 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-900">
-            {check("Includi foto, PDF e appunti", files, setFiles)}
-            {check("Includi le registrazioni", media, setMedia, "Pesano molto e servono il permesso del docente. Senza, la trascrizione viaggia comunque.")}
-            {check("Includi le mie note sulla lezione", notes, setNotes, "Le conversazioni nella scheda Domande restano sempre solo sul tuo computer.")}
+            {check(t("Includi foto, PDF e appunti"), files, setFiles)}
+            {check(t("Includi le registrazioni"), media, setMedia, t("Pesano molto e servono il permesso del docente. Senza, la trascrizione viaggia comunque."))}
+            {check(t("Includi le mie note sulla lezione"), notes, setNotes, t("Le conversazioni nella scheda Domande restano sempre solo sul tuo computer."))}
           </div>
         )}
         {(format === "pdf" || format === "html") && (
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-900">
-            {check("Sintesi", parts.summary, (v) => setParts({ ...parts, summary: v }))}
-            {check("Mappa concettuale", parts.map, (v) => setParts({ ...parts, map: v }))}
-            {check("Flashcard, domande e glossario", parts.study, (v) => setParts({ ...parts, study: v }))}
-            {check("Trascrizioni (in appendice)", parts.transcript, (v) => setParts({ ...parts, transcript: v }))}
+            {check(t("Sintesi"), parts.summary, (v) => setParts({ ...parts, summary: v }))}
+            {check(t("Mappa concettuale"), parts.map, (v) => setParts({ ...parts, map: v }))}
+            {check(t("Flashcard, domande e glossario"), parts.study, (v) => setParts({ ...parts, study: v }))}
+            {check(t("Trascrizioni (in appendice)"), parts.transcript, (v) => setParts({ ...parts, transcript: v }))}
           </div>
         )}
       </div>

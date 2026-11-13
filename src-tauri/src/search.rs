@@ -140,10 +140,10 @@ pub fn search(lib: &Library, q: &str) -> Result<Vec<Hit>> {
             };
             let gdir = l.path.join(GENERATED_DIR);
             let mut found = vec![
-                base("title", "Titolo".into(), None, &l.meta.title, false),
-                base("notes", "Note".into(), None, &l.meta.notes, false),
-                read(&gdir.join("sintesi.md")).and_then(|t| base("summary", "Sintesi".into(), None, &t, false)),
-                read(&gdir.join("studio.json")).and_then(|t| base("study", "Studio".into(), None, &t, false)),
+                base("title", crate::tr!("Titolo", "Title"), None, &l.meta.title, false),
+                base("notes", crate::tr!("Note", "Notes"), None, &l.meta.notes, false),
+                read(&gdir.join("sintesi.md")).and_then(|t| base("summary", crate::tr!("Sintesi", "Summary"), None, &t, false)),
+                read(&gdir.join("studio.json")).and_then(|t| base("study", crate::tr!("Studio", "Study"), None, &t, false)),
             ];
             for s in &l.meta.sources {
                 let media = matches!(s.kind, crate::library::SourceKind::Audio | crate::library::SourceKind::Video);

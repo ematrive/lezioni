@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api, fmtDate, review, today, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
+import { t, tn } from "../../i18n";
 
 export function LessonList({
   course,
@@ -70,24 +71,24 @@ export function LessonList({
       <div className="space-y-2 border-b border-zinc-200 p-3 dark:border-zinc-800">
         <div className="flex items-center justify-between gap-2">
           {onShowCourses && (
-            <button className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Mostra la colonna dei corsi" aria-label="Mostra i corsi" onClick={onShowCourses}>
+            <button className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title={t("Mostra la colonna dei corsi")} aria-label={t("Mostra i corsi")} onClick={onShowCourses}>
               <PanelLeftOpen className="size-4" />
             </button>
           )}
-          <button className={`min-w-0 flex-1 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title="Pagina del corso: ripasso, sintesi del corso, costi">
+          <button className={`min-w-0 flex-1 rounded-md px-1 text-left ${selected ? "hover:bg-zinc-100 dark:hover:bg-zinc-900" : ""}`} onClick={onOverview} title={t("Pagina del corso: ripasso, sintesi del corso, costi")}>
             <h2 className="truncate text-base font-semibold">{course.name}</h2>
             {course.teacher && <p className="truncate text-xs text-zinc-500">{course.teacher}</p>}
           </button>
           <button className="btn btn-primary shrink-0" onClick={() => setCreating(true)}>
-            <Plus className="size-4" /> Lezione
+            <Plus className="size-4" /> {t("Lezione")}
           </button>
         </div>
         {toReview > 0 && (
-          <button className="block w-full rounded px-1 text-left text-xs text-sky-700 hover:underline dark:text-sky-400" onClick={onOverview} title="Apri il ripasso del corso">
-            {toReview} flashcard da ripassare oggi →
+          <button className="block w-full rounded px-1 text-left text-xs text-sky-700 hover:underline dark:text-sky-400" onClick={onOverview} title={t("Apri il ripasso del corso")}>
+            {tn(toReview, "1 flashcard da ripassare oggi →", "{n} flashcard da ripassare oggi →")}
           </button>
         )}
-        {lessons.length > 6 && <input className="field" placeholder="Filtra le lezioni" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        {lessons.length > 6 && <input className="field" placeholder={t("Filtra le lezioni")} value={filter} onChange={(e) => setFilter(e.target.value)} />}
       </div>
       <ul className="min-h-0 flex-1 overflow-auto p-2">
         {shown.map((l) => {
@@ -111,8 +112,8 @@ export function LessonList({
             <li key={l.id} className="group relative">
               <button
                 className={`absolute top-1.5 right-1.5 z-10 rounded p-1 ${open || sel ? "block" : "hidden group-hover:block"} ${sel ? "text-white hover:bg-sky-700" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
-                title="Altre azioni sulla lezione"
-                aria-label={`Azioni sulla lezione ${l.title}`}
+                title={t("Altre azioni sulla lezione")}
+                aria-label={t("Azioni sulla lezione {title}", { title: l.title })}
                 onClick={() => setMenu(open ? null : l.id)}
               >
                 <MoreHorizontal className="size-4" />
@@ -121,10 +122,10 @@ export function LessonList({
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setMenu(null)} />
                   <div className="anim-pop absolute top-9 right-1 z-40 w-52 rounded-md border border-zinc-200 bg-white p-1 text-sm text-zinc-800 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" role="menu">
-                    {item("Condividi…", <Share2 className="size-4" />, () => setSharing(l))}
-                    {item("Mostra la cartella", <FolderOpen className="size-4" />, () => api.reveal(l.path))}
+                    {item(t("Condividi…"), <Share2 className="size-4" />, () => setSharing(l))}
+                    {item(t("Mostra la cartella"), <FolderOpen className="size-4" />, () => api.reveal(l.path))}
                     {item(
-                      "Elimina",
+                      t("Elimina"),
                       <Trash2 className="size-4" />,
                       async () => {
                         if (await deleteLesson(l)) {
@@ -149,7 +150,7 @@ export function LessonList({
             </li>
           );
         })}
-        {lessons.length === 0 && <li className="p-3 text-zinc-500">Ancora nessuna lezione in questo corso.</li>}
+        {lessons.length === 0 && <li className="p-3 text-zinc-500">{t("Ancora nessuna lezione in questo corso.")}</li>}
       </ul>
       {sharing && <ShareDialog course={course} lesson={sharing} onClose={() => setSharing(null)} />}
       {creating && (
@@ -191,15 +192,15 @@ function NewLesson({ course, onClose, onCreated }: { course: Course; onClose: ()
   };
   return (
     <Modal
-      title={`Nuova lezione · ${course.name}`}
+      title={t("Nuova lezione · {course}", { course: course.name })}
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Annulla
+            {t("Annulla")}
           </button>
           <button className="btn btn-primary" disabled={busy || !date} onClick={create}>
-            Crea
+            {t("Crea")}
           </button>
         </>
       }
@@ -212,11 +213,11 @@ function NewLesson({ course, onClose, onCreated }: { course: Course; onClose: ()
         }}
       >
         <label className="block">
-          <span className="label">Titolo</span>
-          <input className="field" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Es. Metodo del simplesso (puoi cambiarlo dopo)" />
+          <span className="label">{t("Titolo")}</span>
+          <input className="field" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Es. Metodo del simplesso (puoi cambiarlo dopo)")} />
         </label>
         <label className="block">
-          <span className="label">Data</span>
+          <span className="label">{t("Data")}</span>
           <input className="field" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <button type="submit" hidden />

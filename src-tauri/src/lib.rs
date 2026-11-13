@@ -8,6 +8,7 @@ pub mod costs;
 pub mod course;
 pub mod error;
 pub mod jobs;
+pub mod lang;
 pub mod library;
 pub mod pauses;
 pub mod photos;
@@ -74,6 +75,7 @@ pub fn run() {
             init_log(app.path().app_log_dir().ok());
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let settings = settings::Settings::load(&settings_path);
+            lang::set_ui(settings.language.resolve());
             if let Some(d) = &settings.library_dir {
                 allow_assets(app.handle(), d);
             }
@@ -83,6 +85,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             settings_get,
             settings_set_library,
+            settings_set_language,
             courses_list,
             course_create,
             course_update,

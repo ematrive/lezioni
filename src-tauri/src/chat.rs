@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai::{Ai, Part, Request, Usage, prompts};
+use crate::lang::Lang;
 use crate::library::{Library, SourceKind};
 use crate::pipeline;
 
@@ -59,7 +60,8 @@ pub fn save(lib: &Library, lesson_id: &str, msgs: &[Message]) -> Result<()> {
 fn context(lib: &Library, lesson_id: &str, scope: Scope) -> Result<(String, BTreeMap<String, String>)> {
     let lesson = lib.lesson(lesson_id)?;
     let course = lib.course(&lesson.course_id)?;
-    let mut text = format!("Corso: {}\n\n", course.meta.name);
+    let ml = lib.langs(&lesson).1;
+    let mut text = format!("{}: {}\n\n", ml.pick("Corso", "Course"), course.meta.name);
     let mut refs = BTreeMap::new();
     match scope {
         Scope::Lesson => {
@@ -71,50 +73,62 @@ fn context(lib: &Library, lesson_id: &str, scope: Scope) -> Result<(String, BTre
                     codes.push((format!("F{}", codes.len() + 1), s.id.clone()));
                 }
             }
-            text.push_str(&format!("Lezione: {} ({})\n\n", lesson.meta.title, lesson.meta.date));
+            text.push_str(&format!("{}: {} ({})\n\n", ml.pick("Lezione", "Lecture"), lesson.meta.title, lesson.meta.date));
             for (code, sid) in &codes {
                 let (Some(s), Some(t)) = (lesson.meta.sources.iter().find(|s| &s.id == sid), o.extracts.get(sid)) else { continue };
-                let kind = if matches!(s.kind, SourceKind::Audio | SourceKind::Video) { "trascrizione della registrazione" } else { "testo" };
+                let kind = if matches!(s.kind, SourceKind::Audio | SourceKind::Video) { ml.pick("trascrizione della registrazione", "transcript of the recording") } else { ml.pick("testo", "text") };
                 text.push_str(&format!("[{code}] {} ({kind})\n{t}\n\n", s.original_name));
                 refs.insert(code.clone(), sid.clone());
             }
-            let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), |sid| refs.iter().find(|(_, v)| v.as_str() == sid).map(|(k, _)| k.clone()));
+            let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), ml, |sid| refs.iter().find(|(_, v)| v.as_str() == sid).map(|(k, _)| k.clone()));
             if !marks.is_empty() {
-                text.push_str(&format!("[SEGNAPOSTI] punti segnati dallo studente mentre riascoltava\n{marks}\n"));
+                text.push_str(&format!("[SEGNAPOSTI] {}\n{marks}\n", ml.pick("punti segnati dallo studente mentre riascoltava", "points marked by the student while listening again")));
             }
             if let Some(s) = &o.summary {
-                text.push_str(&format!("[SINTESI] (già scritta a partire dalle fonti)\n{s}\n\n"));
+                text.push_str(&format!("[SINTESI] {}\n{s}\n\n", ml.pick("(già scritta a partire dalle fonti)", "(summary already written from the sources)")));
             }
             if refs.is_empty() && o.summary.is_none() {
-                bail!("la lezione non ha ancora testi: elaborala prima con Gemini");
+                bail!(crate::tr!("la lezione non ha ancora testi: elaborala prima con Gemini", "the lecture has no texts yet: process it with Gemini first"));
             }
         }
         Scope::Course => {
             for (code, l, o) in crate::course::lessons_with_summary(lib, &course.meta.id)? {
-                text.push_str(&format!("[{code}] Lezione del {}: {}\n{}\n\n", l.meta.date, l.meta.title, o.summary.unwrap_or_default()));
+                text.push_str(&format!("[{code}] {} {}: {}\n{}\n\n", ml.pick("Lezione del", "Lecture of"), l.meta.date, l.meta.title, o.summary.unwrap_or_default()));
                 refs.insert(code, l.meta.id.clone());
             }
             if refs.is_empty() {
-                bail!("nessuna lezione del corso ha una sintesi: elabora prima le lezioni con Gemini");
+                bail!(crate::tr!("nessuna lezione del corso ha una sintesi: elabora prima le lezioni con Gemini", "no lecture of the course has a summary: process the lectures with Gemini first"));
             }
         }
     }
     Ok((text, refs))
 }
 
-fn instructions(scope: Scope) -> &'static str {
-    match scope {
-        Scope::Lesson => {
+fn instructions(scope: Scope, l: Lang) -> &'static str {
+    match (scope, l) {
+        (Scope::Lesson, Lang::It) => {
             "Rispondi alla domanda dello studente usando SOLO le fonti della lezione qui sotto. \
 Dopo ogni affermazione indica la fonte tra parentesi quadre, con il minuto se è una registrazione: [F1 00:12:30], [F2]. \
 Se le fonti non contengono la risposta, dillo chiaramente e, se utile, aggiungi una spiegazione generale segnalandola come «(non dalle fonti)». \
 Rispondi in italiano, in modo chiaro e ordinato, con formule in LaTeX."
         }
-        Scope::Course => {
+        (Scope::Course, Lang::It) => {
             "Rispondi alla domanda dello studente usando SOLO le sintesi delle lezioni del corso qui sotto. \
 Indica sempre la lezione da cui viene ogni informazione tra parentesi quadre: [L3], [L5]. \
 Se le sintesi non contengono la risposta, dillo chiaramente e, se utile, aggiungi una spiegazione generale segnalandola come «(non dalle lezioni)». \
 Rispondi in italiano, in modo chiaro e ordinato, con formule in LaTeX."
+        }
+        (Scope::Lesson, Lang::En) => {
+            "Answer the student's question using ONLY the sources of the lecture below. \
+After each statement give the source in square brackets, with the minute if it is a recording: [F1 00:12:30], [F2]. \
+If the sources do not contain the answer, say so clearly and, if useful, add a general explanation marked as “(not from the sources)”. \
+Answer in English, clearly and in order, with formulas in LaTeX."
+        }
+        (Scope::Course, Lang::En) => {
+            "Answer the student's question using ONLY the summaries of the course's lectures below. \
+Always give the lecture each piece of information comes from in square brackets: [L3], [L5]. \
+If the summaries do not contain the answer, say so clearly and, if useful, add a general explanation marked as “(not from the lectures)”. \
+Answer in English, clearly and in order, with formulas in LaTeX."
         }
     }
 }
@@ -123,9 +137,10 @@ Rispondi in italiano, in modo chiaro e ordinato, con formule in LaTeX."
 pub async fn ask<A: Ai>(ai: &A, model: &str, lib: &Library, lesson_id: &str, scope: Scope, question: &str, cancel: &CancellationToken) -> Result<(Vec<Message>, Usage)> {
     let question = question.trim();
     if question.is_empty() {
-        bail!("scrivi una domanda");
+        bail!(crate::tr!("scrivi una domanda", "write a question"));
     }
     let (sources, refs) = context(lib, lesson_id, scope)?;
+    let ml = lib.langs(&lib.lesson(lesson_id)?).1;
     let mut msgs = load(lib, lesson_id)?;
     let earlier: String = msgs
         .iter()
@@ -135,11 +150,12 @@ pub async fn ask<A: Ai>(ai: &A, model: &str, lib: &Library, lesson_id: &str, sco
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
-        .map(|m| format!("{}: {}\n\n", if m.role == "user" { "STUDENTE" } else { "ASSISTENTE" }, m.text))
+        .map(|m| format!("{}: {}\n\n", if m.role == "user" { ml.pick("STUDENTE", "STUDENT") } else { ml.pick("ASSISTENTE", "ASSISTANT") }, m.text))
         .collect();
-    let earlier = if earlier.is_empty() { String::new() } else { format!("CONVERSAZIONE PRECEDENTE:\n\n{earlier}") };
-    let prompt = format!("{}\n\nFONTI:\n\n{sources}\n{earlier}DOMANDA DELLO STUDENTE:\n{question}", instructions(scope));
-    let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![Part::Text(prompt)], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
+    let earlier = if earlier.is_empty() { String::new() } else { format!("{}:\n\n{earlier}", ml.pick("CONVERSAZIONE PRECEDENTE", "EARLIER CONVERSATION")) };
+    let (src, q) = ml.pick(("FONTI", "DOMANDA DELLO STUDENTE"), ("SOURCES", "THE STUDENT'S QUESTION"));
+    let prompt = format!("{}\n\n{src}:\n\n{sources}\n{earlier}{q}:\n{question}", instructions(scope, ml));
+    let req = Request { system: Some(prompts::system(ml)), parts: vec![Part::Text(prompt)], max_output_tokens: Some(8000), thinking: Some("LOW"), ..Default::default() };
     let a = ai.generate(model, &req, cancel).await?;
     let now = Utc::now();
     msgs.push(Message { role: "user".into(), text: question.into(), scope, at: now, refs: BTreeMap::new() });

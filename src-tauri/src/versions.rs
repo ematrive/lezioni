@@ -56,22 +56,22 @@ pub fn list(lesson: &Lesson) -> Vec<Version> {
 /// `<lesson>/<area>/versioni/<stamp>`, refusing names that would leave it.
 fn version_dir(lesson: &Lesson, area: Area, stamp: &str) -> Result<PathBuf> {
     if !is_plain_file_name(stamp) {
-        bail!("versione non valida");
+        bail!(crate::tr!("versione non valida", "invalid version"));
     }
     let d = lesson.path.join(area.dir()).join("versioni").join(stamp);
     if !d.is_dir() {
-        bail!("versione non trovata: {stamp}");
+        bail!(crate::tr!("versione non trovata: {stamp}", "version not found: {stamp}"));
     }
     Ok(d)
 }
 
 fn file_in(dir: &Path, file: &str) -> Result<PathBuf> {
     if !is_plain_file_name(file) {
-        bail!("file non valido");
+        bail!(crate::tr!("file non valido", "invalid file"));
     }
     let p = dir.join(file);
     if !p.is_file() {
-        bail!("file non trovato nella versione: {file}");
+        bail!(crate::tr!("file non trovato nella versione: {file}", "file not found in the version: {file}"));
     }
     Ok(p)
 }
@@ -100,9 +100,9 @@ pub fn restore(lib: &Library, lesson_id: &str, area: Area, stamp: &str, file: Op
             Ok(l)
         }
         Area::Estratti => {
-            let file = file.ok_or_else(|| anyhow!("quale trascrizione?"))?;
+            let file = file.ok_or_else(|| anyhow!(crate::tr!("quale trascrizione?", "which transcript?")))?;
             let text = fs::read_to_string(file_in(&from, file)?)?;
-            let s = l.meta.sources.iter().find(|s| format!("{}.md", s.file) == file).ok_or_else(|| anyhow!("la fonte di questa versione non c'è più nella lezione"))?;
+            let s = l.meta.sources.iter().find(|s| format!("{}.md", s.file) == file).ok_or_else(|| anyhow!(crate::tr!("la fonte di questa versione non c'è più nella lezione", "the source of this version is no longer in the lecture")))?;
             let current = l.path.join(EXTRACTS_DIR).join(file);
             if current.is_file() {
                 let dest = crate::pipeline::new_version_dir(&l.path.join(EXTRACTS_DIR));

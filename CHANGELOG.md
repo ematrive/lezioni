@@ -1,5 +1,13 @@
 # Novità
 
+## Prossima versione
+
+- **Inglese**: l'app si può usare in inglese. Di default segue la lingua del sistema; si cambia da **Impostazioni → Lingua**.
+- Ogni corso ha una **lingua delle lezioni** (quella in cui parla il docente, per la trascrizione) e una **lingua dei materiali** (sintesi, mappa, studio, chat ed esportazioni). Un corso in inglese può avere i materiali in italiano, e viceversa.
+- Una singola lezione può avere una **lingua diversa** da quella del corso: si sceglie dal pulsante ⋯ in alto nella lezione.
+- I pacchetti `.lezione` portano con sé le lingue del corso; una lezione importata in un corso di un'altra lingua tiene la sua.
+- Le istruzioni date al modello non presumono più un corso di Ingegneria gestionale: valgono per qualunque corso universitario.
+
 ## 1.1.0
 
 - Le **sintesi** non mostrano più `\n` e `##` al posto di a capo e titoli, né formule spezzate su più righe («mu», «sqrt2g»): succedeva quando il modello rovinava il testo a metà risposta. Le sintesi già salvate si vedono di nuovo bene senza rielaborare la lezione; vale anche per glossario, flashcard, domande d'esame e sintesi del corso.

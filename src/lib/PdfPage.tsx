@@ -2,6 +2,7 @@
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -75,7 +76,7 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
   return (
     <div ref={box} className="w-full">
       <canvas ref={canvas} className="rounded border border-zinc-200 bg-white shadow-sm dark:border-zinc-700" data-pdf-page={page} />
-      {failed && <p className="mt-1 text-xs text-red-600">Non riesco a disegnare la pagina {page}: {failed}</p>}
+      {failed && <p className="mt-1 text-xs text-red-600">{t("Non riesco a disegnare la pagina {page}: {error}", { page, error: failed })}</p>}
     </div>
   );
 }

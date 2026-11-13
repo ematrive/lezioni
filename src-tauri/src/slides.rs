@@ -70,7 +70,7 @@ pub fn remove_source(lesson_dir: &Path, source_id: &str) -> Result<()> {
 
 /// The pages of a PDF read by the model ("## Pagina N" headings): (number, text).
 pub fn pages(text: &str) -> Vec<(u32, String)> {
-    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^#{1,3}\s*Pagina\s+(\d+)\s*$").unwrap());
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?mi)^#{1,3}\s*(?:Pagina|Page)\s+(\d+)\s*$").unwrap());
     let heads: Vec<(usize, usize, u32)> = RE.captures_iter(text).filter_map(|c| Some((c.get(0)?.start(), c.get(0)?.end(), c[1].parse().ok()?))).collect();
     heads.iter().enumerate().map(|(i, &(_, end, n))| (n, text[end..heads.get(i + 1).map(|h| h.0).unwrap_or(text.len())].trim().to_string())).collect()
 }
@@ -117,12 +117,12 @@ struct Raw {
 /// The model's steps, checked: times inside the recording, pages that exist, in order, no two
 /// steps in a row on the same page.
 fn checked(answer: &str, last_time: u64, pages: u32) -> Result<Vec<Step>> {
-    let a: Answer = serde_json::from_str(answer).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
+    let a: Answer = serde_json::from_str(answer).map_err(|e| anyhow!(crate::tr!("risposta del modello non valida: {e}", "invalid answer from the model: {e}")))?;
     let mut steps: Vec<Step> = a.passaggi.iter().filter_map(|r| Some(Step { at: secs(&r.inizio)?, page: r.pagina })).filter(|s| s.at <= last_time + 10 && (1..=pages).contains(&s.page)).collect();
     steps.sort_by_key(|s| s.at);
     steps.dedup_by(|b, a| a.page == b.page);
     if steps.len() < 2 {
-        bail!("il modello non ha trovato quando il docente passa da una slide all'altra: forse il PDF non sono le slide di questa lezione");
+        bail!(crate::tr!("il modello non ha trovato quando il docente passa da una slide all'altra: forse il PDF non sono le slide di questa lezione", "the model did not find when the lecturer moves from one slide to the next: maybe the PDF is not the slides of this lecture"));
     }
     Ok(steps)
 }
@@ -132,16 +132,16 @@ fn checked(answer: &str, last_time: u64, pages: u32) -> Result<Vec<Step>> {
 pub async fn align<A: Ai>(ai: &A, model: &str, lib: &Library, lesson_id: &str, recording: &str, pdf: &str, cancel: &CancellationToken) -> Result<(Alignment, Usage)> {
     let lesson = lib.lesson(lesson_id)?;
     let out = crate::pipeline::outputs(&lesson);
-    let rec_text = out.extracts.get(recording).ok_or_else(|| anyhow!("la registrazione non è ancora trascritta"))?;
-    let pdf_text = out.extracts.get(pdf).ok_or_else(|| anyhow!("il PDF non è ancora stato letto"))?;
+    let rec_text = out.extracts.get(recording).ok_or_else(|| anyhow!(crate::tr!("la registrazione non è ancora trascritta", "the recording is not transcribed yet")))?;
+    let pdf_text = out.extracts.get(pdf).ok_or_else(|| anyhow!(crate::tr!("il PDF non è ancora stato letto", "the PDF has not been read yet")))?;
     let pgs = pages(pdf_text);
     if pgs.len() < 2 {
-        bail!("nel testo del PDF non trovo le pagine: rileggilo con «Rielabora anche le fonti»");
+        bail!(crate::tr!("nel testo del PDF non trovo le pagine: rileggilo con «Rielabora anche le fonti»", "cannot find the pages in the PDF's text: read it again with “Process the sources again too”"));
     }
     let transcript: String = rec_text.split("\n\n").filter(|p| !crate::pauses::is_pause(p.split_once(']').map(|x| x.1).unwrap_or(""))).collect::<Vec<_>>().join("\n\n");
     let last_time = transcript.lines().filter_map(|l| l.trim_start().strip_prefix('[')?.split_once(']').and_then(|(t, _)| secs(t))).max().unwrap_or(0);
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
+        system: Some(prompts::system(lib.langs(&lesson).1)),
         parts: vec![Part::Text(prompts::align_slides(&outline(&pgs), &transcript))],
         schema: Some(prompts::align_slides_schema()),
         max_output_tokens: Some(16_000),
@@ -150,7 +150,7 @@ pub async fn align<A: Ai>(ai: &A, model: &str, lib: &Library, lesson_id: &str, r
     };
     let a = ai.generate(model, &req, cancel).await?;
     if a.finish == "MAX_TOKENS" {
-        bail!("la risposta del modello è stata troncata");
+        bail!(crate::tr!("la risposta del modello è stata troncata", "the model's answer was truncated"));
     }
     let pages_n = pgs.iter().map(|(n, _)| *n).max().unwrap_or(0);
     let steps = checked(&a.text, last_time, pages_n)?;
@@ -158,12 +158,13 @@ pub async fn align<A: Ai>(ai: &A, model: &str, lib: &Library, lesson_id: &str, r
 }
 
 /// Lines for the summary prompt: "- F2 pagina 3 = F1 00:05:10".
-pub fn prompt_lines(v: &[Alignment], code_of: impl Fn(&str) -> Option<String>) -> String {
+pub fn prompt_lines(v: &[Alignment], l: crate::lang::Lang, code_of: impl Fn(&str) -> Option<String>) -> String {
+    let page = l.pick("pagina", "page");
     let mut out = String::new();
     for a in v {
         let (Some(r), Some(p)) = (code_of(&a.recording), code_of(&a.pdf)) else { continue };
         for s in &a.steps {
-            out.push_str(&format!("- {p} pagina {} = {r} {}\n", s.page, crate::pipeline::hms(s.at)));
+            out.push_str(&format!("- {p} {page} {} = {r} {}\n", s.page, crate::pipeline::hms(s.at)));
         }
     }
     out

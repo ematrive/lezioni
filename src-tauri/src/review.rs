@@ -103,9 +103,9 @@ pub fn due_course(lib: &Library, course_id: &str, today: NaiveDate) -> Result<Du
 /// The caller holds the archive's write lock.
 pub fn answer(lib: &Library, lesson_id: &str, card_key: &str, knew: bool, today: NaiveDate) -> Result<CardState> {
     let l = lib.lesson(lesson_id)?;
-    let study = crate::pipeline::outputs_study(&l).ok_or_else(|| anyhow!("la lezione non ha flashcard"))?;
+    let study = crate::pipeline::outputs_study(&l).ok_or_else(|| anyhow!(crate::tr!("la lezione non ha flashcard", "the lecture has no flashcards")))?;
     if !study.flashcard.iter().any(|c| key(&c.domanda) == card_key) {
-        return Err(anyhow!("flashcard non trovata: forse è stata corretta o rigenerata"));
+        return Err(anyhow!(crate::tr!("flashcard non trovata: forse è stata corretta o rigenerata", "flashcard not found: it may have been corrected or generated again")));
     }
     let mut states = read(&l.path);
     let s = states.entry(card_key.to_string()).or_insert(CardState { level: 0, due: today, seen: 0, wrong: 0 });

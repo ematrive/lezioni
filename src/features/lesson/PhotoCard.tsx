@@ -4,15 +4,18 @@ import { ai, api, fileUrl, type Lesson, type Outputs, type PhotoLink, sourceFile
 import { toSecs } from "../../lib/Markdown";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
+import { t } from "../../i18n";
 import { clock } from "./moment";
 import { photoTitle } from "./PhotosPanel";
 import { photoState } from "./PhotoPicker";
 
-const BY_LABEL: Record<PhotoLink["by"], string> = {
-  orario: "dall'orario in cui è stata scattata",
-  modello: "trovato dal modello leggendo la trascrizione",
-  mano: "scelto da te",
-};
+// A function: the labels follow the interface language.
+const byLabel = (by: PhotoLink["by"]): string =>
+  ({
+    orario: t("dall'orario in cui è stata scattata"),
+    modello: t("trovato dal modello leggendo la trascrizione"),
+    mano: t("scelto da te"),
+  })[by];
 
 /** A photo in the Sources: thumbnail, title, where it is linked; a dialog to change them. */
 export function PhotoCard({ lesson, source: s, outputs, onRemove, onChanged }: { lesson: Lesson; source: Source; outputs: Outputs | null; onRemove: () => void; onChanged: (l?: Lesson) => void }) {
@@ -22,7 +25,7 @@ export function PhotoCard({ lesson, source: s, outputs, onRemove, onChanged }: {
   const failed = link?.at === null && link.by === "modello";
   return (
     <figure className="group relative overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800" data-photo-card={s.id}>
-      <button className="block w-full" onClick={() => api.openSource(lesson.id, s.id)} title="Apri">
+      <button className="block w-full" onClick={() => api.openSource(lesson.id, s.id)} title={t("Apri")}>
         <img src={fileUrl(sourceFile(lesson, s))} alt={photoTitle(s)} className="aspect-[4/3] w-full bg-zinc-100 object-cover dark:bg-zinc-900" loading="lazy" />
       </button>
       <figcaption className="px-2 py-1 text-xs">
@@ -30,17 +33,17 @@ export function PhotoCard({ lesson, source: s, outputs, onRemove, onChanged }: {
           {photoTitle(s)}
         </span>
         {link ? (
-          <span className={`block truncate ${failed ? "text-amber-700 dark:text-amber-400" : "text-zinc-500"}`} title={failed ? link.why : link.at !== null ? BY_LABEL[link.by] : "Non verrà agganciata in automatico"}>
-            {failed ? "⚠ non agganciata" : photoState(link, lesson)}
+          <span className={`block truncate ${failed ? "text-amber-700 dark:text-amber-400" : "text-zinc-500"}`} title={failed ? link.why : link.at !== null ? byLabel(link.by) : t("Non verrà agganciata in automatico")}>
+            {failed ? t("⚠ non agganciata") : photoState(link, lesson)}
           </span>
         ) : (
-          <span className="block truncate text-zinc-400">{read ? "non ancora agganciata" : "si aggancerà quando elabori"}</span>
+          <span className="block truncate text-zinc-400">{read ? t("non ancora agganciata") : t("si aggancerà quando elabori")}</span>
         )}
       </figcaption>
-      <button className="absolute top-1 left-1 hidden rounded bg-black/50 p-1 text-white group-hover:block" title="Titolo, descrizione e minuto" onClick={() => setEditing(true)}>
+      <button className="absolute top-1 left-1 hidden rounded bg-black/50 p-1 text-white group-hover:block" title={t("Titolo, descrizione e minuto")} onClick={() => setEditing(true)}>
         <Pencil className="size-3.5" />
       </button>
-      <button className="absolute top-1 right-1 hidden rounded bg-black/50 p-1 text-white group-hover:block" title="Rimuovi" onClick={onRemove}>
+      <button className="absolute top-1 right-1 hidden rounded bg-black/50 p-1 text-white group-hover:block" title={t("Rimuovi")} onClick={onRemove}>
         <Trash2 className="size-3.5" />
       </button>
       {editing && <PhotoDialog lesson={lesson} source={s} link={link} onClose={() => setEditing(false)} onChanged={onChanged} />}
@@ -75,18 +78,18 @@ function PhotoDialog({ lesson, source: s, link, onClose, onChanged }: { lesson: 
     run(async () => {
       if (title !== (s.title ?? "") || description !== (s.description ?? "")) onChanged(await ai.setSourceInfo(lesson.id, s.id, title, description));
       if (timeChanged && validTime && recording) await ai.setPhotoLink(lesson.id, s.id, recording, toSecs(time.trim()));
-    }, "Foto salvata.");
+    }, t("Foto salvata."));
   return (
     <Modal
-      title="Foto"
+      title={t("Foto")}
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Annulla
+            {t("Annulla")}
           </button>
           <button className="btn btn-primary" disabled={busy || (timeChanged && time.trim() !== "" && !validTime)} onClick={save}>
-            Salva
+            {t("Salva")}
           </button>
         </>
       }
@@ -94,16 +97,16 @@ function PhotoDialog({ lesson, source: s, link, onClose, onChanged }: { lesson: 
       <div className="space-y-3">
         <img src={fileUrl(sourceFile(lesson, s))} alt="" className="max-h-48 w-full rounded object-contain" />
         <label className="block">
-          <span className="label">Titolo</span>
+          <span className="label">{t("Titolo")}</span>
           <input className="field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={s.originalName} autoFocus />
         </label>
         <label className="block">
-          <span className="label">Descrizione breve</span>
-          <textarea className="field min-h-16" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Che cosa c'è, di che parte della lezione è (aiuta ad agganciarla)" />
+          <span className="label">{t("Descrizione breve")}</span>
+          <textarea className="field min-h-16" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("Che cosa c'è, di che parte della lezione è (aiuta ad agganciarla)")} />
         </label>
         {recordings.length > 0 && (
           <div>
-            <span className="label">Minuto della registrazione</span>
+            <span className="label">{t("Minuto della registrazione")}</span>
             <div className="flex items-center gap-2">
               {recordings.length > 1 && (
                 <select className="field min-w-0 flex-1" value={recording} onChange={(e) => setRecording(e.target.value)}>
@@ -114,20 +117,20 @@ function PhotoDialog({ lesson, source: s, link, onClose, onChanged }: { lesson: 
                   ))}
                 </select>
               )}
-              <input className="field w-28 font-mono" value={time} onChange={(e) => setTime(e.target.value)} placeholder="00:12:30" aria-label="Minuto (hh:mm:ss)" />
+              <input className="field w-28 font-mono" value={time} onChange={(e) => setTime(e.target.value)} placeholder="00:12:30" aria-label={t("Minuto (hh:mm:ss)")} />
             </div>
             <p className="mt-1 text-xs text-zinc-500">
-              {link?.at != null ? `Ora: ${photoState(link, lesson)}, ${BY_LABEL[link.by]}.` : link?.by === "modello" ? `Non agganciata: ${link.why}` : "Lascia vuoto per l'aggancio automatico."}
+              {link?.at != null ? t("Ora: {state}, {by}.", { state: photoState(link, lesson), by: byLabel(link.by) }) : link?.by === "modello" ? t("Non agganciata: {why}", { why: link.why ?? "" }) : t("Lascia vuoto per l'aggancio automatico.")}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {link?.at != null && (
-                <button className="btn btn-sm" disabled={busy} onClick={() => run(() => ai.setPhotoLink(lesson.id, s.id, null, null), "Foto sganciata: non verrà più agganciata in automatico.")}>
-                  Sgancia
+                <button className="btn btn-sm" disabled={busy} onClick={() => run(() => ai.setPhotoLink(lesson.id, s.id, null, null), t("Foto sganciata: non verrà più agganciata in automatico."))}>
+                  {t("Sgancia")}
                 </button>
               )}
               {link?.by === "mano" && (
-                <button className="btn btn-sm" disabled={busy} onClick={() => run(() => ai.forgetPhotoLink(lesson.id, s.id), "La foto si aggancerà in automatico alla prossima elaborazione.")}>
-                  Torna all'aggancio automatico
+                <button className="btn btn-sm" disabled={busy} onClick={() => run(() => ai.forgetPhotoLink(lesson.id, s.id), t("La foto si aggancerà in automatico alla prossima elaborazione."))}>
+                  {t("Torna all'aggancio automatico")}
                 </button>
               )}
             </div>

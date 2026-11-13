@@ -15,6 +15,7 @@ import { Guide } from "./features/help/Guide";
 import { usePaneSize } from "./lib/colwidths";
 import { Toasts, toast } from "./lib/toast";
 import { checkForUpdate } from "./lib/update";
+import { setUiLang, systemLang, t, uiChoice } from "./i18n";
 
 const LAST_COURSE = "lezioni:course";
 const LAST_LESSON = "lezioni:lesson";
@@ -60,7 +61,16 @@ export default function App() {
   const lessonPane = usePaneSize("lessons", { def: 300, min: 220, max: 520 });
 
   const clearLesson = useCallback(() => setLessonId(null), []);
-  const loadSettings = useCallback(() => api.settings().then(setSettings), []);
+  const loadSettings = useCallback(
+    () =>
+      api.settings().then((s) => {
+        setSettings(s);
+        // settings.json wins over the copy in localStorage; Rust learns the system's language.
+        if (s.language !== uiChoice()) setUiLang(s.language);
+        api.setLanguage(s.language, systemLang()).catch(() => {});
+      }),
+    [],
+  );
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
@@ -196,7 +206,7 @@ export default function App() {
             }}
           />
         ) : (
-          <Empty text="Crea un corso per cominciare, oppure importa un pacchetto .lezione ricevuto da un compagno." />
+          <Empty text={t("Crea un corso per cominciare, oppure importa un pacchetto .lezione ricevuto da un compagno.")} />
         )}
         {lessonPane.handle}
       </section>

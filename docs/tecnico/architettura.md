@@ -125,6 +125,12 @@ Lezione: tutti gli estratti con gli stessi codici `[F1]` della sintesi. Corso: l
 | `lib/Markdown.tsx` | Markdown + GFM + KaTeX; trasforma `[hh:mm:ss]`, `[F1 00:12:30]`, `[L3]` in pulsanti |
 | `lib/colwidths.tsx` | `usePaneSize`: pannelli ridimensionabili che ricordano la misura |
 
+## Lingue (`lang.rs`, `src/i18n/`)
+
+Tre lingue distinte. **App**: `settings.json` (`language`: `system`/`it`/`en`), copiata in `localStorage` per il primo disegno; il frontend la comunica a Rust (`settings_set_language`, con `navigator.language` per «sistema») e Rust la usa per i messaggi con `tr!`. Un cambio di lingua rimonta `<App>` (`main.tsx`). **Lezioni**: `CourseMeta.language`, `LessonMeta.language` (facoltativa) → Whisper (`set_language`), prompt di trascrizione e ripulitura, prompt di foto e PDF. **Materiali**: `CourseMeta.materialsLanguage` → `prompts::generate`, `course_summary`, chat, export (`html.tsx` con `tFor`, Markdown e Anki in `share.rs`). `Library::langs(&lesson)` dà (lezioni, materiali). Campo mancante = italiano; i pacchetti portano le due lingue del corso (campi ignorati dalle versioni vecchie, `FORMAT` invariato).
+
+Interfaccia: il testo italiano è la chiave (`t("…")`, `tn` per i plurali, contesto dopo `|` per gli omonimi), l'inglese sta in `src/i18n/en/*.json`; `pnpm i18n:check` controlla chiavi e segnaposti. Lo smoke test gira nelle due lingue (`pnpm test:ui`, `pnpm test:ui:en`), con gli stessi dizionari per trovare i pulsanti.
+
 ## Piattaforme e rilascio
 
 Lo stesso codice produce l'app per macOS (universale), Windows e Linux con GitHub Actions (`.github/workflows/release.yml`); gli aggiornamenti sono firmati con la chiave del progetto. Dettagli in [../rilascio.md](../rilascio.md). I file `.lezione` sono associati all'app (`bundle.fileAssociations`): su Windows e Linux il percorso arriva come argomento, su macOS con `RunEvent::Opened`.

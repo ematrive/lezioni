@@ -1,7 +1,8 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { BookOpen, CircleHelp, Download, FolderOpen, MoreHorizontal, PanelLeftClose, Pencil, Plus, Search, Settings, Share2, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, toAppError, type Course } from "../../lib/api";
+import { api, toAppError, type Course, type Lang } from "../../lib/api";
+import { t, tn, uiLang } from "../../i18n";
 import { Modal } from "../../lib/Modal";
 import { hasNews, markNewsSeen, VERSION, WhatsNew } from "../help/WhatsNew";
 import { toast } from "../../lib/toast";
@@ -46,7 +47,7 @@ export function CourseList({
   }, [menu]);
 
   const remove = async (c: Course) => {
-    const ok = await ask(`Spostare nel Cestino il corso «${c.name}» con le sue ${c.lessons} lezioni e tutti i file?`, { title: "Elimina corso", kind: "warning", okLabel: "Sposta nel Cestino", cancelLabel: "Annulla" });
+    const ok = await ask(tn(c.lessons, "Spostare nel Cestino il corso «{name}» con la sua lezione e tutti i file?", "Spostare nel Cestino il corso «{name}» con le sue {n} lezioni e tutti i file?", { name: c.name }), { title: t("Elimina corso"), kind: "warning", okLabel: t("Sposta nel Cestino"), cancelLabel: t("Annulla") });
     if (!ok) return;
     try {
       await api.deleteCourse(c.id);
@@ -63,24 +64,24 @@ export function CourseList({
         <Search className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-zinc-400" />
         <input
           className="field pr-7 pl-8"
-          placeholder="Cerca in tutte le lezioni"
+          placeholder={t("Cerca in tutte le lezioni")}
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && onQuery("")}
         />
         {query && (
-          <button className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700" title="Cancella la ricerca" onClick={() => onQuery("")}>
+          <button className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700" title={t("Cancella la ricerca")} onClick={() => onQuery("")}>
             <X className="size-3.5" />
           </button>
         )}
       </div>
-        <button className="shrink-0 rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nascondi la colonna dei corsi" aria-label="Nascondi i corsi" onClick={onHide}>
+        <button className="shrink-0 rounded p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title={t("Nascondi la colonna dei corsi")} aria-label={t("Nascondi i corsi")} onClick={onHide}>
           <PanelLeftClose className="size-4" />
         </button>
       </div>
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Corsi</span>
-        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title="Nuovo corso" onClick={() => setEditing("new")}>
+        <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">{t("Corsi")}</span>
+        <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" title={t("Nuovo corso")} onClick={() => setEditing("new")}>
           <Plus className="size-4" />
         </button>
       </div>
@@ -114,8 +115,8 @@ export function CourseList({
                 <span className={`px-1.5 text-xs ${sel ? "text-sky-100" : "text-zinc-400"} ${open || sel ? "hidden" : "group-hover:hidden"}`}>{c.lessons}</span>
                 <button
                   className={`rounded p-1 ${open || sel ? "flex" : "hidden group-hover:flex"} ${sel ? "text-white hover:bg-sky-700" : "text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-700"}`}
-                  title="Altre azioni sul corso"
-                  aria-label={`Azioni sul corso ${c.name}`}
+                  title={t("Altre azioni sul corso")}
+                  aria-label={t("Azioni sul corso {name}", { name: c.name })}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenu(open ? null : c.id);
@@ -128,10 +129,10 @@ export function CourseList({
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setMenu(null)} />
                   <div className="anim-pop absolute top-full right-0 z-40 mt-1 w-52 rounded-md border border-zinc-200 bg-white p-1 text-sm text-zinc-800 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" role="menu">
-                    {item("Rinomina e modifica", <Pencil className="size-4" />, () => setEditing(c))}
-                    {item("Esporta il corso", <Share2 className="size-4" />, () => onExport(c))}
-                    {item("Mostra la cartella", <FolderOpen className="size-4" />, () => api.reveal(c.path))}
-                    {item("Elimina", <Trash2 className="size-4" />, () => remove(c), true)}
+                    {item(t("Rinomina e modifica"), <Pencil className="size-4" />, () => setEditing(c))}
+                    {item(t("Esporta il corso"), <Share2 className="size-4" />, () => onExport(c))}
+                    {item(t("Mostra la cartella"), <FolderOpen className="size-4" />, () => api.reveal(c.path))}
+                    {item(t("Elimina"), <Trash2 className="size-4" />, () => remove(c), true)}
                   </div>
                 </>
               )}
@@ -140,22 +141,22 @@ export function CourseList({
         })}
         {courses.length === 0 && (
           <li className="px-2 py-4 text-zinc-500">
-            Nessun corso.{" "}
+            {t("Nessun corso.")}{" "}
             <button className="text-sky-600 hover:underline" onClick={() => setEditing("new")}>
-              Creane uno
+              {t("Creane uno")}
             </button>
           </li>
         )}
       </ul>
       <div className="border-t border-zinc-200 p-2 dark:border-zinc-800">
         <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onImport}>
-          <Download className="size-4" /> Importa lezioni…
+          <Download className="size-4" /> {t("Importa lezioni…")}
         </button>
         <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onSettings}>
-          <Settings className="size-4" /> Impostazioni
+          <Settings className="size-4" /> {t("Impostazioni")}
         </button>
-        <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onHelp} title="Guida (F1)">
-          <CircleHelp className="size-4" /> Guida
+        <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800" onClick={onHelp} title={t("Guida (F1)")}>
+          <CircleHelp className="size-4" /> {t("Guida")}
           <kbd className="ml-auto rounded border border-zinc-300 px-1 text-[10px] text-zinc-400 dark:border-zinc-700">F1</kbd>
         </button>
         <button
@@ -165,10 +166,10 @@ export function CourseList({
             setNews(false);
             setShowNews(true);
           }}
-          title="Le novità di questa versione e delle precedenti"
+          title={t("Le novità di questa versione e delle precedenti")}
         >
-          Lezioni {VERSION} · Novità
-          {news && <span className="size-1.5 rounded-full bg-sky-500" aria-label="novità da leggere" />}
+          Lezioni {VERSION} · {t("Novità")}
+          {news && <span className="size-1.5 rounded-full bg-sky-500" aria-label={t("novità da leggere")} />}
         </button>
       </div>
       {showNews && <WhatsNew onClose={() => setShowNews(false)} />}
@@ -192,11 +193,15 @@ function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onC
   const [name, setName] = useState(course?.name ?? "");
   const [teacher, setTeacher] = useState(course?.teacher ?? "");
   const [terms, setTerms] = useState(course?.terms ?? "");
+  const [language, setLanguage] = useState<Lang>(course?.language ?? uiLang());
+  const [materials, setMaterials] = useState<Lang>(course?.materialsLanguage ?? uiLang());
   const [busy, setBusy] = useState(false);
+  const langsChanged = !!course && (language !== course.language || materials !== course.materialsLanguage);
   const save = async () => {
     setBusy(true);
+    const langs = { language, materialsLanguage: materials };
     try {
-      onSaved(course ? await api.updateCourse(course.id, name, teacher, terms) : await api.createCourse(name, teacher, terms));
+      onSaved(course ? await api.updateCourse(course.id, name, teacher, terms, langs) : await api.createCourse(name, teacher, terms, langs));
     } catch (e) {
       toast(toAppError(e).message, "error");
       setBusy(false);
@@ -204,15 +209,15 @@ function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onC
   };
   return (
     <Modal
-      title={course ? "Modifica corso" : "Nuovo corso"}
+      title={course ? t("Modifica corso") : t("Nuovo corso")}
       onClose={onClose}
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Annulla
+            {t("Annulla")}
           </button>
           <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={save}>
-            {course ? "Salva" : "Crea"}
+            {course ? t("Salva") : t("Crea")}
           </button>
         </>
       }
@@ -225,20 +230,48 @@ function CourseDialog({ course, onClose, onSaved }: { course: Course | null; onC
         }}
       >
         <label className="block">
-          <span className="label">Nome</span>
-          <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ricerca operativa" />
+          <span className="label">{t("Nome")}</span>
+          <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Ricerca operativa")} />
         </label>
         <label className="block">
-          <span className="label">Docente</span>
-          <input className="field" value={teacher} onChange={(e) => setTeacher(e.target.value)} placeholder="facoltativo" />
+          <span className="label">{t("Docente")}</span>
+          <input className="field" value={teacher} onChange={(e) => setTeacher(e.target.value)} placeholder={t("facoltativo")} />
         </label>
         <label className="block">
-          <span className="label">Parole del corso</span>
-          <textarea className="field min-h-20" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler" />
-          <span className="mt-1 block text-xs text-zinc-500">Termini tecnici e nomi che tornano spesso, separati da virgole, scritti giusti. La trascrizione e la ripulitura li riconoscono meglio dalle prossime elaborazioni.</span>
+          <span className="label">{t("Parole del corso")}</span>
+          <textarea className="field min-h-20" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder={t("ARERA, colpo d'ariete, cassa d'aria, Gauckler-Strickler")} />
+          <span className="mt-1 block text-xs text-zinc-500">{t("Termini tecnici e nomi che tornano spesso, separati da virgole, scritti giusti. La trascrizione e la ripulitura li riconoscono meglio dalle prossime elaborazioni.")}</span>
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="label">{t("Lingua delle lezioni")}</span>
+            <select className="field" value={language} onChange={(e) => setLanguage(e.target.value as Lang)}>
+              <LangOptions />
+            </select>
+          </label>
+          <label className="block">
+            <span className="label">{t("Lingua dei materiali")}</span>
+            <select className="field" value={materials} onChange={(e) => setMaterials(e.target.value as Lang)}>
+              <LangOptions />
+            </select>
+          </label>
+        </div>
+        <span className="-mt-1 block text-xs text-zinc-500">
+          {langsChanged
+            ? t("Le lezioni già elaborate restano come sono: rielaborale per trascriverle o riscriverne i materiali nella nuova lingua.")
+            : t("Le lezioni: la lingua in cui parla il docente (una lezione può averne un'altra). I materiali: sintesi, mappa, flashcard e chat.")}
+        </span>
         <button type="submit" hidden />
       </form>
     </Modal>
+  );
+}
+
+export function LangOptions() {
+  return (
+    <>
+      <option value="it">{t("Italiano")}</option>
+      <option value="en">{t("Inglese")}</option>
+    </>
   );
 }

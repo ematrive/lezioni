@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { fmtDate, share, toAppError, type Hit } from "../../lib/api";
 import { hmsOf } from "../../lib/time";
+import { t, tn } from "../../i18n";
 
-const AREA: Record<Hit["area"], string> = { title: "Titolo", notes: "Note", summary: "Sintesi", study: "Studio", extract: "" };
+const areaLabel = (a: Hit["area"]): string => ({ title: t("Titolo"), notes: t("Note"), summary: t("Sintesi"), study: t("Studio"), extract: "" })[a];
 
 /** Hits with the query words highlighted. */
 function Snippet({ text, query }: { text: string; query: string }) {
@@ -35,7 +36,7 @@ export function SearchResults({ query, onOpen }: { query: string; onOpen: (h: Hi
   const [hits, setHits] = useState<Hit[] | null>(null);
   useEffect(() => {
     let live = true;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       share
         .search(query)
         .then((h) => live && setHits(h))
@@ -46,14 +47,14 @@ export function SearchResults({ query, onOpen }: { query: string; onOpen: (h: Hi
     }, 200);
     return () => {
       live = false;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [query]);
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-zinc-200 px-3 py-3 dark:border-zinc-800">
-        <h2 className="text-base font-semibold">Risultati</h2>
-        <p className="text-xs text-zinc-500">{hits === null ? "Ricerca…" : hits.length === 0 ? "Nessun risultato." : `${hits.length >= 200 ? "Primi 200" : hits.length} risultati in tutto l'archivio`}</p>
+        <h2 className="text-base font-semibold">{t("Risultati")}</h2>
+        <p className="text-xs text-zinc-500">{hits === null ? t("Ricerca…") : hits.length === 0 ? t("Nessun risultato.") : hits.length >= 200 ? t("Primi 200 risultati in tutto l'archivio") : tn(hits.length, "1 risultato in tutto l'archivio", "{n} risultati in tutto l'archivio")}</p>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto p-2">
         {hits?.map((h, i) => (
@@ -64,7 +65,7 @@ export function SearchResults({ query, onOpen }: { query: string; onOpen: (h: Hi
                 <span className="shrink-0 text-xs text-zinc-400">{fmtDate(h.date)}</span>
               </div>
               <div className="truncate text-xs text-sky-700 dark:text-sky-400">
-                {h.course} · {AREA[h.area] || h.label}
+                {h.course} · {areaLabel(h.area) || h.label}
                 {h.time !== null && ` · ${hmsOf(h.time)}`}
               </div>
               {h.area !== "title" && (

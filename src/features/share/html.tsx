@@ -5,6 +5,7 @@ import katexCss from "katex/dist/katex.min.css?raw";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Course, Lesson, MapNode, Outputs } from "../../lib/api";
 import { ai, fmtDate } from "../../lib/api";
+import { localeOf, tFor } from "../../i18n";
 import { Markdown } from "../../lib/Markdown";
 import proseCss from "../../lib/prose.css?raw";
 
@@ -104,6 +105,8 @@ function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLe
   const codes = Object.entries(outputs.info?.sources ?? {});
   const name = (id: string) => lesson.sources.find((s) => s.id === id)?.originalName ?? "";
   const transcripts = lesson.sources.filter((s) => outputs.extracts[s.id] !== undefined);
+  // In the language of the materials, whatever the interface's.
+  const l = course.materialsLanguage ?? "it";
   return (
     <article className="lesson">
       <header>
@@ -112,15 +115,15 @@ function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLe
           {course.teacher ? ` · ${course.teacher}` : ""}
         </p>
         <h1>{lesson.title}</h1>
-        <p className="date">{fmtDate(lesson.date)}</p>
+        <p className="date">{fmtDate(lesson.date, l)}</p>
       </header>
       {parts.summary && outputs.summary && (
         <section>
-          <h2 className="part">Sintesi</h2>
-          <Markdown text={outputs.summary} exported imgSrc={(src) => photos?.[src]} />
+          <h2 className="part">{tFor(l, "Sintesi")}</h2>
+          <Markdown text={outputs.summary} exported lang={l} imgSrc={(src) => photos?.[src]} />
           {codes.length > 0 && (
             <p className="legend">
-              Fonti:{" "}
+              {tFor(l, "Fonti")}:{" "}
               {codes.map(([c, id], i) => (
                 <span key={c}>
                   {i ? " · " : ""}
@@ -133,7 +136,7 @@ function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLe
       )}
       {parts.map && outputs.map && (
         <section>
-          <h2 className="part">Mappa concettuale</h2>
+          <h2 className="part">{tFor(l, "Mappa concettuale")}</h2>
           {drawMap ? (
             <div className="map-drawn">
               <MapTree node={outputs.map} />
@@ -147,29 +150,29 @@ function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLe
       )}
       {parts.study && outputs.study && (
         <section>
-          <h2 className="part">Studio</h2>
-          {outputs.study.flashcard.length > 0 && <h3>Flashcard</h3>}
+          <h2 className="part">{tFor(l, "Studio")}</h2>
+          {outputs.study.flashcard.length > 0 && <h3>{tFor(l, "Flashcard")}</h3>}
           {outputs.study.flashcard.map((c, i) => (
             <details key={i} className="card">
               <summary>{c.domanda}</summary>
               <div>{c.risposta}</div>
             </details>
           ))}
-          {outputs.study.domandeEsame.length > 0 && <h3>Domande d'esame</h3>}
+          {outputs.study.domandeEsame.length > 0 && <h3>{tFor(l, "Domande d'esame")}</h3>}
           <ol>
             {outputs.study.domandeEsame.map((q, i) => (
               <li key={i}>
                 <details className="card">
                   <summary>{q.domanda}</summary>
-                  <Markdown text={q.traccia} exported />
+                  <Markdown text={q.traccia} exported lang={l} />
                 </details>
               </li>
             ))}
           </ol>
-          {outputs.study.glossario.length > 0 && <h3>Glossario</h3>}
+          {outputs.study.glossario.length > 0 && <h3>{tFor(l, "Glossario")}</h3>}
           <dl className="glossary">
             {[...outputs.study.glossario]
-              .sort((a, b) => a.termine.localeCompare(b.termine, "it"))
+              .sort((a, b) => a.termine.localeCompare(b.termine, l))
               .map((g, i) => (
                 <div key={i}>
                   <dt>{g.termine}</dt>
@@ -181,11 +184,11 @@ function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLe
       )}
       {parts.transcript && transcripts.length > 0 && (
         <section className="appendix">
-          <h2 className="part">Trascrizioni e testi delle fonti</h2>
+          <h2 className="part">{tFor(l, "Trascrizioni e testi delle fonti")}</h2>
           {transcripts.map((s) => (
             <div key={s.id}>
               <h3>{s.originalName}</h3>
-              <Markdown text={outputs.extracts[s.id]} exported />
+              <Markdown text={outputs.extracts[s.id]} exported lang={l} />
             </div>
           ))}
         </section>
@@ -230,18 +233,19 @@ footer { margin-top: 48px; font-size: 11px; color: #a1a1aa; text-align: center; 
 /** Full HTML document. `forPrint` opens every flashcard (the answers are inside <details>). */
 export function buildHtml(course: Course, lessons: ExportLesson[], parts: ExportParts, forPrint: boolean): string {
   const title = lessons.length === 1 ? `${lessons[0].lesson.title} · ${course.name}` : course.name;
+  const l = course.materialsLanguage ?? "it";
   const body = renderToStaticMarkup(
     <main>
       {lessons.map((l) => (
         <LessonDoc key={l.lesson.id} {...l} parts={parts} course={course} drawMap={forPrint} />
       ))}
-      <footer>Creato con Lezioni · {new Date().toLocaleDateString("it-IT")}</footer>
+      <footer>{tFor(l, "Creato con Lezioni")} · {new Date().toLocaleDateString(localeOf(l))}</footer>
     </main>,
   );
   const html = forPrint ? body.replace(/<details /g, "<details open ") : body;
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   return `<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${l}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <style>${inlineKatexFonts(katexCss)}</style>
 <style>${proseCss}${PAGE_CSS}${MAP_CSS}</style>
@@ -251,6 +255,7 @@ export function buildHtml(course: Course, lessons: ExportLesson[], parts: Export
 /** Just the concept map of a lesson, on a landscape page, for printing to PDF. */
 export function buildMapHtml(course: Course, lesson: Lesson, map: MapNode): string {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const l = course.materialsLanguage ?? "it";
   const body = renderToStaticMarkup(
     <main className="map-page">
       <header>
@@ -259,15 +264,17 @@ export function buildMapHtml(course: Course, lesson: Lesson, map: MapNode): stri
           {course.teacher ? ` · ${course.teacher}` : ""}
         </p>
         <h1>{lesson.title}</h1>
-        <p className="date">Mappa concettuale · {fmtDate(lesson.date)}</p>
+        <p className="date">
+          {tFor(l, "Mappa concettuale")} · {fmtDate(lesson.date, l)}
+        </p>
       </header>
       <MapTree node={map} />
-      <footer>Creato con Lezioni · {new Date().toLocaleDateString("it-IT")}</footer>
+      <footer>{tFor(l, "Creato con Lezioni")} · {new Date().toLocaleDateString(localeOf(l))}</footer>
     </main>,
   );
   return `<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(`Mappa · ${lesson.title}`)}</title>
+<html lang="${l}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(`${tFor(l, "Mappa")} · ${lesson.title}`)}</title>
 <style>${PAGE_CSS}${MAP_CSS}
 main.map-page { max-width: none; padding: 24px 32px; }
 main.map-page header h1 { font-size: 22px; }

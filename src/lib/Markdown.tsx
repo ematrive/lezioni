@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { t, tFor, uiLang, type Lang } from "../i18n";
 
 /** Seconds from "hh:mm:ss" or "mm:ss". */
 export function toSecs(t: string): number {
@@ -12,8 +13,8 @@ export function toSecs(t: string): number {
 }
 
 const TIME = String.raw`\d{1,2}:\d{2}(?::\d{2})?`;
-/** " pag. 3", " pagg. 3-4", " p. 3, 5" after a source code (a page of a PDF). */
-const PAGE = String.raw`\s+(?:pagg?|pp?)\.?\s*\d+(?:\s*[-–,]\s*\d+)*`;
+/** " pag. 3", " pagg. 3-4", " p. 3, 5", " page 3", " pages 3-4" after a source code (a page of a PDF). */
+const PAGE = String.raw`\s+(?:pagg?|pages?|pp?)\.?\s*\d+(?:\s*[-–,]\s*\d+)*`;
 
 /**
  * Turns the references the model writes into links the app handles:
@@ -52,7 +53,22 @@ export interface Mark {
 }
 
 export const MARK_ICON: Record<Mark["kind"], string> = { importante: "★", dubbio: "?", nota: "✎" };
-export const MARK_LABEL: Record<Mark["kind"], string> = { importante: "Importante", dubbio: "Non ho capito", nota: "Nota" };
+/** The name of a kind of bookmark, in the interface language (read at render time). */
+export function markLabel(k: Mark["kind"]): string {
+  return k === "importante" ? t("Importante") : k === "dubbio" ? t("Non ho capito") : t("Nota|segnaposto");
+}
+/** Same as `markLabel`, as a table: each read is translated when it happens. */
+export const MARK_LABEL: Record<Mark["kind"], string> = {
+  get importante() {
+    return markLabel("importante");
+  },
+  get dubbio() {
+    return markLabel("dubbio");
+  },
+  get nota() {
+    return markLabel("nota");
+  },
+};
 const MARK_STYLE: Record<Mark["kind"], string> = {
   dubbio: "border-rose-400 bg-rose-50/70 dark:bg-rose-950/30",
   importante: "border-amber-400 bg-amber-50/70 dark:bg-amber-950/30",
@@ -75,7 +91,7 @@ function marksByParagraph<T extends { at: number }>(text: string, marks: T[]): M
 /** "(nota a mano: …)" shown as "…": the pen says it already (the file keeps the words). */
 function withoutNoteLabel(children: React.ReactNode): React.ReactNode {
   const kids = Array.isArray(children) ? [...children] : [children];
-  if (typeof kids[0] === "string") kids[0] = kids[0].replace(/^\s*\(\s*nota a mano\s*:?\s*/i, "");
+  if (typeof kids[0] === "string") kids[0] = kids[0].replace(/^\s*\(\s*(?:nota a mano|handwritten)\s*:?\s*/i, "");
   const last = kids.length - 1;
   if (typeof kids[last] === "string") kids[last] = (kids[last] as string).replace(/\)\s*$/, "");
   // Spread, not an array: the parts have no keys.
@@ -89,7 +105,7 @@ function textOf(node: unknown): string {
   return (n?.children ?? []).map(textOf).join("");
 }
 
-/** "(pausa fino a 00:16:19)" after the time of a paragraph: a break of the lesson. */
+/** "(pausa fino a 00:16:19)" or "(pause until 00:16:19)" after the time of a paragraph: a break of the lesson. */
 function pauseOf(node: unknown): { until: string | null } | null {
   const kids = (node as { children?: unknown[] }).children ?? [];
   const rest = kids
@@ -97,8 +113,9 @@ function pauseOf(node: unknown): { until: string | null } | null {
     .map(textOf)
     .join("")
     .trim();
-  const m = rest.match(/^\(?pausa fino (?:a (\d{1,2}:\d{2}(?::\d{2})?)|alla fine)\)?$/);
-  return m ? { until: m[1] ?? null } : null;
+  const m = rest.match(/^\(?(?:pausa fino (?:a (\d{1,2}:\d{2}(?::\d{2})?)|alla fine)|pause until (?:the end|(\d{1,2}:\d{2}(?::\d{2})?)))\)?$/);
+  if (m) return { until: m[1] ?? m[2] ?? null };
+  return null;
 }
 
 /** Seconds of the first `#t=…@N` link of a paragraph (hast node). */
@@ -130,7 +147,10 @@ export function Markdown({
   onPhoto,
   onAttach,
   pageRefs,
+  lang,
 }: {
+  /** Language of the few words the renderer adds (exports: the materials'); default the interface's. */
+  lang?: Lang;
   /** Photos linked to a minute: a chip with the thumbnail before that paragraph. */
   photos?: { at: number; id: string; title: string; url: string }[];
   onPhoto?: (id: string) => void;
@@ -158,6 +178,7 @@ export function Markdown({
   const slidesByParagraph = useMemo(() => (slides?.length ? marksByParagraph(text, slides) : null), [text, slides]);
   const photosByParagraph = useMemo(() => (photos?.length ? marksByParagraph(text, photos) : null), [text, photos]);
   const Wrap = inline ? "span" : "div";
+  const l = lang ?? uiLang();
   return (
     <Wrap className={inline ? "select-text" : "prose-lezioni select-text"}>
       <ReactMarkdown
@@ -166,9 +187,9 @@ export function Markdown({
         components={{
           // Notes written by hand on a slide or a photo: in pen blue, with a pen.
           em: ({ node, children }) =>
-            /^\(?\s*nota a mano\b/i.test(textOf(node).trim()) ? (
-              <em className="handwritten" title="Scritto a mano sulla pagina">
-                <PenLine className="handwritten-pen" aria-label="Scritto a mano" />
+            /^\(?\s*(?:nota a mano|handwritten)\b/i.test(textOf(node).trim()) ? (
+              <em className="handwritten" title={tFor(l, "Scritto a mano sulla pagina")}>
+                <PenLine className="handwritten-pen" aria-label={tFor(l, "Scritto a mano")} />
                 {withoutNoteLabel(children)}
               </em>
             ) : (
@@ -183,25 +204,25 @@ export function Markdown({
               const link = Array.isArray(children) ? children[0] : children;
               return (
                 <p className="flex items-center gap-2 text-sm text-zinc-400" data-pause>
-                  <Pause className="size-3.5" /> Pausa {link} {pause.until ? `– ${pause.until}` : "fino alla fine"}
-                  {mins !== null && mins > 0 && ` (${mins} min)`}
+                  <Pause className="size-3.5" /> {tFor(l, "Pausa")} {link} {pause.until ? `– ${pause.until}` : tFor(l, "fino alla fine")}
+                  {mins !== null && mins > 0 && ` ${tFor(l, "({mins} min)", { mins })}`}
                 </p>
               );
             }
-            const t = byParagraph || slidesByParagraph || photosByParagraph || onAttach ? firstTime(node) : null;
-            const ms = t === null ? undefined : byParagraph?.get(t);
-            const sl = t === null ? undefined : slidesByParagraph?.get(t);
-            const ph = t === null ? undefined : photosByParagraph?.get(t);
+            const at = byParagraph || slidesByParagraph || photosByParagraph || onAttach ? firstTime(node) : null;
+            const ms = at === null ? undefined : byParagraph?.get(at);
+            const sl = at === null ? undefined : slidesByParagraph?.get(at);
+            const ph = at === null ? undefined : photosByParagraph?.get(at);
             const chips =
               sl?.length || ph?.length ? (
                 <span className="mb-1 flex flex-wrap gap-1 select-none">
                   {[...new Set((sl ?? []).map((s) => s.page))].map((page) => (
-                    <button key={page} className="rounded border border-violet-300 bg-violet-50 px-1.5 text-xs text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300" onClick={() => onSlide?.(page)} title="Mostra questa slide" data-slide-chip={page}>
-                      ▤ Slide {page}
+                    <button key={page} className="rounded border border-violet-300 bg-violet-50 px-1.5 text-xs text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300" onClick={() => onSlide?.(page)} title={t("Mostra questa slide")} data-slide-chip={page}>
+                      ▤ {t("Slide {page}", { page })}
                     </button>
                   ))}
                   {(ph ?? []).map((p) => (
-                    <button key={p.id} className="flex max-w-56 items-center gap-1 rounded border border-emerald-300 bg-emerald-50 py-px pr-1.5 pl-px text-xs text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300" onClick={() => onPhoto?.(p.id)} title={`Mostra la foto «${p.title}»`} data-photo-chip={p.id}>
+                    <button key={p.id} className="flex max-w-56 items-center gap-1 rounded border border-emerald-300 bg-emerald-50 py-px pr-1.5 pl-px text-xs text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300" onClick={() => onPhoto?.(p.id)} title={t("Mostra la foto «{title}»", { title: p.title })} data-photo-chip={p.id}>
                       <img src={p.url} alt="" className="size-5 rounded-sm object-cover" loading="lazy" />
                       <span className="truncate">{p.title}</span>
                     </button>
@@ -209,13 +230,13 @@ export function Markdown({
                 </span>
               ) : null;
             const attach =
-              onAttach && t !== null && !exported ? (
+              onAttach && at !== null && !exported ? (
                 <button
                   className="absolute -top-1 right-0 hidden rounded border border-zinc-200 bg-white p-1 text-zinc-500 shadow-sm select-none group-hover:block hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
-                  onClick={(e) => onAttach(t, e.currentTarget)}
-                  title="Aggancia una foto a questo punto"
-                  aria-label="Aggancia una foto a questo punto"
-                  data-attach={t}
+                  onClick={(e) => onAttach(at, e.currentTarget)}
+                  title={t("Aggancia una foto a questo punto")}
+                  aria-label={t("Aggancia una foto a questo punto")}
+                  data-attach={at}
                 >
                   <ImagePlus className="size-4" />
                 </button>
@@ -234,7 +255,7 @@ export function Markdown({
               <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]} ${hover}`} data-mark={top.kind}>
                 {attach}
                 {chips}
-                <span className="mr-1 select-none font-semibold" title={ms.map((m) => MARK_LABEL[m.kind] + (m.note ? `: ${m.note}` : "")).join("\n")}>
+                <span className="mr-1 select-none font-semibold" title={ms.map((m) => markLabel(m.kind) + (m.note ? `: ${m.note}` : "")).join("\n")}>
                   {[...new Set(ms.map((m) => MARK_ICON[m.kind]))].join("")}
                 </span>
                 {children}
@@ -242,13 +263,13 @@ export function Markdown({
             );
           },
           h2: ({ node, children }) => {
-            const n = pageRefs ? textOf(node).trim().match(/^Pagina\s+(\d+)$/i) : null;
+            const n = pageRefs ? textOf(node).trim().match(/^(?:Pagina|Page)\s+(\d+)$/i) : null;
             const ref = n ? pageRefs?.[Number(n[1])] : undefined;
             return (
               <h2>
                 {children}
                 {ref && (
-                  <button className="ml-2 rounded bg-sky-100 px-1.5 align-middle font-mono text-xs font-normal text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => onRef?.(ref.href)} title="Ascolta da quando il docente ne parla">
+                  <button className="ml-2 rounded bg-sky-100 px-1.5 align-middle font-mono text-xs font-normal text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => onRef?.(ref.href)} title={t("Ascolta da quando il docente ne parla")}>
                     ▶ {ref.label}
                   </button>
                 )}

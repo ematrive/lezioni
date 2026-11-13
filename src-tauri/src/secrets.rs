@@ -31,7 +31,7 @@ impl Keys {
 
     /// Parses the stored item; empty strings count as missing.
     fn parse(s: &str) -> Result<Keys> {
-        let mut k: Keys = serde_json::from_str(s).context("chiavi nel portachiavi non leggibili")?;
+        let mut k: Keys = serde_json::from_str(s).with_context(|| crate::tr!("chiavi nel portachiavi non leggibili", "keys in the keychain not readable"))?;
         k.gemini = k.gemini.filter(|v| !v.trim().is_empty());
         k.openrouter = k.openrouter.filter(|v| !v.trim().is_empty());
         Ok(k)
@@ -41,22 +41,22 @@ impl Keys {
 static CACHE: Mutex<Option<Keys>> = Mutex::new(None);
 
 fn read_item(account: &str) -> Result<Option<String>> {
-    match Entry::new(SERVICE, account).context("portachiavi non disponibile")?.get_password() {
+    match Entry::new(SERVICE, account).with_context(|| crate::tr!("portachiavi non disponibile", "keychain not available"))?.get_password() {
         Ok(p) => Ok(Some(p)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(anyhow::Error::new(e).context("lettura della chiave dal portachiavi")),
+        Err(e) => Err(anyhow::Error::new(e).context(crate::tr!("lettura della chiave dal portachiavi", "reading the key from the keychain"))),
     }
 }
 
 fn write(keys: &Keys) -> Result<()> {
-    let e = Entry::new(SERVICE, ACCOUNT).context("portachiavi non disponibile")?;
+    let e = Entry::new(SERVICE, ACCOUNT).with_context(|| crate::tr!("portachiavi non disponibile", "keychain not available"))?;
     if keys.is_empty() {
         match e.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(err) => Err(anyhow::Error::new(err).context("eliminazione della chiave dal portachiavi")),
+            Err(err) => Err(anyhow::Error::new(err).context(crate::tr!("eliminazione della chiave dal portachiavi", "deleting the key from the keychain"))),
         }
     } else {
-        e.set_password(&serde_json::to_string(keys)?).context("salvataggio della chiave nel portachiavi")
+        e.set_password(&serde_json::to_string(keys)?).with_context(|| crate::tr!("salvataggio della chiave nel portachiavi", "saving the key in the keychain"))
     }
 }
 

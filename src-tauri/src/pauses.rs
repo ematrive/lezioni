@@ -1,6 +1,9 @@
 //! Pauses in a recording (a break, the recorder left on): Whisper fills the silence with words
 //! it learned from subtitles ("grazie grazie grazie…"). Such paragraphs become one line
 //! `[00:12:23] *(pausa fino a 00:16:19)*`, shown in grey by the app.
+//! The line is written in the lesson's language (`*(pause until 00:16:19)*` in English) and both
+//! forms are read, whatever the lesson.
+use crate::lang::Lang;
 use crate::pipeline::hms;
 
 /// What Whisper writes on silence or noise (lower case, without punctuation).
@@ -15,6 +18,12 @@ const INVENTED: &[&str] = &[
     "sottotitoli creati dalla comunità amara.org",
     "sottotitoli e revisione a cura di qtss",
     "iscriviti al canale",
+    "thank you",
+    "thanks",
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "subtitles by the amara.org community",
 ];
 
 /// A single paragraph shorter than this is kept: a real "grazie" said in class.
@@ -36,7 +45,7 @@ fn time_of(p: &str) -> Option<(u64, &str)> {
 /// The paragraph is already a pause line.
 pub fn is_pause(text: &str) -> bool {
     let t = text.trim().trim_matches(['*', '_', '(', ')']).trim();
-    t.starts_with("pausa fino a") || t == "pausa fino alla fine"
+    t.starts_with("pausa fino a") || t == "pausa fino alla fine" || t.starts_with("pause until") || t == "pause until the end"
 }
 
 /// Text made only of what Whisper writes on silence: words of the list, or one short phrase
@@ -70,13 +79,13 @@ fn invented(text: &str) -> bool {
 /// Turns the paragraphs invented by Whisper into pause lines, and joins pauses next to each other
 /// (the end of a part and the start of the next). Returns the text and how many pauses were
 /// made or joined (0 = unchanged).
-pub fn mark(text: &str) -> (String, usize) {
-    mark_until(text, None)
+pub fn mark(text: &str, lang: Lang) -> (String, usize) {
+    mark_until(text, None, lang)
 }
 
 /// As `mark`, for a piece of a recording that ends at `end` (seconds): a pause at its end lasts
 /// until there, not "until the end".
-pub fn mark_until(text: &str, end: Option<u64>) -> (String, usize) {
+pub fn mark_until(text: &str, end: Option<u64>, lang: Lang) -> (String, usize) {
     let paras: Vec<&str> = text.split("\n\n").collect();
     let timed: Vec<Option<(u64, &str)>> = paras.iter().map(|p| time_of(p)).collect();
     let pause: Vec<bool> = timed.iter().map(|t| t.is_some_and(|(_, body)| is_pause(body))).collect();
@@ -102,8 +111,15 @@ pub fn mark_until(text: &str, end: Option<u64>) -> (String, usize) {
             // Already a pause, alone: as it is.
             out.push(paras[i].to_string());
         } else if j - i >= 2 || long {
-            let to = until.map(|u| format!("fino a {}", hms(u))).unwrap_or_else(|| "fino alla fine".into());
-            out.push(format!("[{}] *(pausa {to})*", hms(from)));
+            // Pauses joined keep the language they were written in.
+            let lang = if pause[i] { if paras[i].contains("pause until") { Lang::En } else { Lang::It } } else { lang };
+            let to = match (lang, until) {
+                (Lang::It, Some(u)) => format!("pausa fino a {}", hms(u)),
+                (Lang::It, None) => "pausa fino alla fine".into(),
+                (Lang::En, Some(u)) => format!("pause until {}", hms(u)),
+                (Lang::En, None) => "pause until the end".into(),
+            };
+            out.push(format!("[{}] *({to})*", hms(from)));
             n += 1;
         } else {
             out.extend(paras[i..j].iter().map(|p| p.to_string()));
@@ -120,28 +136,37 @@ mod tests {
     #[test]
     fn whispers_thanks_become_one_pause() {
         let t = "[00:11:50] e quindi la diga.\n\n[00:12:23] grazie\n\n[00:12:53] Grazie.\n\n[00:14:23] grazie grazie grazie grazie\n\n[00:16:19] grazie ma una nuova che si riaccende ok, siete?";
-        let (m, n) = mark(t);
+        let (m, n) = mark(t, Lang::It);
         assert_eq!(n, 1);
         assert_eq!(m, "[00:11:50] e quindi la diga.\n\n[00:12:23] *(pausa fino a 00:16:19)*\n\n[00:16:19] grazie ma una nuova che si riaccende ok, siete?");
-        assert_eq!(mark(&m), (m.clone(), 0), "a pause stays as it is");
+        assert_eq!(mark(&m, Lang::It), (m.clone(), 0), "a pause stays as it is");
     }
 
     #[test]
     fn pauses_of_two_parts_are_joined() {
         let part = "[00:19:30] fine della parte.\n\n[00:19:40] grazie grazie grazie";
-        assert_eq!(mark_until(part, Some(1200)).0, "[00:19:30] fine della parte.\n\n[00:19:40] *(pausa fino a 00:20:00)*");
+        assert_eq!(mark_until(part, Some(1200), Lang::It).0, "[00:19:30] fine della parte.\n\n[00:19:40] *(pausa fino a 00:20:00)*");
         let joined = "[00:19:40] *(pausa fino a 00:20:00)*\n\n[00:20:00] *(pausa fino a 00:21:10)*\n\n[00:21:10] Riprendiamo.";
-        assert_eq!(mark(joined), ("[00:19:40] *(pausa fino a 00:21:10)*\n\n[00:21:10] Riprendiamo.".into(), 1));
+        assert_eq!(mark(joined, Lang::It), ("[00:19:40] *(pausa fino a 00:21:10)*\n\n[00:21:10] Riprendiamo.".into(), 1));
     }
 
     #[test]
     fn a_short_real_thanks_stays_and_loops_go() {
         let t = "[00:01:00] Domanda?\n\n[00:01:05] Grazie.\n\n[00:01:12] Allora proseguiamo.";
-        assert_eq!(mark(t).1, 0);
+        assert_eq!(mark(t, Lang::It).1, 0);
         let t = "[00:01:00] Allora.\n\n[00:01:05] Sottotitoli a cura di QTSS\n\n[00:02:00] Va bene.";
-        assert_eq!(mark(t).0, "[00:01:00] Allora.\n\n[00:01:05] *(pausa fino a 00:02:00)*\n\n[00:02:00] Va bene.");
+        assert_eq!(mark(t, Lang::It).0, "[00:01:00] Allora.\n\n[00:01:05] *(pausa fino a 00:02:00)*\n\n[00:02:00] Va bene.");
         let t = "[00:00:00] Ok.\n\n[00:00:10] la diga la diga la diga la diga";
-        assert_eq!(mark(t).0, "[00:00:00] Ok.\n\n[00:00:10] *(pausa fino alla fine)*");
+        assert_eq!(mark(t, Lang::It).0, "[00:00:00] Ok.\n\n[00:00:10] *(pausa fino alla fine)*");
         assert!(!invented("la diga a gravità è la diga più comune"));
+    }
+
+    #[test]
+    fn english_pauses() {
+        let t = "[00:01:00] So.\n\n[00:01:05] Thank you. Thank you. Thank you.\n\n[00:02:00] Right.";
+        assert_eq!(mark(t, Lang::En).0, "[00:01:00] So.\n\n[00:01:05] *(pause until 00:02:00)*\n\n[00:02:00] Right.");
+        assert!(is_pause("*(pause until 00:02:00)*") && is_pause("*(pausa fino a 00:02:00)*"));
+        // An Italian pause in an English lesson (an old transcript) is still a pause.
+        assert_eq!(mark("[00:01:00] So.\n\n[00:01:05] *(pausa fino a 00:02:00)*\n\n[00:02:00] Right.", Lang::En).1, 0);
     }
 }

@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { api, fileUrl, type Lesson, sourceFile, type Source } from "../../lib/api";
 import { clock, useMomentTime } from "./moment";
+import { t } from "../../i18n";
 
 /** A photo linked to a minute of this recording. */
 export interface PhotoAt {
@@ -50,13 +51,13 @@ export function PhotosPanel({
   return (
     <div className="space-y-2" data-photos-panel>
       <div className="flex items-center gap-1 text-xs text-zinc-500">
-        <button className="rounded p-1 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800" disabled={i <= 0} onClick={() => setCurrent(photos[i - 1].src.id)} title="Foto precedente" aria-label="Foto precedente">
+        <button className="rounded p-1 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800" disabled={i <= 0} onClick={() => setCurrent(photos[i - 1].src.id)} title={t("Foto precedente")} aria-label={t("Foto precedente")}>
           <ChevronLeft className="size-4" />
         </button>
         <span className="tabular-nums">
-          Foto {i + 1} di {photos.length}
+          {t("Foto {i} di {n}", { i: i + 1, n: photos.length })}
         </span>
-        <button className="rounded p-1 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800" disabled={i >= photos.length - 1} onClick={() => setCurrent(photos[i + 1].src.id)} title="Foto successiva" aria-label="Foto successiva">
+        <button className="rounded p-1 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800" disabled={i >= photos.length - 1} onClick={() => setCurrent(photos[i + 1].src.id)} title={t("Foto successiva")} aria-label={t("Foto successiva")}>
           <ChevronRight className="size-4" />
         </button>
         <span className="flex-1" />
@@ -69,12 +70,12 @@ export function PhotosPanel({
               pl.play().catch(() => {});
             }
           }}
-          title="Ascolta da questo punto"
+          title={t("Ascolta da questo punto")}
         >
           <Play className="size-3" /> {clock(p.at)}
         </button>
       </div>
-      <button className="block w-full" onClick={() => api.openSource(lesson.id, p.src.id)} title="Apri la foto">
+      <button className="block w-full" onClick={() => api.openSource(lesson.id, p.src.id)} title={t("Apri la foto")}>
         <img src={fileUrl(sourceFile(lesson, p.src))} alt={photoTitle(p.src)} className="max-h-[50vh] w-full rounded border border-zinc-200 bg-zinc-100 object-contain dark:border-zinc-700 dark:bg-zinc-900" />
       </button>
       <p className="text-sm font-medium">{photoTitle(p.src)}</p>

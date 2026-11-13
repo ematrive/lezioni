@@ -20,6 +20,7 @@ use crate::ai::gemini::mime_for;
 use crate::ai::{Ai, Part, Request, Usage, prompts};
 use crate::asr::{self, Asr};
 use crate::audio;
+use crate::lang::Lang;
 use crate::library::{EXTRACTS_DIR, GENERATED_DIR, Lesson, Library, SOURCES_DIR, Source, SourceKind};
 
 /// Length of a transcription window: keeps each answer well below the output limit.
@@ -89,6 +90,12 @@ impl Archive {
         self.lib()?.lesson(id)
     }
 
+    /// (spoken, materials) languages of a lesson.
+    fn langs(&self, lesson_id: &str) -> Result<(Lang, Lang)> {
+        let lib = self.lib()?;
+        Ok(lib.langs(&lib.lesson(lesson_id)?))
+    }
+
     /// Writes `<lesson>/<rel>` atomically, finding the lesson folder again first.
     fn write(&self, lesson_id: &str, rel: &Path, content: &[u8]) -> Result<PathBuf> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -98,7 +105,7 @@ impl Archive {
             fs::create_dir_all(d)?;
         }
         let tmp = p.with_extension("tmp");
-        fs::write(&tmp, content).with_context(|| format!("scrittura di {}", p.display()))?;
+        fs::write(&tmp, content).with_context(|| crate::tr!("scrittura di {}", "writing {}", p.display()))?;
         fs::rename(&tmp, &p)?;
         Ok(p)
     }
@@ -174,7 +181,9 @@ fn whisper_parts(lesson_dir: &Path, s: &Source) -> Option<String> {
     let mut names: Vec<String> = fs::read_dir(&dir).ok()?.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".whisper.md")).collect();
     names.sort();
     let texts: Vec<String> = names.iter().filter_map(|n| fs::read_to_string(dir.join(n)).ok()).filter(|t| !t.trim().is_empty()).collect();
-    if texts.is_empty() { None } else { Some(crate::pauses::mark(&texts.join("\n\n")).0) }
+    // The parts' pauses are already marked, in the lesson's language: here they are only joined,
+    // and a joined pause keeps its language.
+    if texts.is_empty() { None } else { Some(crate::pauses::mark(&texts.join("\n\n"), crate::lang::Lang::It).0) }
 }
 
 /// Writes `<dir>/<rel>` through a temporary file, so a crash never leaves half a file.
@@ -184,7 +193,7 @@ pub(crate) fn write_atomic(dir: &Path, rel: &Path, content: &[u8]) -> Result<()>
         fs::create_dir_all(d)?;
     }
     let tmp = p.with_extension("tmp");
-    fs::write(&tmp, content).with_context(|| format!("scrittura di {}", p.display()))?;
+    fs::write(&tmp, content).with_context(|| crate::tr!("scrittura di {}", "writing {}", p.display()))?;
     fs::rename(&tmp, &p)?;
     Ok(())
 }
@@ -205,7 +214,7 @@ fn close_parts(lesson_dir: &Path, s: &Source) -> Result<()> {
 /// the next processing would clean them again over the correction.
 pub fn save_extract(lib: &Library, lesson_id: &str, source_id: &str, text: &str) -> Result<Lesson> {
     let l = lib.lesson(lesson_id)?;
-    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
     close_parts(&l.path, s)?;
     write_atomic(&l.path, &extract_rel(s), text.as_bytes())?;
     lib.set_source_edited(lesson_id, source_id, Some(Utc::now()))
@@ -215,13 +224,14 @@ pub fn save_extract(lib: &Library, lesson_id: &str, source_id: &str, text: &str)
 /// Whisper's). Counts as a correction by hand. Returns how many pauses.
 pub fn mark_pauses(lib: &Library, lesson_id: &str, source_id: &str) -> Result<usize> {
     let l = lib.lesson(lesson_id)?;
-    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
-    let (text, n) = crate::pauses::mark(&fs::read_to_string(l.path.join(extract_rel(s)))?);
+    let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
+    let spoken = lib.langs(&l).0;
+    let (text, n) = crate::pauses::mark(&fs::read_to_string(l.path.join(extract_rel(s)))?, spoken);
     if n == 0 {
         return Ok(0);
     }
     if let Ok(raw) = fs::read_to_string(l.path.join(raw_rel(s))) {
-        write_atomic(&l.path, &raw_rel(s), crate::pauses::mark(&raw).0.as_bytes())?;
+        write_atomic(&l.path, &raw_rel(s), crate::pauses::mark(&raw, spoken).0.as_bytes())?;
     }
     save_extract(lib, lesson_id, source_id, &text)?;
     Ok(n)
@@ -358,14 +368,14 @@ pub struct Report {
     pub warnings: Vec<String>,
 }
 
-fn kind_label(k: SourceKind) -> &'static str {
+fn kind_label(k: SourceKind, l: Lang) -> &'static str {
     match k {
-        SourceKind::Audio => "registrazione",
+        SourceKind::Audio => l.pick("registrazione", "recording"),
         SourceKind::Video => "video",
         SourceKind::Pdf => "PDF",
-        SourceKind::Image => "foto/appunti",
-        SourceKind::Text => "testo",
-        SourceKind::Document => "documento",
+        SourceKind::Image => l.pick("foto/appunti", "photo/notes"),
+        SourceKind::Text => l.pick("testo", "text"),
+        SourceKind::Document => l.pick("documento", "document"),
         SourceKind::Other => "file",
     }
 }
@@ -374,13 +384,13 @@ fn kind_label(k: SourceKind) -> &'static str {
 /// keeps only the last ~220 tokens).
 /// Whisper's initial prompt: it steers spelling and vocabulary, and only the last ~220 tokens
 /// count, so the course's terms (the most useful part) are kept short and come first.
-fn asr_prompt(course: &str, title: &str, terms: &str, notes: &str) -> String {
+fn asr_prompt(l: Lang, course: &str, title: &str, terms: &str, notes: &str) -> String {
     let notes: String = notes.split_whitespace().take(40).collect::<Vec<_>>().join(" ");
     let terms: String = terms.split([',', ';', '\n']).map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(", ");
     let terms: String = terms.split_whitespace().take(40).collect::<Vec<_>>().join(" ");
-    let mut p = format!("Lezione universitaria di {course}: {title}.");
+    let mut p = l.pick(format!("Lezione universitaria di {course}: {title}."), format!("University lecture of {course}: {title}."));
     if !terms.is_empty() {
-        p.push_str(&format!(" Termini: {terms}."));
+        p.push_str(&l.pick(format!(" Termini: {terms}."), format!(" Terms: {terms}.")));
     }
     if !notes.is_empty() {
         p.push(' ');
@@ -555,19 +565,20 @@ fn paragraphs_between(text: &str, from: u64, to: Option<u64>) -> String {
 #[allow(clippy::too_many_arguments)]
 pub async fn reclean<A: Ai>(ai: &A, model: &str, lib: &crate::library::Library, lesson_id: &str, source_id: &str, from: u64, to: Option<u64>, cancel: &CancellationToken) -> Result<(String, Usage, String)> {
     let lesson = lib.lesson(lesson_id)?;
-    let s = lesson.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+    let s = lesson.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
     let raw = fs::read_to_string(lesson.path.join(raw_rel(s)))
         .ok()
         .or_else(|| whisper_parts(&lesson.path, s))
-        .ok_or_else(|| anyhow!("questa trascrizione non ha il testo di Whisper (le lezioni elaborate prima della versione 0.8 non lo conservano): rifalla con «Rielabora anche le fonti»"))?;
+        .ok_or_else(|| anyhow!(crate::tr!("questa trascrizione non ha il testo di Whisper (le lezioni elaborate prima della versione 0.8 non lo conservano): rifalla con «Rielabora anche le fonti»", "this transcript has no Whisper text (lectures processed before version 0.8 do not keep it): redo it with “Process the sources again too”")))?;
     let piece = paragraphs_between(&raw, from, to);
     if piece.trim().is_empty() {
-        bail!("nel testo di Whisper non c'è niente fra {} e {}", hms(from), to.map(hms).unwrap_or_else(|| "la fine".into()));
+        bail!(crate::tr!("nel testo di Whisper non c'è niente fra {} e {}", "there is nothing in Whisper's text between {} and {}", hms(from), to.map(hms).unwrap_or_else(|| crate::tr!("la fine", "the end"))));
     }
     let course = lib.course(&lesson.course_id)?;
+    let (spoken, _) = lib.langs(&lesson);
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::clean_fragment(&course.meta.name, &lesson.meta.title, &lib.terms_for(&course.meta), &piece))],
+        system: Some(prompts::system(spoken)),
+        parts: vec![Part::Text(prompts::clean_fragment(spoken, &course.meta.name, &lesson.meta.title, &lib.terms_for(&course.meta), &piece))],
         max_output_tokens: Some(32_000),
         thinking: Some("LOW"),
         retries: Some(3),
@@ -576,12 +587,12 @@ pub async fn reclean<A: Ai>(ai: &A, model: &str, lib: &crate::library::Library, 
     let a = ai.generate(model, &req, cancel).await?;
     let used = if a.model.is_empty() { model.to_string() } else { a.model.clone() };
     if a.finish == "MAX_TOKENS" {
-        bail!("la risposta del modello è stata troncata: scegli un pezzo più corto");
+        bail!(crate::tr!("la risposta del modello è stata troncata: scegli un pezzo più corto", "the model's answer was truncated: choose a shorter piece"));
     }
     let t = fix_headings(a.text.trim());
     let end = to.unwrap_or_else(|| times(&piece).last().copied().unwrap_or(from) + 60);
     if !plausible_fragment(&piece, &t, from, end) {
-        bail!("la nuova ripulitura ha perso parte del testo o dei minuti: riprova, o scegli un altro modello");
+        bail!(crate::tr!("la nuova ripulitura ha perso parte del testo o dei minuti: riprova, o scegli un altro modello", "the new cleanup lost part of the text or of the timestamps: try again, or choose another model"));
     }
     Ok((t, a.usage, used))
 }
@@ -626,9 +637,9 @@ impl<A: Ai> Ctx<'_, A> {
     }
 
     /// One request on a media part: (text, complete). `[SILENZIO]` becomes empty.
-    async fn ask_media(&self, part: Part, prompt: String, usage: &mut Usage) -> Result<(String, bool)> {
-        let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![part, Part::Text(prompt)], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
-        (self.detail)("In attesa della risposta del modello…".into());
+    async fn ask_media(&self, part: Part, l: Lang, prompt: String, usage: &mut Usage) -> Result<(String, bool)> {
+        let req = Request { system: Some(prompts::system(l)), parts: vec![part, Part::Text(prompt)], max_output_tokens: Some(32_000), thinking: Some("LOW"), ..Default::default() };
+        (self.detail)(crate::tr!("In attesa della risposta del modello…", "Waiting for the model's answer…"));
         let a = self.ai.generate(&self.models.transcribe, &req, self.cancel).await?;
         self.note_fallback(&a);
         usage.add(&a.usage);
@@ -643,7 +654,7 @@ impl<A: Ai> Ctx<'_, A> {
     #[allow(clippy::too_many_arguments)]
     async fn transcribe(&self, lesson_id: &str, s: &Source, path: &Path, mime: &str, video: bool, step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
         let label = &s.original_name;
-        (self.progress)(step.0 as f64, step.1, format!("Preparazione di {label}…"));
+        (self.progress)(step.0 as f64, step.1, crate::tr!("Preparazione di {label}…", "Preparing {label}…"));
         let tmp = std::env::temp_dir().join(format!("lezioni-{}", uuid::Uuid::new_v4()));
         let (p, d, c, w) = (path.to_path_buf(), tmp.clone(), self.cancel.clone(), self.window);
         let split = tokio::task::spawn_blocking(move || audio::split(&p, &d, w, &c)).await?;
@@ -652,7 +663,7 @@ impl<A: Ai> Ctx<'_, A> {
         if self.models.engine == Engine::Local && self.asr.is_none() {
             let _ = fs::remove_dir_all(&tmp);
             log::warn!("{label}: trascrizione locale senza Whisper caricato");
-            bail!("la trascrizione sul computer non era pronta: rilancia l'elaborazione");
+            bail!(crate::tr!("la trascrizione sul computer non era pronta: rilancia l'elaborazione", "the transcription on the computer was not ready: run the processing again"));
         }
         let result = match split {
             Ok(chunks) => match &self.asr {
@@ -660,11 +671,11 @@ impl<A: Ai> Ctx<'_, A> {
                 None => self.transcribe_chunks(lesson_id, s, &chunks, step, usage, warnings).await,
             },
             Err(e) if e.to_string() == "annullato" => Err(e),
-            Err(e) if self.asr.is_some() => Err(anyhow!("non riesco a leggere l'audio ({e:#}): convertila in m4a o mp3 e aggiungila di nuovo, oppure scegli la trascrizione con Gemini nelle Impostazioni")),
+            Err(e) if self.asr.is_some() => Err(anyhow!(crate::tr!("non riesco a leggere l'audio ({e:#}): convertila in m4a o mp3 e aggiungila di nuovo, oppure scegli la trascrizione con Gemini nelle Impostazioni", "cannot read the audio ({e:#}): convert it to m4a or mp3 and add it again, or choose the transcription with Gemini in Settings"))),
             Err(e) => {
                 log::warn!("{label}: {e:#}");
-                warnings.push(format!("{label}: non riesco a dividere la registrazione in parti ({e:#}), la invio intera e costa di più; convertila in m4a o mp3 per risparmiare"));
-                self.transcribe_whole(path, mime, video, label, step, usage).await
+                warnings.push(crate::tr!("{label}: non riesco a dividere la registrazione in parti ({e:#}), la invio intera e costa di più; convertila in m4a o mp3 per risparmiare", "{label}: cannot split the recording into parts ({e:#}), sending it whole, which costs more; convert it to m4a or mp3 to save"));
+                self.transcribe_whole(path, mime, video, label, self.archive.langs(lesson_id)?.0, step, usage).await
             }
         };
         let _ = fs::remove_dir_all(&tmp);
@@ -672,17 +683,17 @@ impl<A: Ai> Ctx<'_, A> {
     }
 
     /// Whisper on one part, in a blocking thread; its percentage goes to the detail line.
-    async fn whisper(&self, asr: &Arc<dyn Asr>, wav: &Path, prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<Vec<asr::Segment>> {
+    async fn whisper(&self, asr: &Arc<dyn Asr>, wav: &Path, l: Lang, prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<Vec<asr::Segment>> {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i32>();
         let (a, w, p, c) = (asr.clone(), wav.to_path_buf(), prompt.to_string(), self.cancel.clone());
-        let mut job = tokio::task::spawn_blocking(move || a.transcribe(&w, &p, &c, &move |v| {
+        let mut job = tokio::task::spawn_blocking(move || a.transcribe(&w, l, &p, &c, &move |v| {
             let _ = tx.send(v);
         }));
         loop {
             tokio::select! {
                 r = &mut job => return r?,
                 Some(v) = rx.recv() => {
-                    let other = cleaning.lock().unwrap().map(|j| format!(" · ripulitura della parte {}", j + 1)).unwrap_or_default();
+                    let other = cleaning.lock().unwrap().map(|j| crate::tr!(" · ripulitura della parte {}", " · cleaning up part {}", j + 1)).unwrap_or_default();
                     (self.detail)(format!("Whisper: {v}%{other}"));
                 }
             }
@@ -691,7 +702,7 @@ impl<A: Ai> Ctx<'_, A> {
 
     /// Part `i` from Whisper, or what was saved by an earlier run.
     #[allow(clippy::too_many_arguments)]
-    async fn raw_part(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, step: (u32, u32), prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<RawPart> {
+    async fn raw_part(&self, asr: &Arc<dyn Asr>, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, step: (u32, u32), l: Lang, prompt: &str, cleaning: &Mutex<Option<usize>>) -> Result<RawPart> {
         let dir = self.archive.lesson(lesson_id)?.path.join(parts_rel(s));
         if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.md", i + 1))) {
             return Ok(RawPart::Done(t));
@@ -701,13 +712,13 @@ impl<A: Ai> Ctx<'_, A> {
         let total = chunks.last().map(|c| c.start + c.secs.round() as u64).unwrap_or(0);
         let frac = step.0 as f64 + i as f64 / chunks.len() as f64;
         if let Ok(t) = fs::read_to_string(dir.join(format!("{:02}.whisper.md", i + 1))) {
-            (self.progress)(frac, step.1, format!("Ripulitura di {}, parte {} di {} (già trascritta sul computer)", s.original_name, i + 1, chunks.len()));
+            (self.progress)(frac, step.1, crate::tr!("Ripulitura di {}, parte {} di {} (già trascritta sul computer)", "Cleaning up {}, part {} of {} (already transcribed on the computer)", s.original_name, i + 1, chunks.len()));
             return Ok(RawPart::Raw(t));
         }
-        (self.progress)(frac, step.1, format!("Trascrizione sul computer di {}, parte {} di {}: {}–{} di {}", s.original_name, i + 1, chunks.len(), hms(c.start), hms(c.start + c.secs.round() as u64), hms(total)));
-        let segs = self.whisper(asr, &c.path, prompt, cleaning).await?;
+        (self.progress)(frac, step.1, crate::tr!("Trascrizione sul computer di {}, parte {} di {}: {}–{} di {}", "Transcribing {} on the computer, part {} of {}: {}–{} of {}", s.original_name, i + 1, chunks.len(), hms(c.start), hms(c.start + c.secs.round() as u64), hms(total)));
+        let segs = self.whisper(asr, &c.path, l, prompt, cleaning).await?;
         // What Whisper invents on silence (a break) becomes one pause line before the cleanup.
-        let text = crate::pauses::mark_until(&asr::paragraphs(&segs, c.start), Some(c.start + c.secs.round() as u64)).0;
+        let text = crate::pauses::mark_until(&asr::paragraphs(&segs, c.start), Some(c.start + c.secs.round() as u64), l).0;
         if text.trim().is_empty() {
             // Silence: nothing to clean.
             self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), b"")?;
@@ -719,12 +730,13 @@ impl<A: Ai> Ctx<'_, A> {
 
     /// Gemini cleans Whisper's text of part `i`. On any failure the raw text is used, and the
     /// next run tries the cleanup again.
-    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, context: &(String, String, String)) -> Result<Cleaned> {
+    #[allow(clippy::too_many_arguments)]
+    async fn clean_part(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], i: usize, raw: String, l: Lang, context: &(String, String, String)) -> Result<Cleaned> {
         let c = &chunks[i];
         let (start, end) = (c.start, c.start + c.secs.round() as u64);
         let req = Request {
-            system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::clean_transcript(i + 1, chunks.len(), &context.0, &context.1, &context.2, &raw))],
+            system: Some(prompts::system(l)),
+            parts: vec![Part::Text(prompts::clean_transcript(l, i + 1, chunks.len(), &context.0, &context.1, &context.2, &raw))],
             max_output_tokens: Some(32_000),
             thinking: Some("LOW"),
             // Best effort (Whisper's text is already there): do not wait minutes on an overloaded
@@ -732,7 +744,7 @@ impl<A: Ai> Ctx<'_, A> {
             retries: Some(3),
             ..Default::default()
         };
-        let not_clean = |why: String| format!("{}: parte da {} non ripulita ({why}); c'è il testo di Whisper, verrà ripulita alla prossima elaborazione", s.original_name, hms(start));
+        let not_clean = |why: String| crate::tr!("{}: parte da {} non ripulita ({why}); c'è il testo di Whisper, verrà ripulita alla prossima elaborazione", "{}: part from {} not cleaned up ({why}); Whisper's text is there, it will be cleaned up at the next processing", s.original_name, hms(start));
         match self.ai.generate(&self.models.transcribe, &req, self.cancel).await {
             Err(e) if e.to_string() == "annullato" => Err(e),
             Err(e) => Ok(Cleaned { text: raw, usage: Usage::default(), warning: Some(not_clean(format!("{e:#}"))), unreachable: true }),
@@ -740,10 +752,10 @@ impl<A: Ai> Ctx<'_, A> {
                 self.note_fallback(&a);
                 let t = fix_headings(a.text.trim());
                 if a.finish == "MAX_TOKENS" {
-                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("risposta troncata".into())), unreachable: false })
+                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean(crate::tr!("risposta troncata", "answer truncated"))), unreachable: false })
                 } else if !plausible_cleanup(&raw, &t, start, end) {
                     log::warn!("ripulitura scartata per {} parte {}: {} parole e {} tempi contro {} e {}", s.original_name, i + 1, t.split_whitespace().count(), times(&t).len(), raw.split_whitespace().count(), times(&raw).len());
-                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean("la ripulitura aveva perso parti del testo o dei minuti".into())), unreachable: false })
+                    Ok(Cleaned { text: raw, usage: a.usage, warning: Some(not_clean(crate::tr!("la ripulitura aveva perso parti del testo o dei minuti", "the cleanup had lost parts of the text or of the timestamps"))), unreachable: false })
                 } else {
                     self.archive.write(lesson_id, &parts_rel(s).join(format!("{:02}.md", i + 1)), t.as_bytes())?;
                     Ok(Cleaned { text: t, usage: a.usage, warning: None, unreachable: false })
@@ -760,7 +772,8 @@ impl<A: Ai> Ctx<'_, A> {
         let lib = self.archive.lib()?;
         let course = lib.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (lib.terms_for(&c.meta), c.meta.name)).map(|(t, n)| (n, t)).unwrap_or_else(|| (String::new(), lib.global_terms()));
         let context = (course.0, lesson.meta.title.clone(), course.1);
-        let prompt = asr_prompt(&context.0, &context.1, &context.2, &lesson.meta.notes);
+        let spoken = lib.langs(&lesson).0;
+        let prompt = asr_prompt(spoken, &context.0, &context.1, &context.2, &lesson.meta.notes);
         let n = chunks.len();
         let mut texts: Vec<String> = vec![String::new(); n];
         let mut skipped = 0;
@@ -772,7 +785,7 @@ impl<A: Ai> Ctx<'_, A> {
             self.check()?;
             let p = pending.take();
             let next = async {
-                if i < n { self.raw_part(asr, lesson_id, s, chunks, i, step, &prompt, &cleaning).await.map(Some) } else { Ok(None) }
+                if i < n { self.raw_part(asr, lesson_id, s, chunks, i, step, spoken, &prompt, &cleaning).await.map(Some) } else { Ok(None) }
             };
             let skip = gave_up;
             let clean = async {
@@ -782,9 +795,9 @@ impl<A: Ai> Ctx<'_, A> {
                 }
                 *cleaning.lock().unwrap() = Some(j);
                 if i == n {
-                    (self.detail)(format!("Ripulitura della parte {} di {n}…", j + 1));
+                    (self.detail)(crate::tr!("Ripulitura della parte {} di {n}…", "Cleaning up part {} of {n}…", j + 1));
                 }
-                let r = self.clean_part(lesson_id, s, chunks, j, raw, &context).await;
+                let r = self.clean_part(lesson_id, s, chunks, j, raw, spoken, &context).await;
                 *cleaning.lock().unwrap() = None;
                 Some((j, r))
             };
@@ -806,16 +819,17 @@ impl<A: Ai> Ctx<'_, A> {
             }
         }
         if skipped > 0 {
-            warnings.push(format!("{}: il servizio AI non risponde, {skipped} parti restano con il testo di Whisper; verranno ripulite alla prossima elaborazione", s.original_name));
+            warnings.push(crate::tr!("{}: il servizio AI non risponde, {skipped} parti restano con il testo di Whisper; verranno ripulite alla prossima elaborazione", "{}: the AI service is not answering, {skipped} parts keep Whisper's text; they will be cleaned up at the next processing", s.original_name));
         }
         // Complete even with parts not cleaned: the text is saved and shown, and the parts left
         // in Whisper's text are found again by `cleanup_pending`.
         // A pause across two parts becomes one.
-        Ok((crate::pauses::mark(&texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n")).0, true))
+        Ok((crate::pauses::mark(&texts.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"), spoken).0, true))
     }
 
     async fn transcribe_chunks(&self, lesson_id: &str, s: &Source, chunks: &[audio::Chunk], step: (u32, u32), usage: &mut Usage, warnings: &mut Vec<String>) -> Result<(String, bool)> {
         let label = &s.original_name;
+        let spoken = self.archive.langs(lesson_id)?.0;
         let total = chunks.last().map(|c| c.start + c.secs.round() as u64).unwrap_or(0);
         let mut texts = Vec::new();
         let mut complete = true;
@@ -828,9 +842,9 @@ impl<A: Ai> Ctx<'_, A> {
             }
             let end = c.start + c.secs.round() as u64;
             let frac = step.0 as f64 + i as f64 / chunks.len() as f64;
-            (self.progress)(frac, step.1, format!("Trascrizione di {label}, parte {} di {}: {}–{} di {}", i + 1, chunks.len(), hms(c.start), hms(end), hms(total)));
+            (self.progress)(frac, step.1, crate::tr!("Trascrizione di {label}, parte {} di {}: {}–{} di {}", "Transcribing {label}, part {} of {}: {}–{} of {}", i + 1, chunks.len(), hms(c.start), hms(end), hms(total)));
             let (part, remote) = self.file_part(&c.path, "audio/wav").await?;
-            let r = self.ask_media(part, prompts::transcribe_clip(i + 1, chunks.len(), &hms(c.start)), usage).await;
+            let r = self.ask_media(part, spoken, prompts::transcribe_clip(spoken, i + 1, chunks.len(), &hms(c.start)), usage).await;
             if let Some(n) = remote {
                 self.ai.delete_file(&n).await;
             }
@@ -840,7 +854,7 @@ impl<A: Ai> Ctx<'_, A> {
                 self.archive.write(lesson_id, &rel, t.as_bytes())?;
             } else {
                 complete = false;
-                warnings.push(format!("{label}: la parte da {} è stata troncata da Gemini", hms(c.start)));
+                warnings.push(crate::tr!("{label}: la parte da {} è stata troncata da Gemini", "{label}: the part from {} was truncated by Gemini", hms(c.start)));
             }
             texts.push(t);
         }
@@ -849,20 +863,21 @@ impl<A: Ai> Ctx<'_, A> {
 
     /// Fallback: the whole file uploaded once, transcribed in time windows. Each window bills
     /// the whole file again.
-    async fn transcribe_whole(&self, path: &Path, mime: &str, video: bool, label: &str, step: (u32, u32), usage: &mut Usage) -> Result<(String, bool)> {
-        (self.progress)(step.0 as f64, step.1, format!("Caricamento di {label} su Gemini…"));
+    #[allow(clippy::too_many_arguments)]
+    async fn transcribe_whole(&self, path: &Path, mime: &str, video: bool, label: &str, l: Lang, step: (u32, u32), usage: &mut Usage) -> Result<(String, bool)> {
+        (self.progress)(step.0 as f64, step.1, crate::tr!("Caricamento di {label} su Gemini…", "Uploading {label} to Gemini…"));
         let f = self.ai.upload(path, mime, self.cancel).await?;
         let file = Part::File { mime: f.mime.clone().unwrap_or_else(|| mime.into()), uri: f.uri.clone() };
         let result = async {
             let per_sec = if video { VIDEO_TOKENS_PER_SEC } else { AUDIO_TOKENS_PER_SEC };
-            let secs = self.ai.count_tokens(&self.models.transcribe, std::slice::from_ref(&file), self.cancel).await.map_err(|e| e.context("durata della registrazione"))? / per_sec;
+            let secs = self.ai.count_tokens(&self.models.transcribe, std::slice::from_ref(&file), self.cancel).await.map_err(|e| e.context(crate::tr!("durata della registrazione", "length of the recording")))? / per_sec;
             let windows = secs.div_ceil(self.window).max(1);
             let (mut out, mut complete) = (Vec::new(), true);
             for i in 0..windows {
                 self.check()?;
                 let (from, to) = (hms(i * self.window), hms((i + 1) * self.window));
-                (self.progress)(step.0 as f64 + i as f64 / windows as f64, step.1, format!("Trascrizione di {label}: {from}–{} di {}", hms(((i + 1) * self.window).min(secs)), hms(secs)));
-                let (t, ok) = self.ask_media(file.clone(), prompts::transcribe_window(&from, &to, i == 0, i + 1 == windows), usage).await?;
+                (self.progress)(step.0 as f64 + i as f64 / windows as f64, step.1, crate::tr!("Trascrizione di {label}: {from}–{} di {}", "Transcribing {label}: {from}–{} of {}", hms(((i + 1) * self.window).min(secs)), hms(secs)));
+                let (t, ok) = self.ask_media(file.clone(), l, prompts::transcribe_window(l, &from, &to, i == 0, i + 1 == windows), usage).await?;
                 complete &= ok;
                 if !t.is_empty() {
                     out.push(t);
@@ -875,9 +890,9 @@ impl<A: Ai> Ctx<'_, A> {
         result
     }
 
-    async fn read_with_model(&self, path: &Path, mime: &str, prompt: &str, usage: &mut Usage) -> Result<(String, bool)> {
+    async fn read_with_model(&self, path: &Path, mime: &str, l: Lang, prompt: String, usage: &mut Usage) -> Result<(String, bool)> {
         let (part, remote) = self.file_part(path, mime).await?;
-        let r = self.ask_media(part, prompt.into(), usage).await;
+        let r = self.ask_media(part, l, prompt, usage).await;
         if let Some(n) = remote {
             self.ai.delete_file(&n).await;
         }
@@ -890,16 +905,18 @@ impl<A: Ai> Ctx<'_, A> {
         let label = &s.original_name;
         let mime = mime_for(&path);
         Ok(Some(match (s.kind, mime) {
-            (SourceKind::Text, _) => (fs::read_to_string(&path).with_context(|| format!("lettura di {label}"))?, true),
+            (SourceKind::Text, _) => (fs::read_to_string(&path).with_context(|| crate::tr!("lettura di {label}", "reading {label}"))?, true),
             (SourceKind::Audio, Some(m)) => self.transcribe(&lesson.meta.id, s, &path, m, false, step, usage, warnings).await?,
             (SourceKind::Video, Some(m)) => self.transcribe(&lesson.meta.id, s, &path, m, true, step, usage, warnings).await?,
             (SourceKind::Image, Some(m)) => {
-                (self.progress)(step.0 as f64, step.1, format!("Lettura di {label}…"));
-                self.read_with_model(&path, m, prompts::IMAGE, usage).await?
+                (self.progress)(step.0 as f64, step.1, crate::tr!("Lettura di {label}…", "Reading {label}…"));
+                let l = self.archive.langs(&lesson.meta.id)?.0;
+                self.read_with_model(&path, m, l, prompts::image(l), usage).await?
             }
             (SourceKind::Pdf, Some(m)) => {
-                (self.progress)(step.0 as f64, step.1, format!("Lettura di {label}…"));
-                let (text, complete) = self.read_with_model(&path, m, prompts::PDF, usage).await?;
+                (self.progress)(step.0 as f64, step.1, crate::tr!("Lettura di {label}…", "Reading {label}…"));
+                let l = self.archive.langs(&lesson.meta.id)?.0;
+                let (text, complete) = self.read_with_model(&path, m, l, prompts::pdf(l), usage).await?;
                 // "TIPO: slide" on the first line: the model's guess of what the PDF is.
                 let (kind, text) = pdf_kind(&text);
                 if let Some(role) = kind {
@@ -909,11 +926,11 @@ impl<A: Ai> Ctx<'_, A> {
                 (text, complete)
             }
             (SourceKind::Document, _) => {
-                warnings.push(format!("{label}: i file di Office non si possono leggere, esportalo in PDF e aggiungi il PDF"));
+                warnings.push(crate::tr!("{label}: i file di Office non si possono leggere, esportalo in PDF e aggiungi il PDF", "{label}: Office files cannot be read, export it to PDF and add the PDF"));
                 return Ok(None);
             }
             _ => {
-                warnings.push(format!("{label}: tipo di file non supportato, saltato"));
+                warnings.push(crate::tr!("{label}: tipo di file non supportato, saltato", "{label}: file type not supported, skipped"));
                 return Ok(None);
             }
         }))
@@ -922,7 +939,7 @@ impl<A: Ai> Ctx<'_, A> {
     fn fallback_warning(&self, report: &mut Report) {
         let f = self.fallbacks.lock().unwrap();
         if f.0 > 0 {
-            report.warnings.push(format!("Il modello era sovraccarico: {} richieste fatte con il modello di riserva {}", f.0, f.1));
+            report.warnings.push(crate::tr!("Il modello era sovraccarico: {} richieste fatte con il modello di riserva {}", "The model was overloaded: {} requests made with the fallback model {}", f.0, f.1));
         }
     }
 
@@ -940,7 +957,7 @@ impl<A: Ai> Ctx<'_, A> {
                     continue;
                 }
                 self.check()?;
-                (self.detail)(format!("Collego {} a {}…", p.original_name, r.original_name));
+                (self.detail)(crate::tr!("Collego {} a {}…", "Linking {} to {}…", p.original_name, r.original_name));
                 let lib = self.archive.lib()?;
                 match crate::slides::align(self.ai, &self.models.transcribe, &lib, lesson_id, &r.id, &p.id, self.cancel).await {
                     Ok((a, usage)) => {
@@ -949,7 +966,7 @@ impl<A: Ai> Ctx<'_, A> {
                         crate::slides::save(&self.archive.lesson(lesson_id)?.path, a)?;
                     }
                     Err(e) if e.to_string() == "annullato" => return Err(e),
-                    Err(e) => report.warnings.push(format!("{}: slide non collegate alla registrazione ({e:#})", p.original_name)),
+                    Err(e) => report.warnings.push(crate::tr!("{}: slide non collegate alla registrazione ({e:#})", "{}: slides not linked to the recording ({e:#})", p.original_name)),
                 }
             }
         }
@@ -963,7 +980,7 @@ impl<A: Ai> Ctx<'_, A> {
             return Ok(());
         }
         self.check()?;
-        (self.detail)("Aggancio le foto alla registrazione…".into());
+        (self.detail)(crate::tr!("Aggancio le foto alla registrazione…", "Attaching the photos to the recording…"));
         let found = crate::photos::link_lesson(self.ai, &self.models.transcribe, &lesson, false, self.cancel).await?;
         report.usage.add(&found.usage);
         report.warnings.extend(found.warnings);
@@ -978,7 +995,7 @@ impl<A: Ai> Ctx<'_, A> {
         let mut report = Report::default();
         let lesson = self.archive.lesson(lesson_id)?;
         if lesson.meta.sources.is_empty() {
-            bail!("la lezione non ha fonti: aggiungi registrazioni, appunti o PDF");
+            bail!(crate::tr!("la lezione non ha fonti: aggiungi registrazioni, appunti o PDF", "the lecture has no sources: add recordings, notes or PDFs"));
         }
         let total = lesson.meta.sources.len() as u32 + if opts.extract_only { 0 } else { 1 };
         let mut extracts: Vec<(String, Source, String)> = Vec::new();
@@ -1004,14 +1021,14 @@ impl<A: Ai> Ctx<'_, A> {
                     let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
                     let dest = current.path.join(EXTRACTS_DIR).join("versioni").join(&stamp);
                     fs::create_dir_all(&dest)?;
-                    fs::copy(&existing, dest.join(format!("{}.md", s.file))).context("copia della trascrizione corretta")?;
+                    fs::copy(&existing, dest.join(format!("{}.md", s.file))).with_context(|| crate::tr!("copia della trascrizione corretta", "copying the corrected transcript"))?;
                 }
             }
             // From a package without its file (the recording): the extract is all there is.
             if s.omitted {
                 match fs::read_to_string(&existing) {
                     Ok(t) if !t.trim().is_empty() => extracts.push((format!("F{}", extracts.len() + 1), s.clone(), t)),
-                    _ => report.warnings.push(format!("{}: il file non era nel pacchetto ricevuto e non c'è un testo estratto, saltato", s.original_name)),
+                    _ => report.warnings.push(crate::tr!("{}: il file non era nel pacchetto ricevuto e non c'è un testo estratto, saltato", "{}: the file was not in the received package and there is no extracted text, skipped", s.original_name)),
                 }
                 continue;
             }
@@ -1037,7 +1054,7 @@ impl<A: Ai> Ctx<'_, A> {
                     // Truncated: used for this summary, not kept as if it were complete.
                     Ok(Some((t, false))) => {
                         if report.warnings.len() == before {
-                            report.warnings.push(format!("{}: testo incompleto (risposta troppo lunga), non salvato; verrà rifatto alla prossima elaborazione", s.original_name));
+                            report.warnings.push(crate::tr!("{}: testo incompleto (risposta troppo lunga), non salvato; verrà rifatto alla prossima elaborazione", "{}: incomplete text (answer too long), not saved; it will be redone at the next processing", s.original_name));
                         }
                         Some(t)
                     }
@@ -1059,10 +1076,11 @@ impl<A: Ai> Ctx<'_, A> {
             }
         }
         if !media_failed.is_empty() {
-            bail!(
+            bail!(crate::tr!(
                 "trascrizione non riuscita, sintesi non generata:\n{}\nLe parti già trascritte sono salvate: rilancia l'elaborazione per riprendere da lì.",
+                "transcription failed, summary not generated:\n{}\nThe parts already transcribed are saved: run the processing again to resume from there.",
                 media_failed.join("\n")
-            );
+            ));
         }
         self.link_slides(lesson_id, &mut report).await?;
         self.link_photos(lesson_id, &mut report).await?;
@@ -1071,26 +1089,27 @@ impl<A: Ai> Ctx<'_, A> {
             return Ok(report);
         }
         if extracts.is_empty() {
-            bail!("nessuna fonte leggibile: {}", report.warnings.join("; "));
+            bail!(crate::tr!("nessuna fonte leggibile: {}", "no readable source: {}", report.warnings.join("; ")));
         }
         self.check()?;
-        (self.progress)((total - 1) as f64, total, "Sintesi, mappa e materiale di studio…".into());
+        (self.progress)((total - 1) as f64, total, crate::tr!("Sintesi, mappa e materiale di studio…", "Summary, map and study material…"));
         let lesson = self.archive.lesson(lesson_id)?;
         let lib = self.archive.lib()?;
         let course = lib.courses()?.into_iter().find(|c| c.meta.id == lesson.course_id).map(|c| (lib.terms_for(&c.meta), c.meta.name)).map(|(t, n)| (n, t)).unwrap_or_else(|| (String::new(), lib.global_terms()));
-        let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind))).collect();
+        let (spoken, ml) = lib.langs(&lesson);
+        let sources: String = extracts.iter().map(|(code, s, t)| format!("[{code}] {} ({})\n{t}\n\n", s.original_name, kind_label(s.kind, ml))).collect();
         let code_of = |sid: &str| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string());
-        let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), code_of);
-        let slides = crate::slides::prompt_lines(&crate::slides::read(&lesson.path), code_of);
-        let photos = crate::photos::prompt_lines(&crate::photos::read(&lesson.path), &lesson.meta.sources, code_of);
+        let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), ml, code_of);
+        let slides = crate::slides::prompt_lines(&crate::slides::read(&lesson.path), ml, code_of);
+        let photos = crate::photos::prompt_lines(&crate::photos::read(&lesson.path), &lesson.meta.sources, ml, code_of);
         let req = Request {
-            system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &slides, &photos, &sources))],
+            system: Some(prompts::system(ml)),
+            parts: vec![Part::Text(prompts::generate(ml, spoken, &course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &slides, &photos, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(48_000),
             ..Default::default()
         };
-        (self.detail)("In attesa della risposta del modello…".into());
+        (self.detail)(crate::tr!("In attesa della risposta del modello…", "Waiting for the model's answer…"));
         // Some models now and then answer with the schema's skeleton (every field empty): Haiku 5.5
         // about once in 7 with reasoning on (measured on OpenRouter, Nov 2026). Ask again, at most 3
         // times in all, and never replace the saved outputs with an empty summary.
@@ -1110,31 +1129,31 @@ impl<A: Ai> Ctx<'_, A> {
                 log::warn!("sintesi troncata ({model}, {} caratteri); fine della risposta: …{tail}", a.text.chars().count());
                 match fallback {
                     Some(f) if !last => {
-                        report.warnings.push(format!("La risposta di {model} era troppo lunga ed è stata troncata: sintesi fatta con il modello di riserva {f}"));
+                        report.warnings.push(crate::tr!("La risposta di {model} era troppo lunga ed è stata troncata: sintesi fatta con il modello di riserva {f}", "The answer of {model} was too long and was truncated: summary made with the fallback model {f}"));
                         model = f.to_string();
                         attempt = 2;
-                        (self.detail)(format!("Risposta troncata, nuovo tentativo con {f}…"));
+                        (self.detail)(crate::tr!("Risposta troncata, nuovo tentativo con {f}…", "Answer truncated, trying again with {f}…"));
                         continue;
                     }
-                    _ => bail!("la risposta del modello è stata troncata: prova con meno fonti o scegli un altro modello per la sintesi nelle Impostazioni"),
+                    _ => bail!(crate::tr!("la risposta del modello è stata troncata: prova con meno fonti o scegli un altro modello per la sintesi nelle Impostazioni", "the model's answer was truncated: try with fewer sources or choose another model for the summary in Settings")),
                 }
             }
-            let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
+            let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!(crate::tr!("risposta del modello non valida: {e}", "invalid answer from the model: {e}")))?;
             if !g.sintesi.trim().is_empty() {
                 break (a, g);
             }
             log::warn!("sintesi vuota ({model}, tentativo {attempt})");
             if last {
-                bail!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni");
+                bail!(crate::tr!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni", "the model answered three times with an empty summary: try again, or choose another model for the summary in Settings"));
             }
             if attempt == 2
                 && let Some(f) = fallback
             {
-                report.warnings.push(format!("{model} ha risposto due volte con una sintesi vuota: sintesi fatta con il modello di riserva {f}"));
+                report.warnings.push(crate::tr!("{model} ha risposto due volte con una sintesi vuota: sintesi fatta con il modello di riserva {f}", "{model} answered twice with an empty summary: summary made with the fallback model {f}"));
                 model = f.to_string();
-                (self.detail)(format!("Sintesi vuota, nuovo tentativo con {f}…"));
+                (self.detail)(crate::tr!("Sintesi vuota, nuovo tentativo con {f}…", "Empty summary, trying again with {f}…"));
             } else {
-                (self.detail)("Sintesi vuota, nuovo tentativo…".into());
+                (self.detail)(crate::tr!("Sintesi vuota, nuovo tentativo…", "Empty summary, trying again…"));
             }
         };
 
@@ -1155,7 +1174,7 @@ impl<A: Ai> Ctx<'_, A> {
         };
         self.archive.write(lesson_id, &gdir.join("info.json"), &serde_json::to_vec_pretty(&info)?)?;
         self.fallback_warning(&mut report);
-        (self.progress)(total as f64, total, "Fatto".into());
+        (self.progress)(total as f64, total, crate::tr!("Fatto", "Done"));
         Ok(report)
     }
 }
@@ -1198,7 +1217,7 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         .sources
         .iter()
         .filter(|s| matches!(s.kind, SourceKind::Audio | SourceKind::Video))
-        .filter_map(|s| Some((s.id.clone(), crate::pauses::mark(extracts.get(&s.id)?).1)))
+        .filter_map(|s| Some((s.id.clone(), crate::pauses::mark(extracts.get(&s.id)?, crate::lang::Lang::It).1)))
         .filter(|(_, n)| *n > 0)
         .collect();
     Outputs {
@@ -1251,13 +1270,15 @@ mod tests {
     struct FakeAsr {
         calls: AtomicUsize,
         prompt: Mutex<String>,
+        lang: Mutex<Option<Lang>>,
         /// The second part is a break: Whisper fills it with "grazie".
         thanks: std::sync::atomic::AtomicBool,
     }
 
     impl Asr for FakeAsr {
-        fn transcribe(&self, wav: &Path, prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
+        fn transcribe(&self, wav: &Path, lang: Lang, prompt: &str, _c: &CancellationToken, progress: &(dyn Fn(i32) + Send + Sync)) -> Result<Vec<asr::Segment>> {
             assert!(wav.is_file());
+            *self.lang.lock().unwrap() = Some(lang);
             let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             *self.prompt.lock().unwrap() = prompt.to_string();
             progress(100);
@@ -1449,7 +1470,7 @@ mod tests {
     async fn course_terms_reach_whisper_cleanup_and_summary() {
         let st = setup(&[("reg.wav", None)]);
         let l = st.lib.lesson(&st.lesson).unwrap();
-        st.lib.update_course(&l.course_id, "Ricerca operativa", "", "ARERA, colpo d'ariete\nGauckler-Strickler").unwrap();
+        st.lib.update_course(&l.course_id, "Ricerca operativa", "", "ARERA, colpo d'ariete\nGauckler-Strickler", None).unwrap();
         // Terms for all the courses come after the course's own, without repeats.
         st.lib.set_global_terms("arera\nTIM, Wind").unwrap();
         let ai = Fake::default();
@@ -1460,6 +1481,36 @@ mod tests {
         let prompts = ai.prompts.lock().unwrap();
         assert!(prompts.iter().filter(|p| p.contains("Ripuliscila")).all(|p| p.contains(line)));
         assert!(prompts.last().unwrap().contains(line), "summary");
+    }
+
+    #[tokio::test]
+    async fn an_english_lesson_in_an_italian_course() {
+        let st = setup(&[("reg.wav", None)]);
+        let l = st.lib.update_lesson(&st.lesson, crate::library::LessonPatch { language: Some(Some(Lang::En)), ..Default::default() }).unwrap();
+        assert_eq!(st.lib.langs(&l), (Lang::En, Lang::It));
+        let ai = Fake::default();
+        let asr = Arc::new(FakeAsr::default());
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        assert_eq!(*asr.lang.lock().unwrap(), Some(Lang::En));
+        assert!(asr.prompt.lock().unwrap().starts_with("University lecture of"), "{}", asr.prompt.lock().unwrap());
+        {
+            let prompts = ai.prompts.lock().unwrap();
+            let cleanups: Vec<_> = prompts.iter().filter(|p| p.contains("Clean it up")).collect();
+            assert!(!cleanups.is_empty() && cleanups.iter().all(|p| p.contains("do not translate")));
+            let summary = prompts.last().unwrap();
+            assert!(summary.contains("Produci, in italiano") && summary.contains("La lezione è in inglese"), "{summary}");
+        }
+
+        // Materials in English too: the whole summary prompt is English, without the note.
+        st.lib.update_course(&l.course_id, "Ricerca operativa", "", "", Some(crate::library::CourseLangs { language: Lang::It, materials_language: Lang::En })).unwrap();
+        run_with(&st, &ai, Some(asr.clone()), Options::default()).await.unwrap();
+        let summary = ai.prompts.lock().unwrap().last().unwrap().clone();
+        assert!(summary.contains("Produce, in English") && !summary.contains("The lecture is in"), "{summary}");
+
+        // Back to the course's language.
+        let l = st.lib.update_lesson(&st.lesson, serde_json::from_str(r#"{"language":null}"#).unwrap()).unwrap();
+        assert_eq!(l.meta.language, None);
+        assert_eq!(st.lib.langs(&l), (Lang::It, Lang::En));
     }
 
     #[tokio::test]

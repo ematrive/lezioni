@@ -5,8 +5,9 @@ import { ai, toAppError, versionDate, type Lesson, type Version } from "../../li
 import { diffLines } from "../../lib/diff";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
+import { locale, t, tn } from "../../i18n";
 
-const when = (v: Version) => versionDate(v.stamp).toLocaleString("it-IT", { dateStyle: "medium", timeStyle: "short" });
+const when = (v: Version) => versionDate(v.stamp).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 
 /** "Versioni precedenti (N)": hidden when there are none, disabled while the lesson is processed. */
 export function VersionsButton({ lesson, versions, area, file, current, disabled, onRestored }: { lesson: Lesson; versions: Version[]; area: Version["area"]; file: string; current: string; disabled?: boolean; onRestored: (l: Lesson) => void }) {
@@ -15,8 +16,8 @@ export function VersionsButton({ lesson, versions, area, file, current, disabled
   if (!mine.length) return null;
   return (
     <>
-      <button className="btn" disabled={disabled} onClick={() => setOpen(true)} title={disabled ? "Aspetta la fine dell'elaborazione" : "Guarda, confronta e ripristina le versioni precedenti"}>
-        <History className="size-4" /> Versioni precedenti ({mine.length})
+      <button className="btn" disabled={disabled} onClick={() => setOpen(true)} title={disabled ? t("Aspetta la fine dell'elaborazione") : t("Guarda, confronta e ripristina le versioni precedenti")}>
+        <History className="size-4" /> {t("Versioni precedenti ({n})", { n: mine.length })}
       </button>
       {open && <VersionsDialog lesson={lesson} versions={mine} area={area} file={file} current={current} onClose={() => setOpen(false)} onRestored={onRestored} />}
     </>
@@ -40,12 +41,13 @@ function VersionsDialog({ lesson, versions, area, file, current, onClose, onRest
   const diff = useMemo(() => (text === null ? [] : diffLines(text, current)), [text, current]);
   const changed = diff.filter((d) => d.kind !== "same").length;
   const restore = async () => {
-    const what = area === "generati" ? "sintesi, mappa e materiale di studio" : "la trascrizione";
-    const ok = await ask(`Ripristinare ${what} del ${when(sel)}?\n\nLa versione attuale non si perde: diventa a sua volta una versione precedente.`, { title: "Ripristina", okLabel: "Ripristina", cancelLabel: "Annulla" });
+    const date = when(sel);
+    const question = area === "generati" ? t("Ripristinare sintesi, mappa e materiale di studio del {date}?", { date }) : t("Ripristinare la trascrizione del {date}?", { date });
+    const ok = await ask(`${question}\n\n${t("La versione attuale non si perde: diventa a sua volta una versione precedente.")}`, { title: t("Ripristina"), okLabel: t("Ripristina"), cancelLabel: t("Annulla") });
     if (!ok) return;
     try {
       const l = await ai.versionRestore(lesson.id, area, sel.stamp, area === "estratti" ? file : null);
-      toast("Versione ripristinata.");
+      toast(t("Versione ripristinata."));
       onRestored(l);
       onClose();
     } catch (e) {
@@ -54,16 +56,16 @@ function VersionsDialog({ lesson, versions, area, file, current, onClose, onRest
   };
   return (
     <Modal
-      title={area === "generati" ? "Versioni precedenti della sintesi" : "Versioni precedenti della trascrizione"}
+      title={area === "generati" ? t("Versioni precedenti della sintesi") : t("Versioni precedenti della trascrizione")}
       onClose={onClose}
       wide
       footer={
         <>
           <button className="btn" onClick={onClose}>
-            Chiudi
+            {t("Chiudi")}
           </button>
           <button className="btn btn-primary" onClick={restore}>
-            Ripristina questa versione
+            {t("Ripristina questa versione")}
           </button>
         </>
       }
@@ -80,16 +82,16 @@ function VersionsDialog({ lesson, versions, area, file, current, onClose, onRest
         </ul>
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center gap-2 text-xs text-zinc-500">
-            <div className="flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label="Vista">
+            <div className="flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700" role="group" aria-label={t("Vista")}>
               {(["diff", "text"] as const).map((m) => (
                 <button key={m} className={`rounded px-2 py-0.5 ${mode === m ? "bg-sky-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"}`} onClick={() => setMode(m)}>
-                  {m === "diff" ? "Differenze" : "Testo"}
+                  {m === "diff" ? t("Differenze") : t("Testo")}
                 </button>
               ))}
             </div>
-            {mode === "diff" && text !== null && <span>{changed ? `${changed} righe diverse dalla versione attuale: in rosso c'era allora, in verde c'è adesso` : "Uguale alla versione attuale"}</span>}
+            {mode === "diff" && text !== null && <span>{changed ? tn(changed, "1 riga diversa dalla versione attuale: in rosso c'era allora, in verde c'è adesso", "{n} righe diverse dalla versione attuale: in rosso c'era allora, in verde c'è adesso") : t("Uguale alla versione attuale")}</span>}
           </div>
-          {area === "generati" && sel.files.length > 1 && <p className="mb-2 text-xs text-zinc-500">Il ripristino riporta anche {sel.files.filter((f) => f !== file && f !== "info.json" && f !== "mappa.mmd").map((f) => ({ "mappa.json": "la mappa", "studio.json": "il materiale di studio" })[f] ?? f).join(" e ")} di quella versione.</p>}
+          {area === "generati" && sel.files.length > 1 && <p className="mb-2 text-xs text-zinc-500">{t("Il ripristino riporta anche {what} di quella versione.", { what: sel.files.filter((f) => f !== file && f !== "info.json" && f !== "mappa.mmd").map((f) => ({ "mappa.json": t("la mappa"), "studio.json": t("il materiale di studio") })[f] ?? f).join(t(" e ")) })}</p>}
           <div className="max-h-[55vh] overflow-auto rounded border border-zinc-200 font-mono text-xs dark:border-zinc-800" data-version>
             {text === null ? null : mode === "text" ? (
               <pre className="whitespace-pre-wrap p-2">{text}</pre>

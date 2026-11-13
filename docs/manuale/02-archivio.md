@@ -34,6 +34,18 @@ Puoi aprire questi file anche senza l'app. La cartella si cambia da **Impostazio
 - Cliccando il **nome del corso** in cima all'elenco delle lezioni si apre la **pagina del corso** (vedi sotto). Si apre anche quando scegli un corso e nessuna lezione.
 - Eliminare un corso lo sposta nel **Cestino** con tutte le sue lezioni: si può recuperare da lì.
 
+## Lingue
+
+Lezioni funziona in **italiano** e in **inglese**, e tiene separate tre lingue:
+
+- **La lingua dell'app** (menu, pulsanti, messaggi): **Impostazioni → Lingua**. Di default è quella del sistema: italiano se il computer è in italiano, inglese altrimenti.
+- **La lingua delle lezioni**: quella in cui parla il docente. Si sceglie per ogni corso, nella finestra del corso (**+** accanto a *Corsi*, oppure ⋯ → *Rinomina e modifica*). Serve alla trascrizione: Whisper sente meglio se sa in che lingua ascoltare, e la ripulitura non traduce mai. Se una lezione è in un'altra lingua (un ospite, un seminario in inglese in un corso italiano), cambiala dal pulsante **⋯** in alto nella lezione, sotto *Lingua parlata nella lezione*: *Lingua del corso*, *Italiano* o *Inglese*.
+- **La lingua dei materiali**: quella in cui vengono scritti sintesi, mappa, glossario, flashcard, domande d'esame, sintesi del corso e risposte della chat. Si sceglie per ogni corso, accanto alla lingua delle lezioni. Per esempio un corso in inglese con i materiali in italiano: la trascrizione resta in inglese, la sintesi è in italiano e la prima volta riporta tra parentesi i termini tecnici originali.
+
+Un corso nuovo prende per entrambe la lingua dell'app; i corsi fatti prima della versione 1.2 sono in italiano. Foto e PDF vengono letti nella lingua in cui sono scritti, qualunque sia quella del corso. Le esportazioni (pagina web, PDF, Markdown, Anki) usano la lingua dei materiali.
+
+Cambiare la lingua di un corso o di una lezione non rifà niente da solo: per trascrivere di nuovo usa **Rielabora anche le fonti**, per riscrivere solo i materiali nella nuova lingua **Rigenera** (vedi [Rielaborare](04-elaborare.md#rielaborare)).
+
 ## Lezioni
 
 - **+ Lezione** in alto nell'elenco: titolo (puoi cambiarlo dopo) e data, che di default è oggi.

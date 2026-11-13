@@ -9,8 +9,10 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:ui": "node scripts/smoke/run.mjs",
-    "docs:screenshots": "MANUAL=1 node scripts/smoke/run.mjs docs/manuale/img",
-    "docs:check": "node scripts/docs-check.mjs"
+    "test:ui:en": "LANG_UI=en node scripts/smoke/run.mjs",
+    "docs:screenshots": "MANUAL=1 node scripts/smoke/run.mjs docs/manuale/img && LANG_UI=en MANUAL=1 node scripts/smoke/run.mjs docs/manual/img",
+    "docs:check": "node scripts/docs-check.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

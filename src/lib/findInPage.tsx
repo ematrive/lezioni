@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
 
 /** Lower case without accents, one character per character so that offsets stay valid. */
 function foldKeep(s: string): string {
@@ -104,7 +105,7 @@ export function FindBar({ root, onClose, resetKey }: { root: () => HTMLElement |
         <input
           ref={input}
           className="field h-8 w-56 pl-7 text-sm"
-          placeholder="Cerca nella lezione"
+          placeholder={t("Cerca nella lezione")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -117,21 +118,21 @@ export function FindBar({ root, onClose, resetKey }: { root: () => HTMLElement |
               onClose();
             }
           }}
-          aria-label="Cerca nella lezione"
+          aria-label={t("Cerca nella lezione")}
         />
       </div>
       {query.trim().length >= 2 && (
         <span className="px-1 text-xs whitespace-nowrap text-zinc-500 tabular-nums" aria-live="polite">
-          {ranges.length ? `${current + 1} di ${ranges.length}` : "nessuno"}
+          {ranges.length ? t("{current} di {total}", { current: current + 1, total: ranges.length }) : t("nessuno")}
         </span>
       )}
-      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800" disabled={!ranges.length} onClick={() => step(-1)} title="Precedente (Maiusc+Invio)" aria-label="Precedente">
+      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800" disabled={!ranges.length} onClick={() => step(-1)} title={t("Precedente (Maiusc+Invio)")} aria-label={t("Precedente")}>
         <ChevronUp className="size-4" />
       </button>
-      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800" disabled={!ranges.length} onClick={() => step(1)} title="Successivo (Invio)" aria-label="Successivo">
+      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800" disabled={!ranges.length} onClick={() => step(1)} title={t("Successivo (Invio)")} aria-label={t("Successivo")}>
         <ChevronDown className="size-4" />
       </button>
-      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={onClose} title="Chiudi (Esc)" aria-label="Chiudi la ricerca">
+      <button className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={onClose} title={t("Chiudi (Esc)")} aria-label={t("Chiudi la ricerca")}>
         <X className="size-4" />
       </button>
     </div>

@@ -74,7 +74,7 @@ impl Writer {
                 self.close()?;
                 let i = self.chunks.len() + 1;
                 let path = self.dir.join(format!("parte-{i:02}.wav"));
-                let w = hound::WavWriter::create(&path, Self::spec()).context("scrittura di una parte della registrazione")?;
+                let w = hound::WavWriter::create(&path, Self::spec()).with_context(|| crate::tr!("scrittura di una parte della registrazione", "writing a part of the recording"))?;
                 self.chunks.push(Chunk { path, start: (i as u64 - 1) * self.window, secs: 0.0 });
                 self.current = Some((w, 0));
             }
@@ -100,13 +100,13 @@ impl Writer {
 /// is not supported here (the caller can fall back to sending the whole file).
 pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToken) -> Result<Vec<Chunk>> {
     std::fs::create_dir_all(out_dir)?;
-    let file = File::open(path).with_context(|| format!("apertura di {}", path.display()))?;
+    let file = File::open(path).with_context(|| crate::tr!("apertura di {}", "opening {}", path.display()))?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    let probed = symphonia::default::get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default()).map_err(|e| anyhow!("formato non riconosciuto: {e}"))?;
+    let probed = symphonia::default::get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default()).map_err(|e| anyhow!(crate::tr!("formato non riconosciuto: {e}", "unrecognized format: {e}")))?;
     let mut format = probed.format;
     // The first track we can decode (a video file also has a video track).
     let (track_id, mut decoder, rate) = format
@@ -117,7 +117,7 @@ pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToke
             let d = symphonia::default::get_codecs().make(&t.codec_params, &DecoderOptions::default()).ok()?;
             Some((t.id, d, t.codec_params.sample_rate))
         })
-        .ok_or_else(|| anyhow!("nessuna traccia audio decodificabile"))?;
+        .ok_or_else(|| anyhow!(crate::tr!("nessuna traccia audio decodificabile", "no decodable audio track")))?;
     let mut resampler: Option<Resampler> = rate.map(Resampler::new);
     let mut w = Writer { dir: out_dir.to_path_buf(), window, chunks: Vec::new(), current: None };
     let mut mono = Vec::new();
@@ -131,7 +131,7 @@ pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToke
             Ok(p) => p,
             Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(SymError::ResetRequired) => break,
-            Err(e) => return Err(anyhow!("lettura della registrazione: {e}")),
+            Err(e) => return Err(anyhow!(crate::tr!("lettura della registrazione: {e}", "reading the recording: {e}"))),
         };
         if packet.track_id() != track_id {
             continue;
@@ -140,7 +140,7 @@ pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToke
             Ok(b) => b,
             // A damaged packet: skip it, as players do.
             Err(SymError::DecodeError(_)) => continue,
-            Err(e) => return Err(anyhow!("decodifica della registrazione: {e}")),
+            Err(e) => return Err(anyhow!(crate::tr!("decodifica della registrazione: {e}", "decoding the recording: {e}"))),
         };
         let spec = *buf.spec();
         let ch = spec.channels.count().max(1);
@@ -156,7 +156,7 @@ pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToke
     }
     w.close()?;
     if !decoded_any || w.chunks.is_empty() {
-        bail!("la registrazione è vuota o non decodificabile");
+        bail!(crate::tr!("la registrazione è vuota o non decodificabile", "the recording is empty or cannot be decoded"));
     }
     Ok(w.chunks)
 }

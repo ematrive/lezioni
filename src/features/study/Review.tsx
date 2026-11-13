@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { review, toAppError, type DueCard } from "../../lib/api";
 import { Markdown } from "../../lib/Markdown";
 import { toast } from "../../lib/toast";
+import { t, tn } from "../../i18n";
 
 /** Shuffled, but cards seen before stay ahead of the new ones. */
 function order(cards: DueCard[]): DueCard[] {
@@ -53,16 +54,16 @@ export function ReviewSession({ scope, id, showLesson, onOpenLesson, onDone }: {
     const answered = done.known + done.again;
     return (
       <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-6 text-center dark:border-emerald-800 dark:bg-emerald-950/40" data-review-done>
-        <p className="text-lg font-medium">{answered ? "Ripasso di oggi finito!" : "Niente da ripassare oggi."}</p>
+        <p className="text-lg font-medium">{answered ? t("Ripasso di oggi finito!") : t("Niente da ripassare oggi.")}</p>
         {answered > 0 && (
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            {done.known} {done.known === 1 ? "carta sapevi" : "carte sapevi"}
-            {done.again > 0 && `, ${done.again} ${done.again === 1 ? "volta hai dovuto rivederne una" : "volte hai dovuto rivederne qualcuna"}`}. Le carte tornano fra 1, 3, 7, 14 e 30 giorni se continui a saperle.
+            {tn(done.known, "1 carta sapevi", "{n} carte sapevi")}
+            {done.again > 0 && ", " + tn(done.again, "1 volta hai dovuto rivederne una", "{n} volte hai dovuto rivederne qualcuna")}. {t("Le carte tornano fra 1, 3, 7, 14 e 30 giorni se continui a saperle.")}
           </p>
         )}
         {counts.new > 0 && answered > 0 && (
           <button className="btn mt-3" onClick={load}>
-            <RotateCcw className="size-4" /> Altre carte nuove
+            <RotateCcw className="size-4" /> {t("Altre carte nuove")}
           </button>
         )}
       </div>
@@ -71,10 +72,10 @@ export function ReviewSession({ scope, id, showLesson, onOpenLesson, onDone }: {
   return (
     <div>
       <p className="mb-2 text-sm text-zinc-500">
-        {queue.length} {queue.length === 1 ? "carta" : "carte"} in questa sessione
-        {counts.due > 0 && ` · ${counts.due} da ripassare`}
-        {counts.new > 0 && ` · ${counts.new} mai viste`}
-        {card.box === null && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800 dark:bg-sky-950 dark:text-sky-300">nuova</span>}
+        {tn(queue.length, "1 carta in questa sessione", "{n} carte in questa sessione")}
+        {counts.due > 0 && " · " + t("{n} da ripassare", { n: counts.due })}
+        {counts.new > 0 && " · " + t("{n} mai viste", { n: counts.new })}
+        {card.box === null && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800 dark:bg-sky-950 dark:text-sky-300">{t("nuova")}</span>}
       </p>
       {showLesson && (
         <p className="mb-1 text-xs text-zinc-500">
@@ -91,15 +92,15 @@ export function ReviewSession({ scope, id, showLesson, onOpenLesson, onDone }: {
       <div className="mt-3 flex justify-center gap-2">
         {!flipped ? (
           <button className="btn btn-primary" onClick={() => setFlipped(true)}>
-            <RotateCcw className="size-4" /> Mostra la risposta
+            <RotateCcw className="size-4" /> {t("Mostra la risposta")}
           </button>
         ) : (
           <>
             <button className="btn" disabled={busy} onClick={() => answer(false)}>
-              <X className="size-4 text-rose-600" /> Non la sapevo
+              <X className="size-4 text-rose-600" /> {t("Non la sapevo")}
             </button>
             <button className="btn btn-primary" disabled={busy} onClick={() => answer(true)}>
-              <Check className="size-4" /> La sapevo
+              <Check className="size-4" /> {t("La sapevo")}
             </button>
           </>
         )}
@@ -126,7 +127,7 @@ export function FlashCard({ text, flipped, onFlip }: { text: string; flipped: bo
           onFlip();
         }
       }}
-      title="Clicca per girare"
+      title={t("Clicca per girare")}
       data-card
     >
       <div className="max-w-full">

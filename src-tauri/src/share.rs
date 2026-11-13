@@ -15,7 +15,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::library::{EXTRACTS_DIR, GENERATED_DIR, LESSON_FILE, Lesson, LessonMeta, Library, SOURCES_DIR, SourceKind, is_plain_file_name, safe_name};
+use crate::lang::Lang;
+use crate::library::{CourseLangs, EXTRACTS_DIR, GENERATED_DIR, LESSON_FILE, Lesson, LessonMeta, Library, SOURCES_DIR, SourceKind, is_plain_file_name, safe_name};
 use crate::pipeline::{self, MapNode, mermaid};
 
 pub const PACKAGE_FILE: &str = "pacchetto.json";
@@ -30,6 +31,11 @@ pub struct PackageCourse {
     /// The course's terms travel with the package (they help whoever processes it again).
     #[serde(default)]
     pub terms: String,
+    /// Missing in packages from before 1.2: Italian. Older versions ignore these fields.
+    #[serde(default)]
+    pub language: Lang,
+    #[serde(default)]
+    pub materials_language: Lang,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,12 +98,12 @@ fn add_dir<W: Write + std::io::Seek>(zw: &mut zip::ZipWriter<W>, dir: &Path, pre
 /// Writes a `.lezione` package with the given lessons (all from the same course).
 pub fn export_package(lib: &Library, lesson_ids: &[String], include: Include, dest: &Path) -> Result<()> {
     if lesson_ids.is_empty() {
-        bail!("nessuna lezione da esportare");
+        bail!(crate::tr!("nessuna lezione da esportare", "no lectures to export"));
     }
     let lessons: Vec<Lesson> = lesson_ids.iter().map(|id| lib.lesson(id)).collect::<Result<_>>()?;
     let course = lib.course(&lessons[0].course_id)?;
     let tmp = dest.with_extension("lezione.tmp");
-    let mut zw = zip::ZipWriter::new(fs::File::create(&tmp).with_context(|| format!("creazione di {}", dest.display()))?);
+    let mut zw = zip::ZipWriter::new(fs::File::create(&tmp).with_context(|| crate::tr!("creazione di {}", "creating {}", dest.display()))?);
     let mut folders = Vec::new();
     for (i, l) in lessons.iter().enumerate() {
         let folder = format!("lezioni/{:02}", i + 1);
@@ -136,7 +142,7 @@ pub fn export_package(lib: &Library, lesson_ids: &[String], include: Include, de
         format: FORMAT,
         app: format!("Lezioni {}", env!("CARGO_PKG_VERSION")),
         exported: Utc::now(),
-        course: PackageCourse { name: course.meta.name.clone(), teacher: course.meta.teacher.clone(), terms: course.meta.terms.clone() },
+        course: PackageCourse { name: course.meta.name.clone(), teacher: course.meta.teacher.clone(), terms: course.meta.terms.clone(), language: course.meta.language, materials_language: course.meta.materials_language },
         lessons: folders,
     };
     zw.start_file(PACKAGE_FILE, zip_options())?;
@@ -170,20 +176,20 @@ pub struct PackageLesson {
 }
 
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<fs::File>> {
-    zip::ZipArchive::new(fs::File::open(path).with_context(|| format!("apertura di {}", path.display()))?).map_err(|_| anyhow!("{} non è un pacchetto di lezioni valido", path.display()))
+    zip::ZipArchive::new(fs::File::open(path).with_context(|| crate::tr!("apertura di {}", "opening {}", path.display()))?).map_err(|_| anyhow!(crate::tr!("{} non è un pacchetto di lezioni valido", "{} is not a valid lecture package", path.display())))
 }
 
 fn read_entry(z: &mut zip::ZipArchive<fs::File>, name: &str) -> Result<Vec<u8>> {
-    let mut f = z.by_name(name).map_err(|_| anyhow!("pacchetto incompleto: manca {name}"))?;
+    let mut f = z.by_name(name).map_err(|_| anyhow!(crate::tr!("pacchetto incompleto: manca {name}", "incomplete package: {name} is missing")))?;
     let mut v = Vec::new();
     f.read_to_end(&mut v)?;
     Ok(v)
 }
 
 fn manifest(z: &mut zip::ZipArchive<fs::File>) -> Result<Manifest> {
-    let m: Manifest = serde_json::from_slice(&read_entry(z, PACKAGE_FILE)?).context("pacchetto non valido")?;
+    let m: Manifest = serde_json::from_slice(&read_entry(z, PACKAGE_FILE)?).with_context(|| crate::tr!("pacchetto non valido", "invalid package"))?;
     if m.format > FORMAT {
-        bail!("pacchetto creato con una versione più recente di Lezioni: aggiorna l'app");
+        bail!(crate::tr!("pacchetto creato con una versione più recente di Lezioni: aggiorna l'app", "package made with a newer version of Lezioni: update the app"));
     }
     Ok(m)
 }
@@ -235,9 +241,10 @@ pub fn import(lib: &Library, path: &Path, course_id: Option<&str>, on_existing: 
         Some(id) => lib.course(id)?.meta.id,
         None => match lib.courses()?.into_iter().find(|c| c.meta.name.to_lowercase() == m.course.name.to_lowercase()) {
             Some(c) => c.meta.id,
-            None => lib.create_course(&m.course.name, &m.course.teacher, &m.course.terms)?.meta.id,
+            None => lib.create_course_in(&m.course.name, &m.course.teacher, &m.course.terms, CourseLangs { language: m.course.language, materials_language: m.course.materials_language })?.meta.id,
         },
     };
+    let target_lang = lib.course(&course_id)?.meta.language;
     // Staged inside the archive, so the final move is a rename on the same disk.
     let stage = lib.root().join(format!(".importazione-{}", uuid::Uuid::new_v4()));
     let r = (|| {
@@ -246,7 +253,11 @@ pub fn import(lib: &Library, path: &Path, course_id: Option<&str>, on_existing: 
             let mut meta: LessonMeta = serde_json::from_slice(&read_entry(&mut z, &format!("{folder}/{LESSON_FILE}"))?)?;
             // The package comes from someone else: a source "file" must not be a path.
             if let Some(s) = meta.sources.iter().find(|s| !is_plain_file_name(&s.file)) {
-                bail!("pacchetto non valido: nome di file non ammesso ({})", s.file);
+                bail!(crate::tr!("pacchetto non valido: nome di file non ammesso ({})", "invalid package: file name not allowed ({})", s.file));
+            }
+            // Into a course spoken in another language: the lesson keeps its own.
+            if meta.language.is_none() && m.course.language != target_lang {
+                meta.language = Some(m.course.language);
             }
             let mut replaced = None;
             if let Ok(existing) = lib.lesson(&meta.id) {
@@ -310,10 +321,13 @@ pub fn export_markdown(lib: &Library, lesson_ids: &[String], dest: &Path) -> Res
     for id in lesson_ids {
         let l = lib.lesson(id)?;
         let course = lib.course(&l.course_id)?.meta.name;
+        // Headings and file names in the language the materials are written in.
+        let ml = lib.langs(&l).1;
         let o = pipeline::outputs(&l);
         let dir = dest.join(safe_name(&format!("{} {}", l.meta.date, l.meta.title), 100));
         fs::create_dir_all(&dir)?;
-        let front = format!("---\ncorso: \"{}\"\nlezione: \"{}\"\ndata: {}\n---\n\n", course.replace('"', "'"), l.meta.title.replace('"', "'"), l.meta.date);
+        let (kc, kl, kd) = ml.pick(("corso", "lezione", "data"), ("course", "lecture", "date"));
+        let front = format!("---\n{kc}: \"{}\"\n{kl}: \"{}\"\n{kd}: {}\n---\n\n", course.replace('"', "'"), l.meta.title.replace('"', "'"), l.meta.date);
         let codes: Vec<(String, String)> = o.info.as_ref().map(|i| i.sources.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
         let legend: String = codes
             .iter()
@@ -329,38 +343,41 @@ pub fn export_markdown(lib: &Library, lesson_ids: &[String], dest: &Path) -> Res
                     _ => format!("*({})*", &c[1]),
                 }
             });
-            let legend = if legend.is_empty() { String::new() } else { format!("\n\n---\n\n**Fonti**\n\n{legend}") };
-            fs::write(dir.join("Sintesi.md"), format!("{front}# {}\n\n{s}{legend}\n", l.meta.title))?;
+            let legend = if legend.is_empty() { String::new() } else { format!("\n\n---\n\n**{}**\n\n{legend}", ml.pick("Fonti", "Sources")) };
+            fs::write(dir.join(ml.pick("Sintesi.md", "Summary.md")), format!("{front}# {}\n\n{s}{legend}\n", l.meta.title))?;
         }
         if let Some(m) = &o.map {
             let mut outline = String::new();
             map_outline(m, 0, &mut outline);
-            fs::write(dir.join("Mappa.md"), format!("{front}# Mappa · {}\n\n```mermaid\n{}```\n\n## Schema\n\n{outline}", l.meta.title, mermaid(m)))?;
+            let (file, head, outline_head) = ml.pick(("Mappa.md", "Mappa", "Schema"), ("Map.md", "Map", "Outline"));
+            fs::write(dir.join(file), format!("{front}# {head} · {}\n\n```mermaid\n{}```\n\n## {outline_head}\n\n{outline}", l.meta.title, mermaid(m)))?;
         }
         if let Some(st) = &o.study {
-            let mut t = format!("{front}# Studio · {}\n\n## Flashcard\n\n", l.meta.title);
+            let mut t = format!("{front}# {} · {}\n\n## Flashcard\n\n", ml.pick("Studio", "Study"), l.meta.title);
+            let (q, a) = ml.pick(("D", "R"), ("Q", "A"));
             for c in &st.flashcard {
-                t.push_str(&format!("**D:** {}\n\n**R:** {}\n\n", c.domanda, c.risposta));
+                t.push_str(&format!("**{q}:** {}\n\n**{a}:** {}\n\n", c.domanda, c.risposta));
             }
-            t.push_str("## Domande d'esame\n\n");
+            t.push_str(ml.pick("## Domande d'esame\n\n", "## Exam questions\n\n"));
             for (i, q) in st.domande_esame.iter().enumerate() {
                 t.push_str(&format!("{}. **{}**\n\n   {}\n\n", i + 1, q.domanda, q.traccia.replace('\n', "\n   ")));
             }
-            t.push_str("## Glossario\n\n");
+            t.push_str(ml.pick("## Glossario\n\n", "## Glossary\n\n"));
             for g in &st.glossario {
                 t.push_str(&format!("- **{}**: {}\n", g.termine, g.definizione));
             }
-            fs::write(dir.join("Studio.md"), t)?;
+            fs::write(dir.join(ml.pick("Studio.md", "Study.md")), t)?;
         }
         for s in &l.meta.sources {
             if let Some(text) = o.extracts.get(&s.id) {
-                let what = if matches!(s.kind, SourceKind::Audio | SourceKind::Video) { "Trascrizione" } else { "Testo" };
+                let what = if matches!(s.kind, SourceKind::Audio | SourceKind::Video) { ml.pick("Trascrizione", "Transcript") } else { ml.pick("Testo", "Text") };
                 let name = safe_name(&format!("{what} - {}", s.original_name), 110);
                 fs::write(dir.join(format!("{name}.md")), format!("{front}# {what}: {}\n\n{text}\n", s.original_name))?;
             }
         }
         if !l.meta.notes.trim().is_empty() {
-            fs::write(dir.join("Note.md"), format!("{front}# Note\n\n{}\n", l.meta.notes))?;
+            let notes = ml.pick("Note", "Notes");
+            fs::write(dir.join(format!("{notes}.md")), format!("{front}# {notes}\n\n{}\n", l.meta.notes))?;
         }
         out.push(dir);
     }
@@ -383,17 +400,18 @@ pub fn export_anki(lib: &Library, lesson_ids: &[String], dest: &Path) -> Result<
         let tag = |s: &str| s.split_whitespace().collect::<Vec<_>>().join("_");
         let tags = format!("{} {}", tag(&course), tag(&format!("{} {}", l.meta.date, l.meta.title)));
         let Some(st) = pipeline::outputs(&l).study else { continue };
+        let exam = lib.langs(&l).1.pick("domanda_esame", "exam_question");
         for c in &st.flashcard {
             t.push_str(&format!("{}\t{}\t{tags}\n", anki_field(&c.domanda), anki_field(&c.risposta)));
             n += 1;
         }
         for q in &st.domande_esame {
-            t.push_str(&format!("{}\t{}\t{tags} domanda_esame\n", anki_field(&q.domanda), anki_field(&q.traccia)));
+            t.push_str(&format!("{}\t{}\t{tags} {exam}\n", anki_field(&q.domanda), anki_field(&q.traccia)));
             n += 1;
         }
     }
     if n == 0 {
-        bail!("nessuna flashcard: elabora prima le lezioni con Gemini");
+        bail!(crate::tr!("nessuna flashcard: elabora prima le lezioni con Gemini", "no flashcards: process the lectures with Gemini first"));
     }
     fs::write(dest, t)?;
     Ok(n)
@@ -431,6 +449,32 @@ mod tests {
         fs::create_dir_all(l.path.join("estratti/versioni/vecchia")).unwrap();
         fs::write(l.path.join("estratti/versioni/vecchia/reg.m4a.md"), "old").unwrap();
         lib.lesson(&l.meta.id).unwrap()
+    }
+
+    #[test]
+    fn package_keeps_the_languages() {
+        let a = tempfile::tempdir().unwrap();
+        let lib_a = Library::open(a.path()).unwrap();
+        let l = lesson_with_outputs(&lib_a, "Operations research");
+        lib_a.update_course(&l.course_id, "Operations research", "", "", Some(CourseLangs { language: Lang::En, materials_language: Lang::It })).unwrap();
+        let pkg = a.path().join("simplex.lezione");
+        export_package(&lib_a, std::slice::from_ref(&l.meta.id), Include::default(), &pkg).unwrap();
+
+        // A new course takes both languages from the package.
+        let b = tempfile::tempdir().unwrap();
+        let lib_b = Library::open(b.path()).unwrap();
+        let r = import(&lib_b, &pkg, None, OnExisting::Skip).unwrap();
+        let c = lib_b.course(&r.course_id).unwrap().meta;
+        assert_eq!((c.language, c.materials_language), (Lang::En, Lang::It));
+        assert_eq!(lib_b.lesson(&l.meta.id).unwrap().meta.language, None);
+
+        // Into an Italian course: the lesson stays English.
+        let d = tempfile::tempdir().unwrap();
+        let lib_d = Library::open(d.path()).unwrap();
+        let it = lib_d.create_course("Ricerca operativa", "", "").unwrap();
+        import(&lib_d, &pkg, Some(&it.meta.id), OnExisting::Skip).unwrap();
+        let got = lib_d.lesson(&l.meta.id).unwrap();
+        assert_eq!(lib_d.langs(&got).0, Lang::En);
     }
 
     #[test]
@@ -506,7 +550,7 @@ mod tests {
     /// A package written by hand (or by someone malicious).
     fn handmade(path: &Path, meta: &serde_json::Value, extra: &[(&str, &[u8])]) {
         let mut zw = zip::ZipWriter::new(fs::File::create(path).unwrap());
-        let m = Manifest { format: 1, app: "x".into(), exported: Utc::now(), course: PackageCourse { name: "RO".into(), teacher: String::new(), terms: String::new() }, lessons: vec!["lezioni/01".into()] };
+        let m = Manifest { format: 1, app: "x".into(), exported: Utc::now(), course: PackageCourse { name: "RO".into(), teacher: String::new(), terms: String::new(), language: Lang::It, materials_language: Lang::It }, lessons: vec!["lezioni/01".into()] };
         zw.start_file(PACKAGE_FILE, zip_options()).unwrap();
         zw.write_all(&serde_json::to_vec(&m).unwrap()).unwrap();
         zw.start_file("lezioni/01/lezione.json", zip_options()).unwrap();

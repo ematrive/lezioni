@@ -1,8 +1,9 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { ArrowUpRight, ChevronDown, ChevronRight, ChevronUp, FileAudio, FileDown, FileText, FileVideo, Image as ImageIcon, Pause, Pencil, Plus, RotateCcw, Shuffle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ai, api, courseAi, costLine, share, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
-import { Markdown, MARK_ICON, MARK_LABEL, toSecs } from "../../lib/Markdown";
+import { ai, api, courseAi, costLine, share, fileUrl, sourceFile, toAppError, type Course, type JobEvent, type Bookmark, type BookmarkKind, type Lang, type Lesson, type MapNode, type Outputs, type Study } from "../../lib/api";
+import { Markdown, MARK_ICON, toSecs } from "../../lib/Markdown";
+import { locale, t, tn, uiLang } from "../../i18n";
 import { buildMapHtml } from "../share/html";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
@@ -46,7 +47,7 @@ export function useJob(lessonId: string): JobState | null {
 
 export async function startProcessing(lesson: Lesson, force: boolean, onFinished: () => void) {
   if (jobs[lesson.id]) return;
-  setJob(lesson.id, { jobId: null, done: 0, total: lesson.sources.length + 1, message: "Avvio…", since: Date.now() });
+  setJob(lesson.id, { jobId: null, done: 0, total: lesson.sources.length + 1, message: t("Avvio…"), since: Date.now() });
   const onEvent = (e: JobEvent) => {
     const cur = jobs[lesson.id] ?? { jobId: null, done: 0, total: 1, message: "", since: Date.now() };
     if (e.event === "step") setJob(lesson.id, { ...cur, done: e.done, total: e.total, message: e.message, detail: undefined, since: Date.now() });
@@ -55,7 +56,7 @@ export async function startProcessing(lesson: Lesson, force: boolean, onFinished
       setJob(lesson.id, null);
       if (e.event === "done") {
         const tokens = e.usage.promptTokenCount + e.usage.candidatesTokenCount + e.usage.thoughtsTokenCount;
-        toast(`«${lesson.title}» elaborata: ${tokens.toLocaleString("it-IT")} token (${costLine(e.usage)}).`);
+        toast(t("«{title}» elaborata: {tokens} token ({cost}).", { title: lesson.title, tokens: tokens.toLocaleString(locale()), cost: costLine(e.usage) }));
         if (e.warnings.length) toast(e.warnings.join("\n"), "error");
       } else if (e.message !== "annullato") toast(e.message, "error");
       onFinished();
@@ -73,14 +74,14 @@ export async function startProcessing(lesson: Lesson, force: boolean, onFinished
 /** The course summary, as a job of the course (same store and bar as the lessons). */
 export async function startCourseSummary(course: Course, onFinished: () => void) {
   if (jobs[course.id]) return;
-  setJob(course.id, { jobId: null, done: 0, total: 1, message: "Avvio…", since: Date.now() });
+  setJob(course.id, { jobId: null, done: 0, total: 1, message: t("Avvio…"), since: Date.now() });
   const onEvent = (e: JobEvent) => {
     const cur = jobs[course.id] ?? { jobId: null, done: 0, total: 1, message: "", since: Date.now() };
     if (e.event === "step") setJob(course.id, { ...cur, done: e.done, total: e.total, message: e.message, detail: undefined, since: Date.now() });
     else if (e.event === "detail") setJob(course.id, { ...cur, detail: e.message });
     else {
       setJob(course.id, null);
-      if (e.event === "done") toast(`Sintesi del corso «${course.name}» pronta (${costLine(e.usage)}).`);
+      if (e.event === "done") toast(t("Sintesi del corso «{name}» pronta ({cost}).", { name: course.name, cost: costLine(e.usage) }));
       else if (e.message !== "annullato") toast(e.message, "error");
       onFinished();
     }
@@ -110,14 +111,14 @@ export function JobBar({ job }: { job: JobState }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{job.message}</div>
         <div className="truncate text-xs text-zinc-500" data-job-detail>
-          {job.detail ?? "In corso…"} · {elapsed}
+          {job.detail ?? t("In corso…")} · {elapsed}
         </div>
         <div className="mt-1 h-1 overflow-hidden rounded bg-sky-200 dark:bg-sky-900">
           <div className="h-full bg-sky-600 transition-all" style={{ width: `${Math.max(pct, 3)}%` }} />
         </div>
       </div>
-      <button className="btn" disabled={!job.jobId} onClick={() => job.jobId && ai.cancel(job.jobId)} title="Annulla l'elaborazione">
-        <X className="size-4" /> Annulla
+      <button className="btn" disabled={!job.jobId} onClick={() => job.jobId && ai.cancel(job.jobId)} title={t("Annulla l'elaborazione")}>
+        <X className="size-4" /> {t("Annulla")}
       </button>
     </div>
   );
@@ -151,7 +152,7 @@ export interface Editing {
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const fmtDate = (iso: string) => new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+const fmtDate = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "short", timeStyle: "short" });
 
 /** Adds a term to the course's ones (read fresh, so that two adds in a row both stay). */
 export async function addCourseTerm(courseId: string, term: string) {
@@ -159,11 +160,11 @@ export async function addCourseTerm(courseId: string, term: string) {
   if (!c) return;
   const have = c.terms.split(/[,;\n]/).map((t) => t.trim().toLowerCase());
   if (have.includes(term.toLowerCase())) {
-    toast(`«${term}» è già tra le parole del corso.`);
+    toast(t("«{term}» è già tra le parole del corso.", { term }));
     return;
   }
   await api.updateCourse(c.id, c.name, c.teacher, c.terms.trim() ? `${c.terms.trim()}, ${term}` : term);
-  toast(`«${term}» aggiunta alle parole del corso: varrà dalle prossime elaborazioni.`);
+  toast(t("«{term}» aggiunta alle parole del corso: varrà dalle prossime elaborazioni.", { term }));
 }
 
 /** The paragraphs of a timed transcript touched by a selection: where they are in the text and
@@ -226,15 +227,15 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
     return (
       <div className="space-y-2 rounded-md border border-sky-300 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/40">
         <p className="text-sm">
-          Nuova ripulitura dal testo di Whisper <span className="text-xs text-zinc-500">({proposal.note})</span>
+          {t("Nuova ripulitura dal testo di Whisper")} <span className="text-xs text-zinc-500">({proposal.note})</span>
         </p>
         <div className="grid gap-2 md:grid-cols-2">
           <div>
-            <p className="mb-1 text-xs text-zinc-500">Ora</p>
+            <p className="mb-1 text-xs text-zinc-500">{t("Ora|testo attuale")}</p>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs dark:bg-zinc-900">{text.slice(proposal.start, proposal.end)}</pre>
           </div>
           <div>
-            <p className="mb-1 text-xs text-zinc-500">Proposta</p>
+            <p className="mb-1 text-xs text-zinc-500">{t("Proposta")}</p>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs dark:bg-zinc-900" data-proposal>
               {proposal.text}
             </pre>
@@ -242,7 +243,7 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn" onClick={() => setProposal(null)}>
-            Tieni com'era
+            {t("Tieni com'era")}
           </button>
           <button
             className="btn btn-primary"
@@ -251,21 +252,21 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
               setProposal(null);
             }}
           >
-            Sostituisci
+            {t("Sostituisci")}
           </button>
         </div>
       </div>
     );
-  if (!piece) return <p className="text-xs text-zinc-500">Seleziona un pezzo del testo per farlo ripulire di nuovo dal testo di Whisper, anche con un altro modello.</p>;
+  if (!piece) return <p className="text-xs text-zinc-500">{t("Seleziona un pezzo del testo per farlo ripulire di nuovo dal testo di Whisper, anche con un altro modello.")}</p>;
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <button className="btn" disabled={busy} onClick={go}>
-        <Sparkles className="size-4" /> {busy ? "Ripulitura…" : "Ripulisci di nuovo la selezione"}
+        <Sparkles className="size-4" /> {busy ? t("Ripulitura…") : t("Ripulisci di nuovo la selezione")}
       </button>
       <label className="flex items-center gap-1 text-xs text-zinc-500">
-        con
-        <select className="field max-w-72 py-0.5 text-sm" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Modello">
-          <option value="">il modello della ripulitura</option>
+        {t("con|modello")}
+        <select className="field max-w-72 py-0.5 text-sm" value={model} onChange={(e) => setModel(e.target.value)} aria-label={t("Modello")}>
+          <option value="">{t("il modello della ripulitura")}</option>
           {models.map((m) => (
             <option key={m} value={m}>
               {m}
@@ -279,7 +280,7 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
 
 /** Markdown text editor with find and replace (all occurrences, ignoring case). With `reclean`,
  *  a selected piece of a transcript can be cleaned again from Whisper's text. */
-export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string }; timed?: boolean }) {
+export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string }; timed?: Lang | false }) {
   const [text, setText] = useState(initial);
   const [sel, setSel] = useState<[number, number]>([0, 0]);
   const [find, setFind] = useState("");
@@ -300,8 +301,8 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
   return (
     <div className="space-y-2" data-editor>
       <div className="flex flex-wrap items-center gap-2">
-        <input className="field max-w-52" placeholder="Trova" value={find} onChange={(e) => setFind(e.target.value)} spellCheck={false} />
-        <input className="field max-w-52" placeholder="Sostituisci con" value={repl} onChange={(e) => setRepl(e.target.value)} spellCheck={false} />
+        <input className="field max-w-52" placeholder={t("Trova")} value={find} onChange={(e) => setFind(e.target.value)} spellCheck={false} />
+        <input className="field max-w-52" placeholder={t("Sostituisci con")} value={repl} onChange={(e) => setRepl(e.target.value)} spellCheck={false} />
         <button
           className="btn"
           disabled={!n}
@@ -309,10 +310,10 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
             if (!re) return;
             setText(text.replace(re, () => repl));
             setReplaced(repl.trim() || null);
-            toast(`${n} ${n === 1 ? "sostituzione" : "sostituzioni"}.`);
+            toast(tn(n, "1 sostituzione.", "{n} sostituzioni."));
           }}
         >
-          Sostituisci tutte ({n})
+          {t("Sostituisci tutte ({n})", { n })}
         </button>
         {replaced && course && (
           <button
@@ -322,7 +323,7 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
               setReplaced(null);
             }}
           >
-            Aggiungi «{replaced}» alle parole del corso
+            {t("Aggiungi «{term}» alle parole del corso", { term: replaced })}
           </button>
         )}
       </div>
@@ -332,16 +333,18 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
           {timed && sel[1] > sel[0] && pieceAt(text, sel[0], sel[1]) && (
             <button
               className="btn"
-              title="I paragrafi selezionati diventano una riga «Pausa» (intervallo, silenzio, chiacchiere fuori lezione)"
+              title={t("I paragrafi selezionati diventano una riga «Pausa» (intervallo, silenzio, chiacchiere fuori lezione)")}
               onClick={() => {
                 const p = pieceAt(text, sel[0], sel[1]);
                 if (!p) return;
-                const line = `[${clock(p.from)}] *(pausa ${p.to === null ? "fino alla fine" : `fino a ${clock(p.to)}`})*`;
+                // In the lesson's language, as the pauses Rust writes (`pauses.rs`).
+                const until = timed === "en" ? (p.to === null ? "pause until the end" : `pause until ${clock(p.to)}`) : p.to === null ? "pausa fino alla fine" : `pausa fino a ${clock(p.to)}`;
+                const line = `[${clock(p.from)}] *(${until})*`;
                 setText(text.slice(0, p.start) + line + text.slice(p.end));
                 setSel([0, 0]);
               }}
             >
-              <Pause className="size-4" /> Segna come pausa
+              <Pause className="size-4" /> {t("Segna come pausa")}
             </button>
           )}
         </div>
@@ -356,19 +359,19 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
       />
       <div className="flex justify-end gap-2">
         <button className="btn" onClick={onCancel}>
-          Annulla
+          {t("Annulla")}
         </button>
         <button className="btn btn-primary" disabled={saving || text === initial} onClick={save}>
-          Salva
+          {t("Salva")}
         </button>
       </div>
     </div>
   );
 }
 
-function EditButton({ editing, onClick, label = "Modifica" }: { editing?: Editing; onClick: () => void; label?: string }) {
+function EditButton({ editing, onClick, label = t("Modifica") }: { editing?: Editing; onClick: () => void; label?: string }) {
   return (
-    <button className="btn" disabled={!editing} onClick={onClick} title={editing ? "Correggi il testo a mano" : "Aspetta la fine dell'elaborazione"}>
+    <button className="btn" disabled={!editing} onClick={onClick} title={editing ? t("Correggi il testo a mano") : t("Aspetta la fine dell'elaborazione")}>
       <Pencil className="size-4" /> {label}
     </button>
   );
@@ -389,7 +392,7 @@ function RegenerateHint({ lesson, outputs }: { lesson: Lesson; outputs: Outputs 
   if (!edited && !newMarks(outputs)) return null;
   return (
     <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      {edited ? "Hai corretto la trascrizione" : "Hai aggiunto dei segnaposti"}: premi <b>Rigenera</b> per aggiornare sintesi, mappa e materiale di studio. Le trascrizioni restano come sono, con le tue correzioni.
+      {edited ? t("Hai corretto la trascrizione") : t("Hai aggiunto dei segnaposti")}: {t("premi")} <b>{t("Rigenera")}</b> {t("per aggiornare sintesi, mappa e materiale di studio. Le trascrizioni restano come sono, con le tue correzioni.")}
     </p>
   );
 }
@@ -400,18 +403,21 @@ const clock = (secs: number) => {
   return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
 };
 
+/** The name of a kind of bookmark, in the interface language. */
+const markLabel = (kind: BookmarkKind) => (kind === "importante" ? t("Importante") : kind === "dubbio" ? t("Non ho capito") : t("Nota|segnaposto"));
+
 /** Next to a player: mark the current minute. */
 function MarkButtons({ onMark, onNote }: { onMark: (kind: BookmarkKind) => void; onNote: () => void }) {
   const b = (label: string, key: string, icon: string, f: () => void) => (
-    <button className="btn btn-sm" onClick={f} title={`${label} (tasto ${key} mentre ascolti)`} aria-label={label}>
+    <button className="btn btn-sm" onClick={f} title={t("{label} (tasto {key} mentre ascolti)", { label, key })} aria-label={label}>
       {icon}
     </button>
   );
   return (
-    <span className="flex shrink-0 gap-1" role="group" aria-label="Segna questo punto">
-      {b("Importante", "I", MARK_ICON.importante, () => onMark("importante"))}
-      {b("Non ho capito", "D", MARK_ICON.dubbio, () => onMark("dubbio"))}
-      {b("Nota", "N", MARK_ICON.nota, onNote)}
+    <span className="flex shrink-0 gap-1" role="group" aria-label={t("Segna questo punto")}>
+      {b(markLabel("importante"), "I", MARK_ICON.importante, () => onMark("importante"))}
+      {b(markLabel("dubbio"), "D", MARK_ICON.dubbio, () => onMark("dubbio"))}
+      {b(markLabel("nota"), "N", MARK_ICON.nota, onNote)}
     </span>
   );
 }
@@ -462,24 +468,24 @@ function MarkList({
           <span className="font-mono text-xs text-zinc-500">
             {MARK_ICON.nota} {clock(draft.at)}
           </span>
-          <input autoFocus className="field h-7 flex-1" placeholder="Cosa vuoi ricordare di questo punto?" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
-          <button className="btn btn-primary btn-sm">Aggiungi</button>
+          <input autoFocus className="field h-7 flex-1" placeholder={t("Cosa vuoi ricordare di questo punto?")} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setDraft(null)} />
+          <button className="btn btn-primary btn-sm">{t("Aggiungi")}</button>
           <button type="button" className="btn btn-sm" onClick={() => setDraft(null)}>
-            Annulla
+            {t("Annulla")}
           </button>
         </form>
       )}
       {marks.length > 0 && (
         <button className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          {marks.length} {marks.length === 1 ? "segnaposto" : "segnaposti"} {!open && <span className="ml-1 tracking-widest">{marks.map((m) => MARK_ICON[m.kind]).join("")}</span>}
+          {tn(marks.length, "1 segnaposto", "{n} segnaposti")} {!open && <span className="ml-1 tracking-widest">{marks.map((m) => MARK_ICON[m.kind]).join("")}</span>}
         </button>
       )}
       {open && marks.length > 0 && (
-        <ul className="mt-1 space-y-1 border-l-2 border-zinc-200 pl-3 dark:border-zinc-800" aria-label="Segnaposti">
+        <ul className="mt-1 space-y-1 border-l-2 border-zinc-200 pl-3 dark:border-zinc-800" aria-label={t("Segnaposti")}>
           {marks.map((m) => (
             <li key={m.id} className="group flex items-center gap-2">
-              <span title={MARK_LABEL[m.kind]}>{MARK_ICON[m.kind]}</span>
+              <span title={markLabel(m.kind)}>{MARK_ICON[m.kind]}</span>
               <button className="rounded bg-sky-100 px-1 font-mono text-xs text-sky-800 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300" onClick={() => seekTo(m.at)}>
                 {clock(m.at)}
               </button>
@@ -505,12 +511,12 @@ function MarkList({
                     setEditId(m.id);
                     setEditNote(m.note);
                   }}
-                  title="Clicca per scrivere una nota"
+                  title={t("Clicca per scrivere una nota")}
                 >
-                  {m.note || MARK_LABEL[m.kind]}
+                  {m.note || markLabel(m.kind)}
                 </button>
               )}
-              <button className="text-zinc-400 opacity-0 group-hover:opacity-100 hover:text-red-600" onClick={() => run(() => ai.removeBookmark(lessonId, m.id))} title="Elimina il segnaposto" aria-label="Elimina il segnaposto">
+              <button className="text-zinc-400 opacity-0 group-hover:opacity-100 hover:text-red-600" onClick={() => run(() => ai.removeBookmark(lessonId, m.id))} title={t("Elimina il segnaposto")} aria-label={t("Elimina il segnaposto")}>
                 <Trash2 className="size-3.5" />
               </button>
             </li>
@@ -539,15 +545,15 @@ function DocSwitcher({ docs, current, onGo }: { docs: Lesson["sources"]; current
   const arrow = "rounded p-1 text-zinc-500 hover:bg-zinc-200 disabled:opacity-30 dark:hover:bg-zinc-800";
   return (
     <div className="relative flex min-w-0 flex-1 items-center gap-0.5">
-      <button className="flex min-w-0 items-center gap-1 rounded px-1 font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setOpen(!open)} title="Vai a un altro documento della lezione" aria-haspopup="menu">
+      <button className="flex min-w-0 items-center gap-1 rounded px-1 font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => setOpen(!open)} title={t("Vai a un altro documento della lezione")} aria-haspopup="menu">
         <SourceIcon kind={s.kind} />
         <span className="truncate">{s.originalName}</span>
         <ChevronDown className="size-4 shrink-0 text-zinc-500" />
       </button>
-      <button className={arrow} disabled={current === 0} onClick={() => onGo(docs[current - 1].id)} title="Documento precedente" aria-label="Documento precedente">
+      <button className={arrow} disabled={current === 0} onClick={() => onGo(docs[current - 1].id)} title={t("Documento precedente")} aria-label={t("Documento precedente")}>
         <ChevronUp className="size-4" />
       </button>
-      <button className={arrow} disabled={current === docs.length - 1} onClick={() => onGo(docs[current + 1].id)} title="Documento successivo" aria-label="Documento successivo">
+      <button className={arrow} disabled={current === docs.length - 1} onClick={() => onGo(docs[current + 1].id)} title={t("Documento successivo")} aria-label={t("Documento successivo")}>
         <ChevronDown className="size-4" />
       </button>
       {open && (
@@ -608,7 +614,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
       const at = players.current[sid]?.currentTime ?? 0;
       ai.addBookmark(lesson.id, sid, at, kind).then(
         () => {
-          toast(`${MARK_LABEL[kind]} a ${clock(at)}`);
+          toast(t("{label} a {time}", { label: markLabel(kind), time: clock(at) }));
           onBookmarks();
         },
         (err) => toast(toAppError(err).message, "error"),
@@ -666,7 +672,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
     return () => cancelAnimationFrame(frame);
   }, [seek]);
   const withText = lesson.sources.filter((s) => outputs.extracts[s.id] !== undefined);
-  if (!withText.length) return <Placeholder text="Qui comparirà la trascrizione delle registrazioni e il testo letto da foto, appunti e PDF." action={process} />;
+  if (!withText.length) return <Placeholder text={t("Qui comparirà la trascrizione delle registrazioni e il testo letto da foto, appunti e PDF.")} action={process} />;
   const onRef = (href: string) => {
     const m = href.match(/^#t=(.+)@(\d+)$/);
     const p = m && players.current[m[1]];
@@ -703,10 +709,10 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
     <div className={`mx-auto space-y-10 ${wide ? "max-w-6xl" : "max-w-3xl"}`}>
       <RegenerateHint lesson={lesson} outputs={outputs} />
       {withText.length > 1 && (
-        <nav className="flex flex-wrap items-center gap-1.5 pb-2 text-sm" aria-label="Documenti della lezione">
-          <span className="text-xs text-zinc-500">In questa lezione:</span>
+        <nav className="flex flex-wrap items-center gap-1.5 pb-2 text-sm" aria-label={t("Documenti della lezione")}>
+          <span className="text-xs text-zinc-500">{t("In questa lezione:")}</span>
           {withText.map((s) => (
-            <button key={s.id} className="flex max-w-56 items-center gap-1 rounded-full border border-zinc-300 px-2.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={() => goTo(s.id)} title={`Vai a ${s.originalName}`}>
+            <button key={s.id} className="flex max-w-56 items-center gap-1 rounded-full border border-zinc-300 px-2.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={() => goTo(s.id)} title={t("Vai a {name}", { name: s.originalName })}>
               <SourceIcon kind={s.kind} />
               <span className="truncate">{s.originalName}</span>
             </button>
@@ -728,17 +734,17 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                     {s.originalName}
                   </h3>
                 )}
-                {s.edited && editingId !== s.id && <span className="text-xs text-zinc-500">corretta a mano il {fmtDate(s.edited)}</span>}
+                {s.edited && editingId !== s.id && <span className="text-xs text-zinc-500">{t("corretta a mano il {date}", { date: fmtDate(s.edited) })}</span>}
                 {raw && editingId !== s.id && (
-                  <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm dark:border-zinc-700" role="group" aria-label="Versione del testo">
+                  <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm dark:border-zinc-700" role="group" aria-label={t("Versione del testo")}>
                     {(["clean", "raw"] as const).map((v) => (
                       <button
                         key={v}
                         className={`rounded px-2 py-0.5 ${(view[s.id] ?? "clean") === v ? "bg-sky-600 text-white" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
                         onClick={() => setView({ ...view, [s.id]: v })}
-                        title={v === "raw" ? "Il testo come l'ha riconosciuto Whisper, prima della ripulitura" : "Il testo ripulito dal modello"}
+                        title={v === "raw" ? t("Il testo come l'ha riconosciuto Whisper, prima della ripulitura") : t("Il testo ripulito dal modello")}
                       >
-                        {v === "clean" ? "Ripulita" : "Whisper"}
+                        {v === "clean" ? t("Ripulita") : "Whisper"}
                       </button>
                     ))}
                   </div>
@@ -747,33 +753,36 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                   <button
                     className="btn"
                     disabled={!editing}
-                    title="Whisper ha riempito delle pause (silenzio, intervallo) con parole inventate come «grazie grazie»: diventano una riga «Pausa»"
+                    title={t("Whisper ha riempito delle pause (silenzio, intervallo) con parole inventate come «grazie grazie»: diventano una riga «Pausa»")}
                     onClick={async () => {
                       const n = outputs.pauses[s.id];
-                      const ok = await ask(`Whisper ha riempito ${n === 1 ? "una pausa" : `${n} pause`} di «${s.originalName}» con parole inventate (come «grazie grazie grazie»). Sostituirle con una riga «Pausa»?\n\nLa trascrizione conta come corretta a mano; il testo di prima resta nelle versioni precedenti se rielabori.`, { title: "Pause", okLabel: "Sostituisci", cancelLabel: "Annulla" });
+                      const ok = await ask(
+                        tn(n, "Whisper ha riempito una pausa di «{name}» con parole inventate (come «grazie grazie grazie»). Sostituirle con una riga «Pausa»?\n\nLa trascrizione conta come corretta a mano; il testo di prima resta nelle versioni precedenti se rielabori.", "Whisper ha riempito {n} pause di «{name}» con parole inventate (come «grazie grazie grazie»). Sostituirle con una riga «Pausa»?\n\nLa trascrizione conta come corretta a mano; il testo di prima resta nelle versioni precedenti se rielabori.", { name: s.originalName }),
+                        { title: t("Pause"), okLabel: t("Sostituisci"), cancelLabel: t("Annulla") },
+                      );
                       if (!ok) return;
                       try {
                         await ai.markPauses(lesson.id, s.id);
                         editing?.onSaved(await api.lesson(lesson.id));
-                        toast(n === 1 ? "Pausa segnata." : `${n} pause segnate.`);
+                        toast(tn(n, "Pausa segnata.", "{n} pause segnate."));
                       } catch (e) {
                         toast(toAppError(e).message, "error");
                       }
                     }}
                   >
-                    <Pause className="size-4" /> {outputs.pauses[s.id] === 1 ? "1 pausa da sistemare" : `${outputs.pauses[s.id]} pause da sistemare`}
+                    <Pause className="size-4" /> {tn(outputs.pauses[s.id], "1 pausa da sistemare", "{n} pause da sistemare")}
                   </button>
                 )}
                 {editingId !== s.id && !showRaw && <EditButton editing={editing} onClick={() => setEditingId(s.id)} />}
                 {editingId !== s.id && <VersionsButton lesson={lesson} versions={outputs.versions} area="estratti" file={`${s.file}.md`} current={outputs.extracts[s.id]} disabled={!editing} onRestored={(l) => editing?.onSaved(l)} />}
               </div>
-              {s.omitted && <p className="mt-1 text-xs text-zinc-500">La registrazione non era nel pacchetto ricevuto: c'è solo la trascrizione.</p>}
+              {s.omitted && <p className="mt-1 text-xs text-zinc-500">{t("La registrazione non era nel pacchetto ricevuto: c'è solo la trascrizione.")}</p>}
               {media && !s.omitted && (
                 <div className="mt-2 flex items-center gap-2">
                   {s.kind === "audio" ? (
-                    <audio ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="h-10 min-w-0 flex-1" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} title="Clicca un minuto nel testo per ascoltare da quel punto" />
+                    <audio ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="h-10 min-w-0 flex-1" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} title={t("Clicca un minuto nel testo per ascoltare da quel punto")} />
                   ) : (
-                    <video ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="max-h-40 min-w-0 flex-1 rounded" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} title="Clicca un minuto nel testo per guardare da quel punto" />
+                    <video ref={(el) => void (players.current[s.id] = el)} onPlay={() => (playing.current = s.id)} className="max-h-40 min-w-0 flex-1 rounded" controls preload="metadata" src={fileUrl(sourceFile(lesson, s))} title={t("Clicca un minuto nel testo per guardare da quel punto")} />
                   )}
                   {editingId !== s.id && <MarkButtons onMark={(k) => mark(s.id, k)} onNote={() => setDraft({ sourceId: s.id, at: players.current[s.id]?.currentTime ?? 0, note: "" })} />}
                 </div>
@@ -801,13 +810,13 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                 initial={outputs.extracts[s.id]}
                 course={editing.course}
                 reclean={raw ? { lessonId: lesson.id, sourceId: s.id } : undefined}
-                timed={media}
+                timed={media && (lesson.language ?? editing.course?.language ?? "it")}
                 onCancel={() => setEditingId(null)}
                 onSave={async (text) => {
                   const l = await ai.saveExtract(lesson.id, s.id, text);
                   setEditingId(null);
                   editing.onSaved(l);
-                  toast(outputs.summary ? "Correzione salvata. Premi Rigenera per aggiornare la sintesi." : "Correzione salvata.");
+                  toast(outputs.summary ? t("Correzione salvata. Premi Rigenera per aggiornare la sintesi.") : t("Correzione salvata."));
                 }}
               />
             ) : (() => {
@@ -839,11 +848,11 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                   <div className="-mt-2 mb-3 flex items-center gap-2 text-xs text-zinc-500">
                     <label className="flex cursor-pointer items-center gap-1.5">
                       <input type="checkbox" checked={side} onChange={(e) => setSide(e.target.checked)} />
-                      {link && photos.length ? "Slide e foto accanto" : link ? "Slide accanto" : "Foto accanto"}
+                      {link && photos.length ? t("Slide e foto accanto") : link ? t("Slide accanto") : t("Foto accanto")}
                     </label>
                     <span>
-                      {link && <>· {link.pdf.originalName}, {link.al.steps.length} passaggi </>}
-                      {photos.length > 0 && <>· {photos.length === 1 ? "1 foto" : `${photos.length} foto`}</>}
+                      {link && <>· {link.pdf.originalName}, {tn(link.al.steps.length, "1 passaggio", "{n} passaggi")} </>}
+                      {photos.length > 0 && <>· {tn(photos.length, "1 foto", "{n} foto")}</>}
                     </span>
                   </div>
                   {side ? (
@@ -901,7 +910,8 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
             try {
               await ai.setPhotoLink(lesson.id, imageId, sid, at);
               const p = lesson.sources.find((x) => x.id === imageId);
-              toast(`${p ? photoTitle(p) : "Foto"} agganciata a ${clock(at)}.${outputs.summary ? " Premi Rigenera per metterla nella sintesi." : ""}`);
+              const vars = { photo: p ? photoTitle(p) : t("Foto|una foto"), time: clock(at) };
+              toast(outputs.summary ? t("{photo} agganciata a {time}. Premi Rigenera per metterla nella sintesi.", vars) : t("{photo} agganciata a {time}.", vars));
               editing?.onSaved();
             } catch (e) {
               toast(toAppError(e).message, "error");
@@ -921,15 +931,15 @@ function photoUrl(lesson: Lesson, outputs: Outputs, code: string): string | unde
 
 export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesson: Lesson; outputs: Outputs; onRef: (href: string) => void; process: React.ReactNode; editing?: Editing }) {
   const [edit, setEdit] = useState(false);
-  if (!outputs.summary) return <Placeholder text="La sintesi della lezione, costruita da tutte le fonti insieme, con i riferimenti al minuto della registrazione." action={process} />;
+  if (!outputs.summary) return <Placeholder text={t("La sintesi della lezione, costruita da tutte le fonti insieme, con i riferimenti al minuto della registrazione.")} action={process} />;
   return (
     <div className="mx-auto max-w-3xl">
       <RegenerateHint lesson={lesson} outputs={outputs} />
       <div className="mb-4 flex items-start gap-3">
         {outputs.info && (
           <p className="flex-1 text-xs text-zinc-500">
-            Generata il {new Date(outputs.info.generated).toLocaleString("it-IT")} con {outputs.info.model} ({costLine(outputs.info.usage)})
-            {outputs.info.edited && <>, corretta a mano il {fmtDate(outputs.info.edited)}</>}. I riferimenti [F1 00:12:30] portano alla trascrizione.
+            {t("Generata il {date} con {model} ({cost})", { date: new Date(outputs.info.generated).toLocaleString(locale()), model: outputs.info.model, cost: costLine(outputs.info.usage) })}
+            {outputs.info.edited && <>, {t("corretta a mano il {date}", { date: fmtDate(outputs.info.edited) })}</>}. {t("I riferimenti [F1 00:12:30] portano alla trascrizione.")}
           </p>
         )}
         {!edit && <VersionsButton lesson={lesson} versions={outputs.versions} area="generati" file="sintesi.md" current={outputs.summary} disabled={!editing} onRestored={() => editing?.onSaved()} />}
@@ -944,7 +954,7 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
             await ai.saveSummary(lesson.id, text);
             setEdit(false);
             editing.onSaved();
-            toast("Sintesi salvata. Con Rigenera la versione corretta resta in generati/versioni.");
+            toast(t("Sintesi salvata. Con Rigenera la versione corretta resta in generati/versioni."));
           }}
         />
       ) : (
@@ -1001,13 +1011,13 @@ function TreeNode({ node, depth, summary, onRef }: { node: MapNode; depth: numbe
       <button
         className={`flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-left ${DEPTH_STYLE[Math.min(depth, 3)]} ${kids.length ? "cursor-pointer" : "cursor-default"}`}
         onClick={() => kids.length && setOpen(!open)}
-        title={kids.length ? (open ? "Comprimi" : "Espandi") : undefined}
+        title={kids.length ? (open ? t("Comprimi") : t("Espandi")) : undefined}
       >
         <span className="max-w-64">{node.etichetta}</span>
         {kids.length > 0 && !open && <span className="ml-1 text-xs opacity-70">+{kids.length}</span>}
       </button>
       {ref && (
-        <button className="ml-1 shrink-0 rounded p-0.5 text-sky-600 hover:bg-sky-100 dark:text-sky-400 dark:hover:bg-sky-950" onClick={() => onRef(ref.href)} title={`Vai al punto della trascrizione (${ref.label})`} aria-label={`Vai a ${ref.label}: ${node.etichetta}`} data-map-ref>
+        <button className="ml-1 shrink-0 rounded p-0.5 text-sky-600 hover:bg-sky-100 dark:text-sky-400 dark:hover:bg-sky-950" onClick={() => onRef(ref.href)} title={t("Vai al punto della trascrizione ({label})", { label: ref.label })} aria-label={t("Vai a {label}: {concept}", { label: ref.label, concept: node.etichetta })} data-map-ref>
           <ArrowUpRight className="size-3.5" />
         </button>
       )}
@@ -1025,23 +1035,23 @@ function TreeNode({ node, depth, summary, onRef }: { node: MapNode; depth: numbe
 }
 
 export function MapTab({ lesson, course, outputs, process, onRef }: { lesson: Lesson; course: Course | null; outputs: Outputs; process: React.ReactNode; onRef: (href: string) => void }) {
-  if (!outputs.map) return <Placeholder text="La mappa concettuale degli argomenti della lezione." action={process} />;
+  if (!outputs.map) return <Placeholder text={t("La mappa concettuale degli argomenti della lezione.")} action={process} />;
   const map = outputs.map;
   return (
     <div className="overflow-auto pb-6 select-text">
       <div className="mb-3 flex items-center gap-3">
-        <p className="flex-1 text-xs text-zinc-500">Clicca un concetto per chiuderlo o aprirlo; la freccia accanto porta al punto della trascrizione in cui se ne parla.</p>
+        <p className="flex-1 text-xs text-zinc-500">{t("Clicca un concetto per chiuderlo o aprirlo; la freccia accanto porta al punto della trascrizione in cui se ne parla.")}</p>
         {course && (
           <button
             className="btn"
             onClick={() =>
               share.print(`mappa-${lesson.title}`.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase(), buildMapHtml(course, lesson, map)).then(
-                () => toast("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF»."),
+                () => toast(t("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF».")),
                 (e) => toast(toAppError(e).message, "error"),
               )
             }
           >
-            <FileDown className="size-4" /> Esporta in PDF
+            <FileDown className="size-4" /> {t("Esporta in PDF")}
           </button>
         )}
       </div>
@@ -1052,7 +1062,7 @@ export function MapTab({ lesson, course, outputs, process, onRef }: { lesson: Le
 
 export function StudyTab({ lesson, outputs, process, editing }: { lesson: Lesson; outputs: Outputs; process: React.ReactNode; editing?: Editing }) {
   const [edit, setEdit] = useState(false);
-  if (!outputs.study) return <Placeholder text="Flashcard, domande d'esame e glossario per ripassare." action={process} />;
+  if (!outputs.study) return <Placeholder text={t("Flashcard, domande d'esame e glossario per ripassare.")} action={process} />;
   if (edit && editing)
     return (
       <StudyEditor
@@ -1062,14 +1072,14 @@ export function StudyTab({ lesson, outputs, process, editing }: { lesson: Lesson
           await ai.saveStudy(lesson.id, study);
           setEdit(false);
           editing.onSaved();
-          toast("Materiale di studio salvato.");
+          toast(t("Materiale di studio salvato."));
         }}
       />
     );
   return (
     <div className="mx-auto max-w-3xl space-y-10">
       <div className="flex justify-end">
-        <EditButton editing={editing} onClick={() => setEdit(true)} label="Modifica flashcard e glossario" />
+        <EditButton editing={editing} onClick={() => setEdit(true)} label={t("Modifica flashcard e glossario")} />
       </div>
       <Flashcards cards={outputs.study.flashcard} lessonId={lesson.id} />
       <Exam items={outputs.study.domandeEsame} />
@@ -1082,15 +1092,15 @@ function Flashcards({ cards, lessonId }: { cards: Study["flashcard"]; lessonId: 
   const [mode, setMode] = useState<"browse" | "review">("browse");
   if (!cards.length) return null;
   const modes = (
-    <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm font-normal dark:border-zinc-700" role="group" aria-label="Modalità">
+    <div className="flex rounded-md border border-zinc-300 p-0.5 text-sm font-normal dark:border-zinc-700" role="group" aria-label={t("Modalità")}>
       {(["browse", "review"] as const).map((m) => (
         <button
           key={m}
           className={`rounded px-2 py-0.5 ${mode === m ? "bg-sky-600 text-white" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
           onClick={() => setMode(m)}
-          title={m === "review" ? "Solo le carte da ripassare oggi; quelle che sai tornano dopo 1, 3, 7, 14, 30 giorni" : "Tutte le carte, in ordine"}
+          title={m === "review" ? t("Solo le carte da ripassare oggi; quelle che sai tornano dopo 1, 3, 7, 14, 30 giorni") : t("Tutte le carte, in ordine")}
         >
-          {m === "browse" ? "Sfoglia" : "Ripasso"}
+          {m === "browse" ? t("Sfoglia") : t("Ripasso")}
         </button>
       ))}
     </div>
@@ -1099,7 +1109,7 @@ function Flashcards({ cards, lessonId }: { cards: Study["flashcard"]; lessonId: 
     return (
       <section>
         <h3 className="mb-3 flex items-center justify-between font-semibold">
-          <span>Flashcard</span>
+          <span>{t("Flashcard")}</span>
           {modes}
         </h3>
         <ReviewSession scope="lesson" id={lessonId} />
@@ -1126,7 +1136,7 @@ function BrowseCards({ cards, modes }: { cards: Study["flashcard"]; modes: React
     <section>
       <h3 className="mb-3 flex items-center gap-2 font-semibold">
         <span>
-          Flashcard <span className="font-normal text-zinc-400">{i + 1} di {cards.length}</span>
+          {t("Flashcard")} <span className="font-normal text-zinc-400">{t("{i} di {n}", { i: i + 1, n: cards.length })}</span>
         </span>
         <span className="flex-1" />
         {modes}
@@ -1138,19 +1148,19 @@ function BrowseCards({ cards, modes }: { cards: Study["flashcard"]; modes: React
             setFlipped(false);
           }}
         >
-          <Shuffle className="size-4" /> Mescola
+          <Shuffle className="size-4" /> {t("Mescola")}
         </button>
       </h3>
       <FlashCard text={flipped ? card.risposta : card.domanda} flipped={flipped} onFlip={() => setFlipped(!flipped)} />
       <div className="mt-3 flex justify-center gap-2">
         <button className="btn" onClick={() => go(-1)}>
-          ← Precedente
+          ← {t("Precedente")}
         </button>
         <button className="btn" onClick={() => setFlipped(!flipped)}>
-          <RotateCcw className="size-4" /> Gira
+          <RotateCcw className="size-4" /> {t("Gira")}
         </button>
         <button className="btn btn-primary" onClick={() => go(1)}>
-          Successiva →
+          {t("Successiva")} →
         </button>
       </div>
     </section>
@@ -1162,7 +1172,7 @@ function Exam({ items }: { items: Study["domandeEsame"] }) {
   if (!items.length) return null;
   return (
     <section>
-      <h3 className="mb-3 font-semibold">Domande d'esame</h3>
+      <h3 className="mb-3 font-semibold">{t("Domande d'esame")}</h3>
       <ol className="space-y-2">
         {items.map((q, i) => (
           <li key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -1193,11 +1203,11 @@ function Exam({ items }: { items: Study["domandeEsame"] }) {
 }
 
 function Glossary({ items }: { items: Study["glossario"] }) {
-  const sorted = useMemo(() => [...items].sort((a, b) => a.termine.localeCompare(b.termine, "it")), [items]);
+  const sorted = useMemo(() => [...items].sort((a, b) => a.termine.localeCompare(b.termine, uiLang())), [items]);
   if (!items.length) return null;
   return (
     <section>
-      <h3 className="mb-3 font-semibold">Glossario</h3>
+      <h3 className="mb-3 font-semibold">{t("Glossario")}</h3>
       <dl className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 select-text dark:divide-zinc-800 dark:border-zinc-800">
         {sorted.map((t, i) => (
           <div key={i} className="grid grid-cols-[minmax(8rem,1fr)_3fr] gap-3 px-3 py-2">
@@ -1233,14 +1243,14 @@ function RowsEditor({ title, rows, labels, onChange }: { title: string; rows: Ro
               <textarea className="field min-h-16 text-sm" aria-label={labels[0]} placeholder={labels[0]} value={r.a} onChange={(e) => set(i, "a", e.target.value)} />
               <textarea className="field min-h-16 text-sm" aria-label={labels[1]} placeholder={labels[1]} value={r.b} onChange={(e) => set(i, "b", e.target.value)} />
             </div>
-            <button className="btn px-2" title="Elimina" onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+            <button className="btn px-2" title={t("Elimina")} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
               <Trash2 className="size-4" />
             </button>
           </div>
         ))}
       </div>
       <button className="btn mt-2" onClick={() => onChange([...rows, { a: "", b: "" }])}>
-        <Plus className="size-4" /> Aggiungi
+        <Plus className="size-4" /> {t("Aggiungi")}
       </button>
     </section>
   );
@@ -1267,15 +1277,15 @@ function StudyEditor({ initial, onSave, onCancel }: { initial: Study; onSave: (s
   };
   return (
     <div className="mx-auto max-w-3xl space-y-10">
-      <RowsEditor title="Flashcard" rows={cards} labels={["Domanda", "Risposta"]} onChange={setCards} />
-      <RowsEditor title="Domande d'esame" rows={exam} labels={["Domanda", "Traccia di risposta"]} onChange={setExam} />
-      <RowsEditor title="Glossario" rows={terms} labels={["Termine", "Definizione"]} onChange={setTerms} />
+      <RowsEditor title={t("Flashcard")} rows={cards} labels={[t("Domanda"), t("Risposta")]} onChange={setCards} />
+      <RowsEditor title={t("Domande d'esame")} rows={exam} labels={[t("Domanda"), t("Traccia di risposta")]} onChange={setExam} />
+      <RowsEditor title={t("Glossario")} rows={terms} labels={[t("Termine"), t("Definizione")]} onChange={setTerms} />
       <div className="sticky bottom-0 flex justify-end gap-2 bg-zinc-50/95 py-3 dark:bg-zinc-950/95">
         <button className="btn" onClick={onCancel}>
-          Annulla
+          {t("Annulla")}
         </button>
         <button className="btn btn-primary" disabled={saving} onClick={save}>
-          Salva
+          {t("Salva")}
         </button>
       </div>
     </div>

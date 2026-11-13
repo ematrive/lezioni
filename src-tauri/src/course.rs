@@ -147,15 +147,17 @@ pub async fn summarize<A: Ai>(ai: &A, model: &str, lib: &Library, course_id: &st
     let course = lib.course(course_id)?;
     let ls = lessons_with_summary(lib, course_id)?;
     if ls.is_empty() {
-        bail!("nessuna lezione del corso ha una sintesi: elabora prima le lezioni");
+        bail!(crate::tr!("nessuna lezione del corso ha una sintesi: elabora prima le lezioni", "no lecture of the course has a summary: process the lectures first"));
     }
+    let ml = course.meta.materials_language;
     let mut text = String::new();
     for (code, l, o) in &ls {
-        text.push_str(&format!("[{code}] Lezione del {}: {}\n{}\n", l.meta.date, l.meta.title, without_source_refs(o.summary.as_deref().unwrap_or(""))));
+        let head = ml.pick(format!("Lezione del {}", l.meta.date), format!("Lecture of {}", l.meta.date));
+        text.push_str(&format!("[{code}] {head}: {}\n{}\n", l.meta.title, without_source_refs(o.summary.as_deref().unwrap_or(""))));
         if let Some(s) = &o.study
             && !s.domande_esame.is_empty()
         {
-            text.push_str("Domande d'esame proposte per questa lezione:\n");
+            text.push_str(ml.pick("Domande d'esame proposte per questa lezione:\n", "Exam questions proposed for this lecture:\n"));
             for q in &s.domande_esame {
                 text.push_str(&format!("- {}\n", q.domanda));
             }
@@ -163,8 +165,8 @@ pub async fn summarize<A: Ai>(ai: &A, model: &str, lib: &Library, course_id: &st
         text.push('\n');
     }
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::course_summary(&course.meta.name, &lib.terms_for(&course.meta), ls.len(), &text))],
+        system: Some(prompts::system(ml)),
+        parts: vec![Part::Text(prompts::course_summary(ml, &course.meta.name, &lib.terms_for(&course.meta), ls.len(), &text))],
         schema: Some(prompts::course_summary_schema()),
         max_output_tokens: Some(48_000),
         ..Default::default()
@@ -177,14 +179,14 @@ pub async fn summarize<A: Ai>(ai: &A, model: &str, lib: &Library, course_id: &st
         let a = ai.generate(model, &req, cancel).await?;
         usage.add(&a.usage);
         if a.finish == "MAX_TOKENS" {
-            bail!("la risposta del modello è stata troncata: scegli nelle Impostazioni un modello con più spazio di risposta");
+            bail!(crate::tr!("la risposta del modello è stata troncata: scegli nelle Impostazioni un modello con più spazio di risposta", "the model's answer was truncated: choose in Settings a model with more room for the answer"));
         }
-        let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
+        let g: Generated = serde_json::from_str(&a.text).map_err(|e| anyhow!(crate::tr!("risposta del modello non valida: {e}", "invalid answer from the model: {e}")))?;
         if !g.sintesi.trim().is_empty() {
             break (g, if a.model.is_empty() { model.to_string() } else { a.model });
         }
         if attempt == 3 {
-            bail!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni");
+            bail!(crate::tr!("il modello ha risposto tre volte con una sintesi vuota: riprova, o scegli un altro modello per la sintesi nelle Impostazioni", "the model answered three times with an empty summary: try again, or choose another model for the summary in Settings"));
         }
         log::warn!("sintesi del corso vuota, nuovo tentativo ({attempt})");
     };

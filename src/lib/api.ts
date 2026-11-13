@@ -1,4 +1,5 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { locale, localeOf, t, uiLang, type Lang, type UiLang } from "../i18n";
 
 export type SourceKind = "audio" | "video" | "pdf" | "image" | "text" | "document" | "other";
 
@@ -51,6 +52,16 @@ export interface Course {
   created: string;
   path: string;
   lessons: number;
+  /** What is spoken in the lessons (missing in old courses: "it"). */
+  language: Lang;
+  /** What summaries, maps, study material and chat are written in. */
+  materialsLanguage: Lang;
+}
+
+export type { Lang, UiLang } from "../i18n";
+export interface CourseLangs {
+  language: Lang;
+  materialsLanguage: Lang;
 }
 
 export interface Lesson {
@@ -63,6 +74,8 @@ export interface Lesson {
   sources: Source[];
   courseId: string;
   path: string;
+  /** What is spoken in this lesson, when not the course's language. */
+  language?: Lang;
 }
 
 export interface AppError {
@@ -78,15 +91,19 @@ export function toAppError(e: unknown): AppError {
 export interface SettingsView {
   libraryDir: string | null;
   suggestedDir: string | null;
+  language: UiLang;
 }
 
 export const api = {
   settings: () => invoke<SettingsView>("settings_get"),
   setLibrary: (dir: string) => invoke<void>("settings_set_library", { dir }),
+  /** Saves the interface language; `system` is `navigator.language`. */
+  setLanguage: (language: UiLang, system: string) => invoke<void>("settings_set_language", { language, system }),
 
   courses: () => invoke<Course[]>("courses_list"),
-  createCourse: (name: string, teacher: string, terms: string) => invoke<Course>("course_create", { name, teacher, terms }),
-  updateCourse: (id: string, name: string, teacher: string, terms: string) => invoke<Course>("course_update", { id, name, teacher, terms }),
+  createCourse: (name: string, teacher: string, terms: string, langs?: CourseLangs) => invoke<Course>("course_create", { name, teacher, terms, langs }),
+  /** `langs` undefined = unchanged. */
+  updateCourse: (id: string, name: string, teacher: string, terms: string, langs?: CourseLangs) => invoke<Course>("course_update", { id, name, teacher, terms, langs }),
   deleteCourse: (id: string) => invoke<void>("course_delete", { id }),
   courseCosts: (courseId: string) => invoke<CourseCosts>("course_costs", { courseId }),
   /** Terms for all the courses (`parole.txt` in the archive). */
@@ -98,7 +115,8 @@ export const api = {
   lessons: (courseId: string) => invoke<Lesson[]>("lessons_list", { courseId }),
   lesson: (id: string) => invoke<Lesson>("lesson_get", { id }),
   createLesson: (courseId: string, title: string, date: string) => invoke<Lesson>("lesson_create", { courseId, title, date }),
-  updateLesson: (id: string, patch: { title?: string; date?: string; notes?: string }) => invoke<Lesson>("lesson_update", { id, patch }),
+  /** `language: null` = as the course. */
+  updateLesson: (id: string, patch: { title?: string; date?: string; notes?: string; language?: Lang | null }) => invoke<Lesson>("lesson_update", { id, patch }),
   deleteLesson: (id: string) => invoke<void>("lesson_delete", { id }),
 
   addFiles: (lessonId: string, paths: string[]) => invoke<{ lesson: Lesson; warnings: string[] }>("sources_add_files", { lessonId, paths }),
@@ -128,7 +146,8 @@ export function fmtSize(n: number): string {
 
 /** USD, with more decimals for small amounts. */
 export function fmtUsd(x: number): string {
-  return `${(x > 0 && x < 0.01 ? x.toFixed(4) : x.toFixed(2)).replace(".", ",")} $`;
+  const n = x > 0 && x < 0.01 ? x.toFixed(4) : x.toFixed(2);
+  return uiLang() === "it" ? `${n.replace(".", ",")} $` : `$${n}`;
 }
 
 export interface CourseCosts {
@@ -139,9 +158,10 @@ export interface CourseCosts {
   estimated: boolean;
 }
 
-export function fmtDate(iso: string): string {
+/** A lesson's date; `l`: in another language than the interface's (exports). */
+export function fmtDate(iso: string, l?: Lang): string {
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  return new Date(y, m - 1, d).toLocaleDateString(l ? localeOf(l) : locale(), { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
 export function today(): string {
@@ -354,7 +374,7 @@ export const ai = {
 
 /** What a run cost: the real figure from OpenRouter, or "would cost" at Gemini's paid list price. */
 export function costLine(u: Usage): string {
-  return u.cost != null ? `costo: ${fmtUsd(u.cost)}` : `a pagamento sarebbero circa ${fmtUsd(costEstimate(u))}`;
+  return u.cost != null ? t("costo: {cost}", { cost: fmtUsd(u.cost) }) : t("a pagamento sarebbero circa {cost}", { cost: fmtUsd(costEstimate(u)) });
 }
 
 /** Paid-tier list price of gemini-3.8-flash (USD per 1M tokens, Nov 2026): rough cost of a run.

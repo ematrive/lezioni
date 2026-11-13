@@ -33,7 +33,7 @@ fn whisper_transcribes() {
     let prompt = std::env::var("LEZIONI_IT_PROMPT").unwrap_or_else(|_| "Lezione universitaria di Ricerca operativa.".into());
     for c in &parts {
         let t = std::time::Instant::now();
-        let segs = w.transcribe(&c.path, &prompt, &cancel, &|p| eprint!("{p}% ")).unwrap();
+        let segs = w.transcribe(&c.path, lezioni_lib::lang::Lang::It, &prompt, &cancel, &|p| eprint!("{p}% ")).unwrap();
         if std::env::var("LEZIONI_IT_RAW").is_ok() {
             for s in &segs {
                 eprintln!("{:7.1}-{:7.1} {}", s.start, s.end, s.text);
@@ -61,7 +61,7 @@ fn whisper_cancels() {
         c2.cancel();
     });
     let t = std::time::Instant::now();
-    let r = w.transcribe(&parts[0].path, "", &cancel, &|_| {});
+    let r = w.transcribe(&parts[0].path, lezioni_lib::lang::Lang::It, "", &cancel, &|_| {});
     assert_eq!(r.unwrap_err().to_string(), "annullato");
     eprintln!("fermato dopo {:.1} s", t.elapsed().as_secs_f64());
 }

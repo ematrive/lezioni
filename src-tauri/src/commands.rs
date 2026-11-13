@@ -7,7 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::{AppError, CmdResult};
-use crate::library::{Course, Lesson, LessonPatch, Library};
+use crate::lang::{Lang, UiLang};
+use crate::library::{Course, CourseLangs, Lesson, LessonPatch, Library};
 use crate::settings::Settings;
 
 pub struct AppState {
@@ -31,7 +32,7 @@ impl AppState {
         let dir = self.settings.lock().unwrap().library_dir.clone();
         match dir {
             Some(d) => Ok(Library::open(d)?),
-            None => Err(AppError::NoLibrary { message: "Scegli la cartella dell'archivio".into() }),
+            None => Err(AppError::NoLibrary { message: crate::tr!("Scegli la cartella dell'archivio", "Choose the archive folder") }),
         }
     }
 }
@@ -49,12 +50,13 @@ pub struct SettingsView {
     library_dir: Option<PathBuf>,
     /// Suggested archive folder for the first run: Documenti/Lezioni.
     suggested_dir: Option<PathBuf>,
+    language: UiLang,
 }
 
 #[tauri::command(async)]
 pub fn settings_get(app: AppHandle, state: State<'_, AppState>) -> CmdResult<SettingsView> {
     let s = state.settings.lock().unwrap();
-    Ok(SettingsView { library_dir: s.library_dir.clone(), suggested_dir: app.path().document_dir().ok().map(|d| d.join("Lezioni")) })
+    Ok(SettingsView { library_dir: s.library_dir.clone(), suggested_dir: app.path().document_dir().ok().map(|d| d.join("Lezioni")), language: s.language })
 }
 
 #[tauri::command(async)]
@@ -68,21 +70,41 @@ pub fn settings_set_library(app: AppHandle, state: State<'_, AppState>, dir: Pat
     Ok(())
 }
 
+/// The interface language: saved when it changes, and resolved for the messages built here.
+/// `system` is the system's language as the interface sees it (`navigator.language`): the
+/// interface calls this at start too.
+#[tauri::command(async)]
+pub fn settings_set_language(state: State<'_, AppState>, language: UiLang, system: String) -> CmdResult<()> {
+    crate::lang::set_ui(match language {
+        UiLang::System => Lang::from_locale(&system),
+        l => l.resolve(),
+    });
+    let mut s = state.settings.lock().unwrap();
+    if s.language != language {
+        s.language = language;
+        s.save(&state.settings_path)?;
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
 pub fn courses_list(state: State<'_, AppState>) -> CmdResult<Vec<Course>> {
     Ok(state.library()?.courses()?)
 }
 
 #[tauri::command(async)]
-pub fn course_create(state: State<'_, AppState>, name: String, teacher: String, terms: String) -> CmdResult<Course> {
+pub fn course_create(state: State<'_, AppState>, name: String, teacher: String, terms: String, langs: Option<CourseLangs>) -> CmdResult<Course> {
     let _w = state.writing();
-    Ok(state.library()?.create_course(&name, &teacher, &terms)?)
+    // Always written: what a course is in must not change with the interface.
+    let ui = crate::lang::ui();
+    let langs = langs.unwrap_or(CourseLangs { language: ui, materials_language: ui });
+    Ok(state.library()?.create_course_in(&name, &teacher, &terms, langs)?)
 }
 
 #[tauri::command(async)]
-pub fn course_update(state: State<'_, AppState>, id: String, name: String, teacher: String, terms: String) -> CmdResult<Course> {
+pub fn course_update(state: State<'_, AppState>, id: String, name: String, teacher: String, terms: String, langs: Option<CourseLangs>) -> CmdResult<Course> {
     let _w = state.writing();
-    Ok(state.library()?.update_course(&id, &name, &teacher, &terms)?)
+    Ok(state.library()?.update_course(&id, &name, &teacher, &terms, langs)?)
 }
 
 #[tauri::command(async)]
@@ -137,9 +159,9 @@ pub fn sources_add_files(state: State<'_, AppState>, lesson_id: String, paths: V
 #[tauri::command(async)]
 pub fn source_add_bytes(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<Lesson> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err(AppError::other("contenuto non valido"));
+        return Err(AppError::other(crate::tr!("contenuto non valido", "invalid content")));
     };
-    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string).ok_or_else(|| AppError::other(format!("manca {k}")));
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string).ok_or_else(|| AppError::other(crate::tr!("manca {k}", "{k} is missing")));
     let lesson_id = header("lesson-id")?;
     let name = header("file-name")?;
     let _w = state.writing();
@@ -242,14 +264,14 @@ pub fn ai_settings_set(state: State<'_, AppState>, key: Option<String>, openrout
 fn gemini() -> CmdResult<Gemini> {
     match crate::secrets::gemini_key()? {
         Some(k) => Ok(Gemini::new(k)),
-        None => Err(AppError::other("Manca la chiave API di Gemini: aggiungila in Impostazioni")),
+        None => Err(AppError::other(crate::tr!("Manca la chiave API di Gemini: aggiungila in Impostazioni", "The Gemini API key is missing: add it in Settings"))),
     }
 }
 
 fn openrouter() -> CmdResult<OpenRouter> {
     match crate::secrets::openrouter_key()? {
         Some(k) => Ok(OpenRouter::new(k)),
-        None => Err(AppError::other("Manca la chiave di OpenRouter: aggiungila in Impostazioni")),
+        None => Err(AppError::other(crate::tr!("Manca la chiave di OpenRouter: aggiungila in Impostazioni", "The OpenRouter key is missing: add it in Settings"))),
     }
 }
 
@@ -269,7 +291,7 @@ pub async fn ai_check(provider: ProviderKind, key: Option<String>) -> CmdResult<
     Ok(match provider {
         ProviderKind::Gemini => {
             key.map(Gemini::new).map_or_else(gemini, Ok)?.check().await?;
-            "Funziona".into()
+            crate::tr!("Funziona", "It works")
         }
         ProviderKind::OpenRouter => key.map(OpenRouter::new).map_or_else(openrouter, Ok)?.check().await?,
     })
@@ -305,7 +327,7 @@ pub fn whisper_delete(state: State<'_, AppState>) -> CmdResult<()> {
 /// Starts processing a lesson in the background; events on `channel`.
 #[tauri::command]
 pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_id: String, options: Options, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
-    let dir = state.settings.lock().unwrap().library_dir.clone().ok_or_else(|| AppError::NoLibrary { message: "Scegli la cartella dell'archivio".into() })?;
+    let dir = state.settings.lock().unwrap().library_dir.clone().ok_or_else(|| AppError::NoLibrary { message: crate::tr!("Scegli la cartella dell'archivio", "Choose the archive folder") })?;
     let settings = state.settings.lock().unwrap().clone();
     let models = settings.effective_models();
     let ch = channel.clone();
@@ -322,7 +344,7 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
         // Whisper only when a recording is still to be transcribed: download (first time) and load.
         let lesson = archive.lesson(&lesson_id)?;
         let asr: Option<Arc<dyn crate::asr::Asr>> = if models.engine == Engine::Local && pipeline::needs_transcription(&lesson, options.force) {
-            let _ = ch.send(JobEvent::Step { done: 0.0, total: 1, message: "Preparazione della trascrizione sul computer…".into() });
+            let _ = ch.send(JobEvent::Step { done: 0.0, total: 1, message: crate::tr!("Preparazione della trascrizione sul computer…", "Preparing the transcription on the computer…") });
             let c = ch.clone();
             let notify = move |message: String| {
                 let _ = c.send(JobEvent::Detail { message });
@@ -353,7 +375,7 @@ pub async fn lesson_process(app: AppHandle, state: State<'_, AppState>, lesson_i
             }
             Err(e) => {
                 log::error!("elaborazione interrotta: {e}");
-                JobEvent::Failed { message: format!("errore interno durante l'elaborazione ({e}): manda il file di log (Impostazioni → Log) a chi sviluppa l'app") }
+                JobEvent::Failed { message: crate::tr!("errore interno durante l'elaborazione ({e}): manda il file di log (Impostazioni → Diagnostica) a chi sviluppa l'app", "internal error during processing ({e}): send the log file (Settings → Diagnostics) to the app's developer") }
             }
         };
         // What was spent is recorded also when the job failed or was cancelled.
@@ -380,7 +402,7 @@ pub fn job_cancel(state: State<'_, AppState>, job_id: String) -> bool {
 
 fn not_busy(state: &AppState, lesson_id: &str) -> CmdResult<()> {
     if state.jobs.busy(lesson_id) {
-        return Err(anyhow::anyhow!("la lezione è in elaborazione: aspetta che finisca per correggere i testi").into());
+        return Err(anyhow::anyhow!(crate::tr!("la lezione è in elaborazione: aspetta che finisca per correggere i testi", "the lecture is being processed: wait for it to finish before correcting the texts")).into());
     }
     Ok(())
 }
@@ -451,7 +473,7 @@ pub fn export_anki(state: State<'_, AppState>, lesson_ids: Vec<String>, dest: Pa
 /// A page built by the UI (single-file HTML export).
 #[tauri::command(async)]
 pub fn export_write_text(dest: PathBuf, text: String) -> CmdResult<()> {
-    std::fs::write(&dest, text).map_err(|e| AppError::other(format!("scrittura di {}: {e}", dest.display())))
+    std::fs::write(&dest, text).map_err(|e| AppError::other(crate::tr!("scrittura di {}: {e}", "writing {}: {e}", dest.display())))
 }
 
 /// PDF: the page opens in the system browser, which shows its print dialog; there the user
@@ -624,7 +646,7 @@ pub fn course_summary_get(state: State<'_, AppState>, course_id: String) -> CmdR
 #[tauri::command]
 pub async fn course_summarize(app: AppHandle, state: State<'_, AppState>, course_id: String, job_id: String, channel: tauri::ipc::Channel<JobEvent>) -> CmdResult<()> {
     if state.jobs.busy(&course_id) {
-        return Err(anyhow::anyhow!("la sintesi del corso è già in corso").into());
+        return Err(anyhow::anyhow!(crate::tr!("la sintesi del corso è già in corso", "the course summary is already in progress")).into());
     }
     let settings = state.settings.lock().unwrap().clone();
     let model = settings.effective_models().generate;
@@ -637,8 +659,8 @@ pub async fn course_summarize(app: AppHandle, state: State<'_, AppState>, course
     let lock = state.write.clone();
     let cancel = state.jobs.start(&job_id, &course_id);
     let n = crate::course::lessons_with_summary(&lib, &course_id)?.len();
-    let _ = channel.send(JobEvent::Step { done: 0.0, total: 1, message: format!("Sintesi del corso dalle sintesi di {n} {}…", if n == 1 { "lezione" } else { "lezioni" }) });
-    let _ = channel.send(JobEvent::Detail { message: "In attesa della risposta del modello…".into() });
+    let _ = channel.send(JobEvent::Step { done: 0.0, total: 1, message: crate::tr!("Sintesi del corso dalle sintesi di {n} {}…", "Course summary from the summaries of {n} {}…", if n == 1 { crate::lang::ui().pick("lezione", "lecture") } else { crate::lang::ui().pick("lezioni", "lectures") }) });
+    let _ = channel.send(JobEvent::Detail { message: crate::tr!("In attesa della risposta del modello…", "Waiting for the model's answer…") });
     let lib2 = lib.clone();
     let id2 = course_id.clone();
     let work = tauri::async_runtime::spawn(async move { crate::course::summarize(&ai, &model, &lib2, &id2, &lock, &cancel).await });
@@ -649,7 +671,7 @@ pub async fn course_summarize(app: AppHandle, state: State<'_, AppState>, course
                 log::warn!("sintesi del corso: {e:#}");
                 JobEvent::Failed { message: format!("{e:#}") }
             }
-            Err(e) => JobEvent::Failed { message: format!("errore interno durante la sintesi del corso ({e})") },
+            Err(e) => JobEvent::Failed { message: crate::tr!("errore interno durante la sintesi del corso ({e})", "internal error during the course summary ({e})") },
         };
         let state = app.state::<AppState>();
         let spent = std::mem::take(&mut *spent.lock().unwrap());
@@ -712,7 +734,7 @@ pub async fn slides_align(state: State<'_, AppState>, lesson_id: String, pdf_id:
     let out = pipeline::outputs(&lesson);
     let recs: Vec<String> = lesson.meta.sources.iter().filter(|s| matches!(s.kind, crate::library::SourceKind::Audio | crate::library::SourceKind::Video) && out.extracts.contains_key(&s.id)).map(|s| s.id.clone()).collect();
     if recs.is_empty() {
-        return Err(anyhow::anyhow!("nella lezione non c'è una registrazione trascritta da collegare").into());
+        return Err(anyhow::anyhow!(crate::tr!("nella lezione non c'è una registrazione trascritta da collegare", "the lecture has no transcribed recording to link")).into());
     }
     let mut steps = 0;
     for r in recs {
@@ -746,7 +768,7 @@ pub async fn photos_link(state: State<'_, AppState>, lesson_id: String) -> CmdRe
     let lib = state.library()?;
     let lesson = lib.lesson(&lesson_id)?;
     if !lesson.meta.sources.iter().any(|s| matches!(s.kind, crate::library::SourceKind::Audio | crate::library::SourceKind::Video)) {
-        return Err(anyhow::anyhow!("nella lezione non c'è una registrazione a cui agganciare le foto").into());
+        return Err(anyhow::anyhow!(crate::tr!("nella lezione non c'è una registrazione a cui agganciare le foto", "the lecture has no recording to attach the photos to")).into());
     }
     let found = crate::photos::link_lesson(&ai, &model, &lesson, true, &tokio_util::sync::CancellationToken::new()).await?;
     let _w = state.writing();
@@ -782,5 +804,5 @@ pub fn photo_forget_link(state: State<'_, AppState>, lesson_id: String, image_id
 #[tauri::command(async)]
 pub fn source_read(state: State<'_, AppState>, lesson_id: String, source_id: String) -> CmdResult<tauri::ipc::Response> {
     let p = state.library()?.source_path(&lesson_id, &source_id)?;
-    Ok(tauri::ipc::Response::new(std::fs::read(&p).map_err(|e| anyhow::anyhow!("lettura di {}: {e}", p.display()))?))
+    Ok(tauri::ipc::Response::new(std::fs::read(&p).map_err(|e| anyhow::anyhow!(crate::tr!("lettura di {}: {e}", "reading {}: {e}", p.display())))?))
 }

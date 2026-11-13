@@ -56,7 +56,7 @@ fn content_part(p: &Part) -> Result<Value> {
         Part::Inline { mime, data } if mime == "application/pdf" => {
             json!({ "type": "file", "file": { "filename": "documento.pdf", "file_data": format!("data:{mime};base64,{}", b64(data)) } })
         }
-        Part::Inline { mime, .. } | Part::File { mime, .. } => bail!("OpenRouter non accetta file {mime} da questa app: per l'audio usa la trascrizione sul computer"),
+        Part::Inline { mime, .. } | Part::File { mime, .. } => bail!(crate::tr!("OpenRouter non accetta file {mime} da questa app: per l'audio usa la trascrizione sul computer", "OpenRouter does not accept {mime} files from this app: for audio use the transcription on the computer")),
     })
 }
 
@@ -103,17 +103,17 @@ fn strip_fence(t: &str) -> &str {
 
 fn parse_answer(v: &Value, asked: &str, json_wanted: bool) -> Result<Answer> {
     if let Some(e) = v.get("error") {
-        bail!("errore di OpenRouter: {}", e["message"].as_str().unwrap_or("sconosciuto"));
+        bail!(crate::tr!("errore di OpenRouter: {}", "OpenRouter error: {}", e["message"].as_str().unwrap_or(crate::lang::ui().pick("sconosciuto", "unknown"))));
     }
     let c = &v["choices"][0];
     if let Some(e) = c.get("error") {
-        bail!("errore del modello: {}", e["message"].as_str().unwrap_or("sconosciuto"));
+        bail!(crate::tr!("errore del modello: {}", "model error: {}", e["message"].as_str().unwrap_or(crate::lang::ui().pick("sconosciuto", "unknown"))));
     }
     let text = c["message"]["content"].as_str().unwrap_or_default();
     let text = if json_wanted { strip_fence(text) } else { text.trim() }.to_string();
     let finish = match c["finish_reason"].as_str().unwrap_or("stop") {
         "length" => "MAX_TOKENS",
-        "content_filter" => bail!("il modello ha rifiutato la richiesta (filtro dei contenuti)"),
+        "content_filter" => bail!(crate::tr!("il modello ha rifiutato la richiesta (filtro dei contenuti)", "the model refused the request (content filter)")),
         _ => "STOP",
     }
     .to_string();
@@ -134,10 +134,10 @@ fn parse_answer(v: &Value, asked: &str, json_wanted: bool) -> Result<Answer> {
 fn api_error(status: reqwest::StatusCode, body: &str) -> anyhow::Error {
     let msg = serde_json::from_str::<Value>(body).ok().and_then(|v| v["error"]["message"].as_str().map(str::to_string)).unwrap_or_else(|| body.chars().take(300).collect());
     match status.as_u16() {
-        401 => anyhow!("chiave OpenRouter non valida: controllala nelle Impostazioni"),
-        402 => anyhow!("credito OpenRouter esaurito: ricaricalo su openrouter.ai/settings/credits"),
-        404 => anyhow!("modello non trovato su OpenRouter ({msg}): controlla il nome nelle Impostazioni"),
-        _ => anyhow!("errore di OpenRouter (HTTP {status}): {msg}"),
+        401 => anyhow!(crate::tr!("chiave OpenRouter non valida: controllala nelle Impostazioni", "OpenRouter key not valid: check it in Settings")),
+        402 => anyhow!(crate::tr!("credito OpenRouter esaurito: ricaricalo su openrouter.ai/settings/credits", "OpenRouter credit exhausted: top it up at openrouter.ai/settings/credits")),
+        404 => anyhow!(crate::tr!("modello non trovato su OpenRouter ({msg}): controlla il nome nelle Impostazioni", "model not found on OpenRouter ({msg}): check the name in Settings")),
+        _ => anyhow!(crate::tr!("errore di OpenRouter (HTTP {status}): {msg}", "OpenRouter error (HTTP {status}): {msg}")),
     }
 }
 
@@ -198,23 +198,23 @@ impl OpenRouter {
                 Err(e) if e.is_timeout() && timeouts == 0 => {
                     timeouts += 1;
                     log::warn!("openrouter: {e}");
-                    self.say(format!("{model} non ha risposto in {} minuti, riprovo un'ultima volta", CALL_TIMEOUT.as_secs() / 60));
+                    self.say(crate::tr!("{model} non ha risposto in {} minuti, riprovo un'ultima volta", "{model} did not answer in {} minutes, trying one last time", CALL_TIMEOUT.as_secs() / 60));
                     continue;
                 }
-                Err(e) if e.is_timeout() => bail!("OpenRouter non risponde (nessuna risposta in {} minuti): riprova più tardi", CALL_TIMEOUT.as_secs() / 60),
+                Err(e) if e.is_timeout() => bail!(crate::tr!("OpenRouter non risponde (nessuna risposta in {} minuti): riprova più tardi", "OpenRouter is not answering (no answer in {} minutes): try again later", CALL_TIMEOUT.as_secs() / 60)),
                 Err(e) if attempt < max && e.is_connect() => {
                     log::warn!("openrouter: {e}");
-                    self.say(format!("Connessione a OpenRouter non riuscita, riprovo tra {} s (tentativo {} di {max})", wait.as_secs(), attempt + 1));
+                    self.say(crate::tr!("Connessione a OpenRouter non riuscita, riprovo tra {} s (tentativo {} di {max})", "Could not connect to OpenRouter, retrying in {} s (attempt {} of {max})", wait.as_secs(), attempt + 1));
                     sleep_or_cancel(wait, cancel).await?;
                     wait *= 2;
                     continue;
                 }
-                Err(e) => return Err(anyhow!(e).context("connessione a OpenRouter")),
+                Err(e) => return Err(anyhow!(e).context(crate::tr!("connessione a OpenRouter", "connecting to OpenRouter"))),
             };
             let status = resp.status();
-            let text = resp.text().await.context("risposta di OpenRouter")?;
+            let text = resp.text().await.with_context(|| crate::tr!("risposta di OpenRouter", "OpenRouter's answer"))?;
             if status.is_success() {
-                let v: Value = serde_json::from_str(&text).context("risposta di OpenRouter non valida")?;
+                let v: Value = serde_json::from_str(&text).with_context(|| crate::tr!("risposta di OpenRouter non valida", "invalid answer from OpenRouter"))?;
                 let a = parse_answer(&v, model, req.schema.is_some())?;
                 log::info!(
                     "openrouter {}: risposta in {:.0} s, {} token in ingresso, {} in uscita, {} di ragionamento, costo {}, fine {}",
@@ -232,30 +232,30 @@ impl OpenRouter {
             let code = status.as_u16();
             if (code == 408 || code == 429 || status.is_server_error()) && attempt < max {
                 let d = retry_delay(&text).unwrap_or(wait);
-                let why = if code == 429 { "troppe richieste" } else { "servizio sovraccarico" };
-                self.say(format!("OpenRouter: {why} (HTTP {code}), riprovo tra {} s (tentativo {} di {max})", d.as_secs(), attempt + 1));
+                let why = if code == 429 { crate::lang::ui().pick("troppe richieste", "too many requests") } else { crate::lang::ui().pick("servizio sovraccarico", "service overloaded") };
+                self.say(crate::tr!("OpenRouter: {why} (HTTP {code}), riprovo tra {} s (tentativo {} di {max})", "OpenRouter: {why} (HTTP {code}), retrying in {} s (attempt {} of {max})", d.as_secs(), attempt + 1));
                 sleep_or_cancel(d, cancel).await?;
                 wait = (wait * 2).min(Duration::from_secs(90));
                 continue;
             }
             return Err(api_error(status, &text));
         }
-        bail!("OpenRouter non risponde: riprova più tardi")
+        bail!(crate::tr!("OpenRouter non risponde: riprova più tardi", "OpenRouter is not answering: try again later"))
     }
 
     /// Checks the key; returns what is left of the credit, when OpenRouter says it.
     pub async fn check(&self) -> Result<String> {
-        let resp = self.http.get(format!("{}/api/v1/credits", self.base)).bearer_auth(&self.key).timeout(Duration::from_secs(30)).send().await.context("connessione a OpenRouter")?;
+        let resp = self.http.get(format!("{}/api/v1/credits", self.base)).bearer_auth(&self.key).timeout(Duration::from_secs(30)).send().await.with_context(|| crate::tr!("connessione a OpenRouter", "connecting to OpenRouter"))?;
         let status = resp.status();
         let text = resp.text().await?;
         if !status.is_success() {
             return Err(api_error(status, &text));
         }
-        let v: Value = serde_json::from_str(&text).context("risposta di OpenRouter non valida")?;
+        let v: Value = serde_json::from_str(&text).with_context(|| crate::tr!("risposta di OpenRouter non valida", "invalid answer from OpenRouter"))?;
         let (total, used) = (v["data"]["total_credits"].as_f64(), v["data"]["total_usage"].as_f64());
         Ok(match (total, used) {
-            (Some(t), Some(u)) => format!("Credito residuo: {:.2} $ (usati {:.2} $)", t - u, u),
-            _ => "Chiave valida".into(),
+            (Some(t), Some(u)) => crate::tr!("Credito residuo: {:.2} $ (usati {:.2} $)", "Credit left: ${:.2} (${:.2} used)", t - u, u),
+            _ => crate::tr!("Chiave valida", "Valid key"),
         })
     }
 
@@ -266,13 +266,13 @@ impl OpenRouter {
         {
             return Ok(m.clone());
         }
-        let resp = self.http.get(format!("{}/api/v1/models", self.base)).timeout(Duration::from_secs(30)).send().await.context("connessione a OpenRouter")?;
+        let resp = self.http.get(format!("{}/api/v1/models", self.base)).timeout(Duration::from_secs(30)).send().await.with_context(|| crate::tr!("connessione a OpenRouter", "connecting to OpenRouter"))?;
         let status = resp.status();
         let text = resp.text().await?;
         if !status.is_success() {
             return Err(api_error(status, &text));
         }
-        let v: Value = serde_json::from_str(&text).context("listino di OpenRouter non valido")?;
+        let v: Value = serde_json::from_str(&text).with_context(|| crate::tr!("listino di OpenRouter non valido", "invalid OpenRouter price list"))?;
         let per_m = |x: &Value| x.as_str().and_then(|s| s.parse::<f64>().ok()).map(|p| p * 1e6).unwrap_or(0.0);
         let mut list: Vec<ModelInfo> = v["data"]
             .as_array()

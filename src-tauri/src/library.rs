@@ -18,6 +18,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::lang::Lang;
+
 pub const COURSE_FILE: &str = "corso.json";
 pub const LESSON_FILE: &str = "lezione.json";
 pub const SOURCES_DIR: &str = "fonti";
@@ -38,6 +40,20 @@ pub struct CourseMeta {
     #[serde(default)]
     pub terms: String,
     pub created: DateTime<Utc>,
+    /// What is spoken in the lessons (missing: Italian, as every course before languages).
+    #[serde(default)]
+    pub language: Lang,
+    /// What summary, map, study material and chat are written in.
+    #[serde(default)]
+    pub materials_language: Lang,
+}
+
+/// The two languages of a course.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseLangs {
+    pub language: Lang,
+    pub materials_language: Lang,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,6 +152,9 @@ pub struct LessonMeta {
     pub created: DateTime<Utc>,
     #[serde(default)]
     pub sources: Vec<Source>,
+    /// What is spoken in this lesson when it is not the course's language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<Lang>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -154,6 +173,14 @@ pub struct LessonPatch {
     pub title: Option<String>,
     pub date: Option<NaiveDate>,
     pub notes: Option<String>,
+    /// `Some(None)` = as the course (JSON `null`); missing = unchanged.
+    #[serde(default, deserialize_with = "present")]
+    pub language: Option<Option<Lang>>,
+}
+
+/// A field present in the JSON, even as `null`.
+fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> std::result::Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
 }
 
 #[derive(Clone)]
@@ -202,7 +229,7 @@ pub fn is_plain_file_name(name: &str) -> bool {
 
 pub(crate) fn source_file(l: &Lesson, s: &Source) -> Result<PathBuf> {
     if !is_plain_file_name(&s.file) {
-        bail!("nome di file non valido nella lezione: {}", s.file);
+        bail!(crate::tr!("nome di file non valido nella lezione: {}", "invalid file name in the lecture: {}", s.file));
     }
     Ok(l.path.join(SOURCES_DIR).join(&s.file))
 }
@@ -228,15 +255,15 @@ fn unique_path(dir: &Path, name: &str, except: Option<&Path>) -> PathBuf {
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
-    let raw = fs::read(path).with_context(|| format!("lettura di {}", path.display()))?;
-    serde_json::from_slice(&raw).with_context(|| format!("{} non è valido", path.display()))
+    let raw = fs::read(path).with_context(|| crate::tr!("lettura di {}", "reading {}", path.display()))?;
+    serde_json::from_slice(&raw).with_context(|| crate::tr!("{} non è valido", "{} is not valid", path.display()))
 }
 
 /// Writes through a temporary file and a rename, so a crash never leaves half a JSON.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, serde_json::to_vec_pretty(value)?).with_context(|| format!("scrittura di {}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| format!("scrittura di {}", path.display()))
+    fs::write(&tmp, serde_json::to_vec_pretty(value)?).with_context(|| crate::tr!("scrittura di {}", "writing {}", tmp.display()))?;
+    fs::rename(&tmp, path).with_context(|| crate::tr!("scrittura di {}", "writing {}", path.display()))
 }
 
 fn lesson_dir_name(date: NaiveDate, title: &str) -> String {
@@ -263,13 +290,13 @@ pub fn discard(path: &Path) -> Result<()> {
     if !cfg!(test) && trash::delete(path).is_ok() {
         return Ok(());
     }
-    if path.is_dir() { fs::remove_dir_all(path) } else { fs::remove_file(path) }.with_context(|| format!("eliminazione di {}", path.display()))
+    if path.is_dir() { fs::remove_dir_all(path) } else { fs::remove_file(path) }.with_context(|| crate::tr!("eliminazione di {}", "deleting {}", path.display()))
 }
 
 impl Library {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
-        fs::create_dir_all(&root).with_context(|| format!("creazione della cartella {}", root.display()))?;
+        fs::create_dir_all(&root).with_context(|| crate::tr!("creazione della cartella {}", "creating the folder {}", root.display()))?;
         Ok(Self { root })
     }
 
@@ -294,7 +321,7 @@ impl Library {
             return Ok(());
         }
         let tmp = p.with_extension("tmp");
-        fs::write(&tmp, format!("{terms}\n")).with_context(|| format!("scrittura di {}", p.display()))?;
+        fs::write(&tmp, format!("{terms}\n")).with_context(|| crate::tr!("scrittura di {}", "writing {}", p.display()))?;
         fs::rename(&tmp, &p)?;
         Ok(())
     }
@@ -311,7 +338,7 @@ impl Library {
 
     fn course_dirs(&self) -> Result<Vec<(PathBuf, CourseMeta)>> {
         let mut out = Vec::new();
-        for e in fs::read_dir(&self.root).with_context(|| format!("lettura di {}", self.root.display()))? {
+        for e in fs::read_dir(&self.root).with_context(|| crate::tr!("lettura di {}", "reading {}", self.root.display()))? {
             let dir = e?.path();
             let f = dir.join(COURSE_FILE);
             if f.is_file() {
@@ -325,7 +352,7 @@ impl Library {
     }
 
     fn course_dir(&self, id: &str) -> Result<(PathBuf, CourseMeta)> {
-        self.course_dirs()?.into_iter().find(|(_, m)| m.id == id).ok_or_else(|| anyhow!("corso non trovato (forse è stato spostato o eliminato)"))
+        self.course_dirs()?.into_iter().find(|(_, m)| m.id == id).ok_or_else(|| anyhow!(crate::tr!("corso non trovato (forse è stato spostato o eliminato)", "course not found (it may have been moved or deleted)")))
     }
 
     pub fn courses(&self) -> Result<Vec<Course>> {
@@ -348,36 +375,52 @@ impl Library {
     }
 
     pub fn create_course(&self, name: &str, teacher: &str, terms: &str) -> Result<Course> {
+        self.create_course_in(name, teacher, terms, CourseLangs::default())
+    }
+
+    pub fn create_course_in(&self, name: &str, teacher: &str, terms: &str, langs: CourseLangs) -> Result<Course> {
         let name = name.trim();
         if name.is_empty() {
-            bail!("il nome del corso è vuoto");
+            bail!(crate::tr!("il nome del corso è vuoto", "the course name is empty"));
         }
         let dir = unique_path(&self.root, &safe_name(name, 80), None);
         fs::create_dir_all(&dir)?;
-        let meta = CourseMeta { id: new_id(), name: name.to_string(), teacher: teacher.trim().to_string(), terms: terms.trim().to_string(), created: Utc::now() };
+        let meta = CourseMeta { id: new_id(), name: name.to_string(), teacher: teacher.trim().to_string(), terms: terms.trim().to_string(), created: Utc::now(), language: langs.language, materials_language: langs.materials_language };
         write_json(&dir.join(COURSE_FILE), &meta)?;
         Ok(Course { meta, path: dir, lessons: 0 })
     }
 
-    pub fn update_course(&self, id: &str, name: &str, teacher: &str, terms: &str) -> Result<Course> {
+    pub fn update_course(&self, id: &str, name: &str, teacher: &str, terms: &str, langs: Option<CourseLangs>) -> Result<Course> {
         let (mut dir, mut meta) = self.course_dir(id)?;
         let name = name.trim();
         if name.is_empty() {
-            bail!("il nome del corso è vuoto");
+            bail!(crate::tr!("il nome del corso è vuoto", "the course name is empty"));
         }
         if name != meta.name {
             let to = unique_path(&self.root, &safe_name(name, 80), Some(&dir));
             if to != dir {
-                fs::rename(&dir, &to).context("rinomina della cartella del corso")?;
+                fs::rename(&dir, &to).with_context(|| crate::tr!("rinomina della cartella del corso", "renaming the course folder"))?;
                 dir = to;
             }
             meta.name = name.to_string();
         }
         meta.teacher = teacher.trim().to_string();
         meta.terms = terms.trim().to_string();
+        if let Some(l) = langs {
+            meta.language = l.language;
+            meta.materials_language = l.materials_language;
+        }
         write_json(&dir.join(COURSE_FILE), &meta)?;
         let lessons = self.lesson_dirs(&dir)?.len();
         Ok(Course { meta, path: dir, lessons })
+    }
+
+    /// The languages a lesson is processed with: (spoken, materials). A lesson whose course is
+    /// gone counts as Italian.
+    pub fn langs(&self, lesson: &Lesson) -> (Lang, Lang) {
+        let c = self.course_dir(&lesson.course_id).ok().map(|(_, m)| m);
+        let course = c.as_ref().map(|m| m.language).unwrap_or_default();
+        (lesson.meta.language.unwrap_or(course), c.map(|m| m.materials_language).unwrap_or_default())
     }
 
     pub fn delete_course(&self, id: &str) -> Result<()> {
@@ -407,7 +450,7 @@ impl Library {
                 return Ok(Lesson { meta, course_id: course.id, path });
             }
         }
-        bail!("lezione non trovata (forse è stata spostata o eliminata)")
+        bail!(crate::tr!("lezione non trovata (forse è stata spostata o eliminata)", "lecture not found (it may have been moved or deleted)"))
     }
 
     fn save_lesson(&self, l: &Lesson) -> Result<()> {
@@ -436,7 +479,7 @@ impl Library {
         for sub in [SOURCES_DIR, EXTRACTS_DIR, GENERATED_DIR] {
             fs::create_dir_all(dir.join(sub))?;
         }
-        let meta = LessonMeta { id: new_id(), title: title.to_string(), date, notes: String::new(), created: Utc::now(), sources: Vec::new() };
+        let meta = LessonMeta { id: new_id(), title: title.to_string(), date, notes: String::new(), created: Utc::now(), sources: Vec::new(), language: None };
         let l = Lesson { meta, course_id: course_id.to_string(), path: dir };
         self.save_lesson(&l)?;
         Ok(l)
@@ -447,7 +490,7 @@ impl Library {
         if let Some(t) = patch.title {
             let t = t.trim();
             if t.is_empty() {
-                bail!("il titolo della lezione è vuoto");
+                bail!(crate::tr!("il titolo della lezione è vuoto", "the lecture title is empty"));
             }
             l.meta.title = t.to_string();
         }
@@ -457,10 +500,13 @@ impl Library {
         if let Some(n) = patch.notes {
             l.meta.notes = n;
         }
-        let parent = l.path.parent().ok_or_else(|| anyhow!("cartella della lezione non valida"))?.to_path_buf();
+        if let Some(lang) = patch.language {
+            l.meta.language = lang;
+        }
+        let parent = l.path.parent().ok_or_else(|| anyhow!(crate::tr!("cartella della lezione non valida", "invalid lecture folder")))?.to_path_buf();
         let to = unique_path(&parent, &lesson_dir_name(l.meta.date, &l.meta.title), Some(&l.path));
         if to != l.path {
-            fs::rename(&l.path, &to).context("rinomina della cartella della lezione")?;
+            fs::rename(&l.path, &to).with_context(|| crate::tr!("rinomina della cartella della lezione", "renaming the lecture folder"))?;
             l.path = to;
         }
         self.save_lesson(&l)?;
@@ -472,7 +518,7 @@ impl Library {
     pub fn adopt_lesson(&self, course_id: &str, staged: &Path, meta: LessonMeta) -> Result<Lesson> {
         let (cdir, _) = self.course_dir(course_id)?;
         let dir = unique_path(&cdir, &lesson_dir_name(meta.date, &meta.title), None);
-        fs::rename(staged, &dir).or_else(|_| copy_dir(staged, &dir).and_then(|_| fs::remove_dir_all(staged).map_err(Into::into))).context("spostamento della lezione importata")?;
+        fs::rename(staged, &dir).or_else(|_| copy_dir(staged, &dir).and_then(|_| fs::remove_dir_all(staged).map_err(Into::into))).with_context(|| crate::tr!("spostamento della lezione importata", "moving the imported lecture"))?;
         for sub in [SOURCES_DIR, EXTRACTS_DIR, GENERATED_DIR] {
             fs::create_dir_all(dir.join(sub))?;
         }
@@ -488,7 +534,7 @@ impl Library {
     // ---------- sources ----------
 
     fn push_source(&self, l: &mut Lesson, dest: &Path, original_name: &str) -> Result<Source> {
-        let file = dest.file_name().and_then(|s| s.to_str()).ok_or_else(|| anyhow!("nome di file non valido"))?.to_string();
+        let file = dest.file_name().and_then(|s| s.to_str()).ok_or_else(|| anyhow!(crate::tr!("nome di file non valido", "invalid file name")))?.to_string();
         let src = Source {
             id: new_id(),
             kind: SourceKind::from_name(&file),
@@ -524,7 +570,7 @@ impl Library {
         for p in paths {
             let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("file").to_string();
             if p.is_dir() {
-                warnings.push(format!("{name}: è una cartella, trascina i file che contiene"));
+                warnings.push(crate::tr!("{name}: è una cartella, trascina i file che contiene", "{name}: it is a folder, drag the files it contains"));
                 continue;
             }
             let dest = unique_path(&dir, &safe_file_name(&name, 120), None);
@@ -578,7 +624,7 @@ impl Library {
 
     pub fn remove_source(&self, lesson_id: &str, source_id: &str) -> Result<Lesson> {
         let mut l = self.find_lesson(lesson_id)?;
-        let i = l.meta.sources.iter().position(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        let i = l.meta.sources.iter().position(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
         let p = source_file(&l, &l.meta.sources[i])?;
         let src = l.meta.sources.remove(i);
         if p.exists() {
@@ -601,7 +647,7 @@ impl Library {
     /// Marks a source's extract as corrected by hand (`Some`) or extracted again (`None`).
     pub fn set_source_edited(&self, lesson_id: &str, source_id: &str, when: Option<DateTime<Utc>>) -> Result<Lesson> {
         let mut l = self.find_lesson(lesson_id)?;
-        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
         if s.edited == when {
             return Ok(l);
         }
@@ -613,7 +659,7 @@ impl Library {
     /// Title and description of a photo, written by the user.
     pub fn set_source_info(&self, lesson_id: &str, source_id: &str, title: &str, description: &str) -> Result<Lesson> {
         let mut l = self.find_lesson(lesson_id)?;
-        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
         s.title = title.trim().to_string();
         s.description = description.trim().to_string();
         self.save_lesson(&l)?;
@@ -623,7 +669,7 @@ impl Library {
     /// The role of a PDF. A guess (`guessed`) never replaces the user's choice.
     pub fn set_source_role(&self, lesson_id: &str, source_id: &str, role: SourceRole, guessed: bool) -> Result<Lesson> {
         let mut l = self.find_lesson(lesson_id)?;
-        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
         if guessed && s.role.is_some() && !s.role_guessed {
             return Ok(l);
         }
@@ -638,7 +684,7 @@ impl Library {
 
     pub fn source_path(&self, lesson_id: &str, source_id: &str) -> Result<PathBuf> {
         let l = self.find_lesson(lesson_id)?;
-        let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        let s = l.meta.sources.iter().find(|s| s.id == source_id).ok_or_else(|| anyhow!(crate::tr!("fonte non trovata", "source not found")))?;
         source_file(&l, s)
     }
 }
@@ -699,7 +745,7 @@ mod tests {
         assert_eq!(u.path.file_name().unwrap(), "2026-11-10 Teoria della dualità");
         assert!(!l2.path.exists());
 
-        let rc = lib.update_course(&c.meta.id, "RO", "Rossi", "").unwrap();
+        let rc = lib.update_course(&c.meta.id, "RO", "Rossi", "", None).unwrap();
         assert_eq!(rc.path.file_name().unwrap(), "RO");
         // Lessons are still found after the course folder moved.
         assert_eq!(lib.lesson(&l1.meta.id).unwrap().meta.title, "Simplesso");

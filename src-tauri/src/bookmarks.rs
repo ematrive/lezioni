@@ -21,11 +21,12 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn label(self) -> &'static str {
+    /// The words the summary prompt refers to (`prompts::generate`).
+    fn label(self, l: crate::lang::Lang) -> &'static str {
         match self {
-            Kind::Importante => "importante",
-            Kind::Dubbio => "non capito",
-            Kind::Nota => "nota",
+            Kind::Importante => l.pick("importante", "important"),
+            Kind::Dubbio => l.pick("non capito", "not understood"),
+            Kind::Nota => l.pick("nota", "note"),
         }
     }
 }
@@ -76,10 +77,10 @@ pub fn list(lib: &Library, lesson_id: &str) -> Result<Vec<Bookmark>> {
 pub fn add(lib: &Library, lesson_id: &str, source_id: &str, at: f64, kind: Kind, note: &str) -> Result<Vec<Bookmark>> {
     let l = lib.lesson(lesson_id)?;
     if !l.meta.sources.iter().any(|s| s.id == source_id) {
-        bail!("fonte non trovata");
+        bail!(crate::tr!("fonte non trovata", "source not found"));
     }
     if !at.is_finite() || at < 0.0 {
-        bail!("minuto non valido");
+        bail!(crate::tr!("minuto non valido", "invalid time"));
     }
     let mut v = read(&l.path);
     v.push(Bookmark { id: uuid::Uuid::new_v4().to_string(), source_id: source_id.into(), at, kind, note: note.trim().into(), created: Utc::now() });
@@ -90,7 +91,7 @@ pub fn add(lib: &Library, lesson_id: &str, source_id: &str, at: f64, kind: Kind,
 pub fn update(lib: &Library, lesson_id: &str, id: &str, kind: Kind, note: &str) -> Result<Vec<Bookmark>> {
     let l = lib.lesson(lesson_id)?;
     let mut v = read(&l.path);
-    let b = v.iter_mut().find(|b| b.id == id).ok_or_else(|| anyhow!("segnaposto non trovato"))?;
+    let b = v.iter_mut().find(|b| b.id == id).ok_or_else(|| anyhow!(crate::tr!("segnaposto non trovato", "bookmark not found")))?;
     b.kind = kind;
     b.note = note.trim().into();
     write(&l.path, &v)?;
@@ -122,12 +123,12 @@ fn hms(secs: f64) -> String {
 }
 
 /// The lines for a prompt: "[F1 00:12:30] importante: nota", only for sources with a code.
-pub fn prompt_lines(v: &[Bookmark], code_of: impl Fn(&str) -> Option<String>) -> String {
+pub fn prompt_lines(v: &[Bookmark], l: crate::lang::Lang, code_of: impl Fn(&str) -> Option<String>) -> String {
     v.iter()
         .filter_map(|b| {
             let code = code_of(&b.source_id)?;
             let note = if b.note.is_empty() { String::new() } else { format!(": {}", b.note) };
-            Some(format!("- [{code} {}] {}{note}\n", hms(b.at), b.kind.label()))
+            Some(format!("- [{code} {}] {}{note}\n", hms(b.at), b.kind.label(l)))
         })
         .collect()
 }
@@ -150,7 +151,7 @@ mod tests {
         assert_eq!(v[0].at, 30.0, "in recording order");
         let v = update(&lib, &l.meta.id, &v[1].id, Kind::Nota, "regola di Bland").unwrap();
         assert_eq!((v[1].kind, v[1].note.as_str()), (Kind::Nota, "regola di Bland"));
-        assert_eq!(prompt_lines(&v, |_| Some("F1".into())), "- [F1 00:00:30] non capito\n- [F1 00:12:30] nota: regola di Bland\n");
+        assert_eq!(prompt_lines(&v, crate::lang::Lang::It, |_| Some("F1".into())), "- [F1 00:00:30] non capito\n- [F1 00:12:30] nota: regola di Bland\n");
         let v = remove(&lib, &l.meta.id, &v[0].id).unwrap();
         assert_eq!(v.len(), 1);
         lib.remove_source(&l.meta.id, &sid).unwrap();

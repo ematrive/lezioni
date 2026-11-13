@@ -151,15 +151,16 @@ pub fn mime_for(path: &Path) -> Option<&'static str> {
     })
 }
 
-/// Error from the API, with the message Google gives (in English) and a hint in Italian.
+/// Error from the API, with the message Google gives (in English) and a hint in the interface language.
 fn api_error(status: reqwest::StatusCode, body: &str) -> anyhow::Error {
     let msg = serde_json::from_str::<Value>(body).ok().and_then(|v| v["error"]["message"].as_str().map(str::to_string)).unwrap_or_else(|| body.chars().take(300).collect());
+    let ui = crate::lang::ui();
     let hint = match status.as_u16() {
-        400 if msg.contains("API key") => "la chiave API non è valida",
-        401 | 403 => "chiave API non valida o senza accesso a questo modello",
-        404 => "modello o file non trovato (controlla il nome del modello nelle Impostazioni)",
-        429 => "quota esaurita: il piano gratuito ha un limite giornaliero, riprova domani o attiva la fatturazione",
-        _ => "errore di Gemini",
+        400 if msg.contains("API key") => ui.pick("la chiave API non è valida", "the API key is not valid"),
+        401 | 403 => ui.pick("chiave API non valida o senza accesso a questo modello", "API key not valid or without access to this model"),
+        404 => ui.pick("modello o file non trovato (controlla il nome del modello nelle Impostazioni)", "model or file not found (check the model name in Settings)"),
+        429 => ui.pick("quota esaurita: il piano gratuito ha un limite giornaliero, riprova domani o attiva la fatturazione", "quota exhausted: the free tier has a daily limit, try again tomorrow or enable billing"),
+        _ => ui.pick("errore di Gemini", "Gemini error"),
     };
     anyhow!("{hint} (HTTP {status}): {msg}")
 }
@@ -242,28 +243,28 @@ impl Gemini {
                 Err(e) if e.is_timeout() && timeouts == 0 => {
                     timeouts += 1;
                     log::warn!("gemini: {e}");
-                    self.say(format!("Gemini non ha risposto in {} minuti, riprovo un'ultima volta", CALL_TIMEOUT.as_secs() / 60));
+                    self.say(crate::tr!("Gemini non ha risposto in {} minuti, riprovo un'ultima volta", "Gemini did not answer in {} minutes, trying one last time", CALL_TIMEOUT.as_secs() / 60));
                     continue;
                 }
-                Err(e) if e.is_timeout() => bail!("Gemini non risponde (nessuna risposta in {} minuti): riprova più tardi", CALL_TIMEOUT.as_secs() / 60),
+                Err(e) if e.is_timeout() => bail!(crate::tr!("Gemini non risponde (nessuna risposta in {} minuti): riprova più tardi", "Gemini is not answering (no answer in {} minutes): try again later", CALL_TIMEOUT.as_secs() / 60)),
                 Err(e) if attempt < max && e.is_connect() => {
                     log::warn!("gemini: {e}");
-                    self.say(format!("Connessione a Gemini non riuscita, riprovo tra {} s (tentativo {} di {max})", wait.as_secs(), attempt + 1));
+                    self.say(crate::tr!("Connessione a Gemini non riuscita, riprovo tra {} s (tentativo {} di {max})", "Could not connect to Gemini, retrying in {} s (attempt {} of {max})", wait.as_secs(), attempt + 1));
                     sleep_or_cancel(wait, cancel).await?;
                     wait *= 2;
                     continue;
                 }
-                Err(e) => return Err(anyhow!(e).context("connessione a Gemini")),
+                Err(e) => return Err(anyhow!(e).context(crate::tr!("connessione a Gemini", "connecting to Gemini"))),
             };
             let status = resp.status();
-            let text = resp.text().await.context("risposta di Gemini")?;
+            let text = resp.text().await.with_context(|| crate::tr!("risposta di Gemini", "Gemini's answer"))?;
             if status.is_success() {
-                return Ok((serde_json::from_str(&text).context("risposta di Gemini non valida")?, model));
+                return Ok((serde_json::from_str(&text).with_context(|| crate::tr!("risposta di Gemini non valida", "invalid answer from Gemini"))?, model));
             }
             overloaded = if status.as_u16() == 503 { overloaded + 1 } else { 0 };
             if let Some(f) = self.fallback.as_ref().filter(|f| fallback && attempt < max && overloaded >= 2 && **f != model) {
                 log::warn!("gemini: {model} sovraccarico, passo a {f}");
-                self.say(format!("{model} è sovraccarico, uso {f} per questa richiesta"));
+                self.say(crate::tr!("{model} è sovraccarico, uso {f} per questa richiesta", "{model} is overloaded, using {f} for this request"));
                 model = f.clone();
                 overloaded = 0;
                 continue;
@@ -272,15 +273,15 @@ impl Gemini {
             log::warn!("gemini HTTP {status}: {}", text.chars().take(500).collect::<String>());
             if retriable && attempt < max {
                 let d = retry_delay(&text).unwrap_or(wait);
-                let why = if status.as_u16() == 429 { "limite di richieste raggiunto" } else { "Gemini è sovraccarico" };
-                self.say(format!("{why} (HTTP {}), riprovo tra {} s (tentativo {} di {max})", status.as_u16(), d.as_secs(), attempt + 1));
+                let why = if status.as_u16() == 429 { crate::lang::ui().pick("limite di richieste raggiunto", "request limit reached") } else { crate::lang::ui().pick("Gemini è sovraccarico", "Gemini is overloaded") };
+                self.say(crate::tr!("{why} (HTTP {}), riprovo tra {} s (tentativo {} di {max})", "{why} (HTTP {}), retrying in {} s (attempt {} of {max})", status.as_u16(), d.as_secs(), attempt + 1));
                 sleep_or_cancel(d, cancel).await?;
                 wait = (wait * 2).min(Duration::from_secs(90));
                 continue;
             }
             return Err(api_error(status, &text));
         }
-        bail!("Gemini non risponde: riprova più tardi")
+        bail!(crate::tr!("Gemini non risponde: riprova più tardi", "Gemini is not answering: try again later"))
     }
 
     pub async fn generate(&self, model: &str, req: &Request, cancel: &CancellationToken) -> Result<Answer> {
@@ -318,7 +319,7 @@ impl Gemini {
     pub async fn count_tokens(&self, model: &str, parts: &[Part], cancel: &CancellationToken) -> Result<u64> {
         let body = json!({ "contents": [{ "role": "user", "parts": parts.iter().map(Part::to_json).collect::<Vec<_>>() }] });
         let (v, _) = self.post_json(model, "countTokens", &body, false, None, cancel).await?;
-        v["totalTokens"].as_u64().ok_or_else(|| anyhow!("conteggio dei token non disponibile"))
+        v["totalTokens"].as_u64().ok_or_else(|| anyhow!(crate::tr!("conteggio dei token non disponibile", "token count not available")))
     }
 
     /// Resumable upload, then waits until the file can be used.
@@ -336,13 +337,13 @@ impl Gemini {
             .json(&json!({ "file": { "display_name": name } }))
             .send()
             .await
-            .context("caricamento su Gemini")?;
+            .with_context(|| crate::tr!("caricamento su Gemini", "uploading to Gemini"))?;
         let status = start.status();
         if !status.is_success() {
             let t = start.text().await.unwrap_or_default();
             return Err(api_error(status, &t));
         }
-        let upload_url = start.headers().get("x-goog-upload-url").and_then(|v| v.to_str().ok()).ok_or_else(|| anyhow!("Gemini non ha dato l'indirizzo di caricamento"))?.to_string();
+        let upload_url = start.headers().get("x-goog-upload-url").and_then(|v| v.to_str().ok()).ok_or_else(|| anyhow!(crate::tr!("Gemini non ha dato l'indirizzo di caricamento", "Gemini did not give the upload address")))?.to_string();
         let file = tokio::fs::File::open(path).await?;
         let mb = |b: u64| format!("{:.0}", b as f64 / 1e6);
         let sent = Arc::new(AtomicU64::new(0));
@@ -364,7 +365,7 @@ impl Gemini {
             .body(body)
             .send();
         tokio::pin!(send);
-        self.say(format!("Caricamento su Gemini: 0 di {} MB", mb(size)));
+        self.say(crate::tr!("Caricamento su Gemini: 0 di {} MB", "Uploading to Gemini: 0 of {} MB", mb(size)));
         let mut tick = tokio::time::interval(Duration::from_secs(2));
         let resp = loop {
             let done = tokio::select! {
@@ -373,13 +374,13 @@ impl Gemini {
                 _ = tick.tick() => None,
             };
             if let Some(r) = done {
-                break r.context("caricamento su Gemini")?;
+                break r.with_context(|| crate::tr!("caricamento su Gemini", "uploading to Gemini"))?;
             }
             let n = sent.load(Ordering::Relaxed);
-            self.notify_only(if n < size { format!("Caricamento su Gemini: {} di {} MB", mb(n), mb(size)) } else { "Caricamento completato, attendo la conferma di Gemini…".into() });
+            self.notify_only(if n < size { crate::tr!("Caricamento su Gemini: {} di {} MB", "Uploading to Gemini: {} of {} MB", mb(n), mb(size)) } else { crate::tr!("Caricamento completato, attendo la conferma di Gemini…", "Upload complete, waiting for Gemini to confirm…") });
             let idle = started.elapsed().saturating_sub(Duration::from_millis(last.load(Ordering::Relaxed)));
             if idle > UPLOAD_STALL {
-                bail!("il caricamento su Gemini si è fermato a {} di {} MB (nessun progresso per {} s): controlla la connessione e riprova", mb(n), mb(size), UPLOAD_STALL.as_secs());
+                bail!(crate::tr!("il caricamento su Gemini si è fermato a {} di {} MB (nessun progresso per {} s): controlla la connessione e riprova", "the upload to Gemini stopped at {} of {} MB (no progress for {} s): check the connection and try again", mb(n), mb(size), UPLOAD_STALL.as_secs()));
             }
         };
         log::info!("gemini: caricati {} MB in {:.0} s", mb(size), started.elapsed().as_secs_f64());
@@ -388,21 +389,21 @@ impl Gemini {
         if !status.is_success() {
             return Err(api_error(status, &text));
         }
-        let v: Value = serde_json::from_str(&text).context("risposta del caricamento non valida")?;
-        let mut f: RemoteFile = serde_json::from_value(v["file"].clone()).context("risposta del caricamento non valida")?;
+        let v: Value = serde_json::from_str(&text).with_context(|| crate::tr!("risposta del caricamento non valida", "invalid upload response"))?;
+        let mut f: RemoteFile = serde_json::from_value(v["file"].clone()).with_context(|| crate::tr!("risposta del caricamento non valida", "invalid upload response"))?;
         // Audio and video are processed before they can be used.
         for i in 0..120 {
             match f.state.as_deref() {
                 Some("PROCESSING") => {
-                    self.notify_only(format!("Gemini sta preparando il file ({} s)…", i * 3));
+                    self.notify_only(crate::tr!("Gemini sta preparando il file ({} s)…", "Gemini is preparing the file ({} s)…", i * 3));
                     sleep_or_cancel(Duration::from_secs(3), cancel).await?;
                     f = self.file(&f.name).await?;
                 }
-                Some("FAILED") => bail!("Gemini non è riuscito a elaborare {name}"),
+                Some("FAILED") => bail!(crate::tr!("Gemini non è riuscito a elaborare {name}", "Gemini could not process {name}")),
                 _ => return Ok(f),
             }
         }
-        bail!("Gemini sta ancora elaborando {name}: riprova tra qualche minuto")
+        bail!(crate::tr!("Gemini sta ancora elaborando {name}: riprova tra qualche minuto", "Gemini is still processing {name}: try again in a few minutes"))
     }
 
     pub async fn file(&self, name: &str) -> Result<RemoteFile> {
@@ -425,7 +426,7 @@ impl Gemini {
 
     /// A cheap call to check the key: lists the models.
     pub async fn check(&self) -> Result<()> {
-        let resp = self.http.get(format!("{}/v1beta/models?pageSize=1", self.base)).header("x-goog-api-key", &self.key).timeout(Duration::from_secs(30)).send().await.context("connessione a Gemini")?;
+        let resp = self.http.get(format!("{}/v1beta/models?pageSize=1", self.base)).header("x-goog-api-key", &self.key).timeout(Duration::from_secs(30)).send().await.with_context(|| crate::tr!("connessione a Gemini", "connecting to Gemini"))?;
         let status = resp.status();
         if status.is_success() {
             return Ok(());
@@ -437,7 +438,7 @@ impl Gemini {
 
 fn parse_answer(v: &Value) -> Result<Answer> {
     if let Some(r) = v["promptFeedback"]["blockReason"].as_str() {
-        bail!("Gemini ha rifiutato la richiesta ({r})");
+        bail!(crate::tr!("Gemini ha rifiutato la richiesta ({r})", "Gemini refused the request ({r})"));
     }
     let c = &v["candidates"][0];
     let finish = c["finishReason"].as_str().unwrap_or("").to_string();
@@ -446,7 +447,7 @@ fn parse_answer(v: &Value) -> Result<Answer> {
         .map(|ps| ps.iter().filter(|p| !p["thought"].as_bool().unwrap_or(false)).filter_map(|p| p["text"].as_str()).collect())
         .unwrap_or_default();
     if text.is_empty() {
-        bail!("Gemini non ha risposto (motivo: {})", if finish.is_empty() { "sconosciuto" } else { &finish });
+        bail!(crate::tr!("Gemini non ha risposto (motivo: {})", "Gemini did not answer (reason: {})", if finish.is_empty() { crate::lang::ui().pick("sconosciuto", "unknown") } else { &finish }));
     }
     let usage = serde_json::from_value(v["usageMetadata"].clone()).unwrap_or_default();
     Ok(Answer { text, usage, finish, model: String::new() })

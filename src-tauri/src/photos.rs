@@ -197,7 +197,7 @@ struct Raw {
 /// The model's answer, checked: known codes, minutes inside the recording. A photo missing from
 /// the answer, or with a minute that does not fit, is "not found".
 fn checked(answer: &str, photos: &[Photo], recs: &[(String, u64)]) -> Result<Vec<ImageLink>> {
-    let a: Answer = serde_json::from_str(answer).map_err(|e| anyhow!("risposta del modello non valida: {e}"))?;
+    let a: Answer = serde_json::from_str(answer).map_err(|e| anyhow!(crate::tr!("risposta del modello non valida: {e}", "invalid answer from the model: {e}")))?;
     Ok(photos
         .iter()
         .enumerate()
@@ -213,7 +213,7 @@ fn checked(answer: &str, photos: &[Photo], recs: &[(String, u64)]) -> Result<Vec
             match found {
                 Some((recording, at)) => ImageLink { image: p.id.into(), recording, at: Some(at), by: By::Modello, why: String::new(), inputs: String::new() },
                 None => {
-                    let why = raw.map(|r| r.motivo.trim().to_string()).filter(|m| !m.is_empty()).unwrap_or_else(|| "il modello non ha trovato il punto della lezione".into());
+                    let why = raw.map(|r| r.motivo.trim().to_string()).filter(|m| !m.is_empty()).unwrap_or_else(|| crate::tr!("il modello non ha trovato il punto della lezione", "the model did not find the point in the lecture"));
                     ImageLink { image: p.id.into(), recording: String::new(), at: None, by: By::Modello, why, inputs: String::new() }
                 }
             }
@@ -243,8 +243,9 @@ pub async fn link<A: Ai>(ai: &A, model: &str, photos: &[Photo<'_>], recordings: 
         recs.push((r.id.to_string(), last));
     }
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::link_photos(&list, &texts))],
+        // The reasons end up in a warning: in the interface's language.
+        system: Some(prompts::system(crate::lang::ui())),
+        parts: vec![Part::Text(prompts::link_photos(crate::lang::ui(), &list, &texts))],
         schema: Some(prompts::link_photos_schema()),
         max_output_tokens: Some(8_000),
         thinking: Some("LOW"),
@@ -252,7 +253,7 @@ pub async fn link<A: Ai>(ai: &A, model: &str, photos: &[Photo<'_>], recordings: 
     };
     let a = ai.generate(model, &req, cancel).await?;
     if a.finish == "MAX_TOKENS" {
-        anyhow::bail!("la risposta del modello è stata troncata");
+        anyhow::bail!(crate::tr!("la risposta del modello è stata troncata", "the model's answer was truncated"));
     }
     Ok((checked(&a.text, photos, &recs)?, a.usage))
 }
@@ -326,20 +327,20 @@ pub async fn link_lesson<A: Ai>(ai: &A, model: &str, lesson: &crate::library::Le
             found.usage.add(&usage);
             for (mut l, (s, _, hash)) in links.into_iter().zip(&ask) {
                 if l.at.is_none() {
-                    found.warnings.push(format!("{}: foto non agganciata alla registrazione ({}). Puoi agganciarla a mano dalla trascrizione o dalle Fonti", s.original_name, l.why));
+                    found.warnings.push(crate::tr!("{}: foto non agganciata alla registrazione ({}). Puoi agganciarla a mano dalla trascrizione o dalle Fonti", "{}: photo not attached to the recording ({}). You can attach it by hand from the transcript or from Sources", s.original_name, l.why));
                 }
                 l.inputs = hash.clone();
                 found.links.push(l);
             }
         }
         Err(e) if e.to_string() == "annullato" => return Err(e),
-        Err(e) => found.warnings.push(format!("foto non agganciate alla registrazione ({e:#})")),
+        Err(e) => found.warnings.push(crate::tr!("foto non agganciate alla registrazione ({e:#})", "photos not attached to the recording ({e:#})")),
     }
     Ok(found)
 }
 
 /// Lines for the summary prompt: "- F3 foto «Titolo» (descrizione) = F1 00:12:30".
-pub fn prompt_lines(v: &[ImageLink], sources: &[crate::library::Source], code_of: impl Fn(&str) -> Option<String>) -> String {
+pub fn prompt_lines(v: &[ImageLink], sources: &[crate::library::Source], lang: crate::lang::Lang, code_of: impl Fn(&str) -> Option<String>) -> String {
     let mut out = String::new();
     for l in v {
         let (Some(p), Some(at)) = (code_of(&l.image), l.at) else { continue };
@@ -347,7 +348,7 @@ pub fn prompt_lines(v: &[ImageLink], sources: &[crate::library::Source], code_of
         let s = sources.iter().find(|s| s.id == l.image);
         let title = s.map(|s| if s.title.is_empty() { s.original_name.as_str() } else { s.title.as_str() }).unwrap_or("");
         let desc = s.map(|s| s.description.as_str()).filter(|d| !d.is_empty()).map(|d| format!(" ({d})")).unwrap_or_default();
-        out.push_str(&format!("- {p} foto «{title}»{desc} = {r} {}\n", crate::pipeline::hms(at)));
+        out.push_str(&format!("- {p} {} «{title}»{desc} = {r} {}\n", lang.pick("foto", "photo"), crate::pipeline::hms(at)));
     }
     out
 }

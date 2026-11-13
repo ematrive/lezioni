@@ -1,13 +1,15 @@
-// User guide inside the app: the chapters of docs/manuale (Markdown, Italian), bundled at
-// build time with their screenshots, so the guide and the manual on GitHub are the same text.
+// User guide inside the app: the chapters of docs/manuale (Italian) and docs/manual (English,
+// same file names), bundled at build time with their screenshots, so the guide and the manual on
+// GitHub are the same text. The interface language picks the folder.
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { BookOpen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { t, uiLang } from "../../i18n";
 import { Markdown } from "../../lib/Markdown";
 import { usePaneSize } from "../../lib/colwidths";
 
-const pages = import.meta.glob("../../../docs/manuale/*.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-const images = import.meta.glob("../../../docs/manuale/img/*.png", { query: "?url", import: "default", eager: true }) as Record<string, string>;
+const pages = import.meta.glob(["../../../docs/manuale/*.md", "../../../docs/manual/*.md"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const images = import.meta.glob(["../../../docs/manuale/img/*.png", "../../../docs/manual/img/*.png"], { query: "?url", import: "default", eager: true }) as Record<string, string>;
 
 export interface Chapter {
   file: string;
@@ -15,15 +17,27 @@ export interface Chapter {
   text: string;
 }
 
-export const CHAPTERS: Chapter[] = Object.entries(pages)
-  .map(([path, text]) => ({ file: path.split("/").pop()!, title: text.match(/^#\s+(.+)$/m)?.[1] ?? path, text }))
-  .sort((a, b) => a.file.localeCompare(b.file));
+const folder = () => (uiLang() === "en" ? "manual" : "manuale");
 
-const imageUrl = (src: string) => images[`../../../docs/manuale/${src.replace(/^\.\//, "")}`];
+/** The chapters in the interface language (read again when the app mounts with a new one). */
+function chapters(): Chapter[] {
+  const dir = `../../../docs/${folder()}/`;
+  return Object.entries(pages)
+    .filter(([path]) => path.startsWith(dir))
+    .map(([path, text]) => ({ file: path.split("/").pop()!, title: text.match(/^#\s+(.+)$/m)?.[1] ?? path, text }))
+    .sort((a, b) => a.file.localeCompare(b.file));
+}
+
+/** An English screenshot missing falls back to the Italian one. */
+const imageUrl = (src: string) => {
+  const f = src.replace(/^\.\//, "");
+  return images[`../../../docs/${folder()}/${f}`] ?? images[`../../../docs/manuale/${f}`];
+};
 
 const LAST = "lezioni:guide";
 
 export function Guide({ onClose }: { onClose: () => void }) {
+  const CHAPTERS = useMemo(chapters, []);
   const [file, setFile] = useState(() => {
     try {
       return localStorage.getItem(LAST) ?? CHAPTERS[0]?.file;
@@ -67,10 +81,10 @@ export function Guide({ onClose }: { onClose: () => void }) {
       <div className="anim-pop mx-auto flex h-full w-full max-w-6xl overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-zinc-950">
         <nav className="relative flex shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900" style={{ width: pane.size }}>
           <div className="flex items-center gap-2 px-4 pt-4 pb-2 font-semibold">
-            <BookOpen className="size-5 text-sky-600" /> Guida
+            <BookOpen className="size-5 text-sky-600" /> {t("Guida")}
           </div>
           <div className="px-3 pb-2">
-            <input className="field" placeholder="Cerca nella guida" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="field" placeholder={t("Cerca nella guida")} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <ul className="min-h-0 flex-1 overflow-auto px-2 pb-3">
             {(found ?? CHAPTERS).map((c) => (
@@ -80,14 +94,14 @@ export function Guide({ onClose }: { onClose: () => void }) {
                 </button>
               </li>
             ))}
-            {found?.length === 0 && <li className="px-3 py-2 text-sm text-zinc-500">Niente trovato.</li>}
+            {found?.length === 0 && <li className="px-3 py-2 text-sm text-zinc-500">{t("Niente trovato.")}</li>}
           </ul>
           <div className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800">Lezioni {__APP_VERSION__}</div>
           {pane.handle}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex justify-end px-3 pt-3">
-            <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Chiudi (Esc)" onClick={onClose}>
+            <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" title={t("Chiudi (Esc)")} onClick={onClose}>
               <X className="size-5" />
             </button>
           </div>

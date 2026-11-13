@@ -6,6 +6,13 @@
   const id = () => "id-" + n++;
   const now = () => new Date().toISOString();
   let libraryDir = null;
+  // Interface language: Italian unless the run asks for another (LANG_UI=en).
+  let uiLanguage = window.__LANG || "it";
+  // The fake content (names, transcript, summary, messages from Rust) in the run's language.
+  const EN = window.__LANG === "en";
+  const tx = (it, en) => (EN ? en : it);
+  const HOME = tx("/home/studente", "/home/student");
+  const REC = tx("registrazione 10-11.m4a", "recording 10-11.m4a");
   const courses = [];
   const lessons = [];
   const outputs = {};
@@ -14,7 +21,10 @@
   const costs = {}; // lesson id -> [{ when, total }]
   const marks = {}; // lesson id -> bookmarks
   // An earlier summary (as after a Rigenera), for the versions dialog.
-  const OLD_SUMMARY = "## Metodo del simplesso\nSi parte da una **base** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$";
+  const OLD_SUMMARY = tx(
+    "## Metodo del simplesso\nSi parte da una **base** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$",
+    "## The simplex method\nWe start from a **basis** and move along the vertices. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$",
+  );
   const versions = {}; // lesson id -> versions
   const reviewed = {}; // "lesson|question" -> { box, due }
   const dueCards = (ls) => {
@@ -27,7 +37,7 @@
   let globalTerms = "";
   // A real PDF of 3 landscape pages ("slides"), for pdf.js in the side panel.
   const slidesPdf = (() => {
-    const titles = ["Il metodo del simplesso", "Il pivot", "Degenerazione e regola di Bland"];
+    const titles = tx(["Il metodo del simplesso", "Il pivot", "Degenerazione e regola di Bland"], ["The simplex method", "The pivot", "Degeneracy and Bland's rule"]);
     const objs = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${titles.map((_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${titles.length} >>`];
     titles.forEach((t, i) => {
       const stream = `0.85 0.92 1 rg 0 0 640 360 re f 0.05 0.3 0.6 rg BT /F1 30 Tf 40 300 Td (Slide ${i + 1}) Tj ET 0 0 0 rg BT /F1 24 Tf 40 240 Td (${t}) Tj ET`;
@@ -55,10 +65,10 @@
     return "other";
   };
   const src = (file, originalName, size) => ({ id: id(), file, kind: kind(file), originalName, size, added: now() });
-  const course = (c) => ({ terms: "", ...c, lessons: lessons.filter((l) => l.courseId === c.id).length });
+  const course = (c) => ({ terms: "", language: uiLanguage, materialsLanguage: uiLanguage, ...c, lessons: lessons.filter((l) => l.courseId === c.id).length });
   const find = (lid) => {
     const l = lessons.find((x) => x.id === lid);
-    if (!l) throw { kind: "other", message: "lezione non trovata" };
+    if (!l) throw { kind: "other", message: tx("lezione non trovata", "lecture not found") };
     return l;
   };
   window.__emit = (event, payload) => (listeners[event] || []).forEach((h) => cbs[h]?.({ event, id: 0, payload }));
@@ -98,7 +108,7 @@
         case "plugin:dialog|message":
           return a.buttons?.OkCancelCustom?.[0] ?? a.buttons?.OkCustom ?? (a.buttons === "YesNo" ? "Yes" : "Ok");
         case "plugin:dialog|save":
-          return "/home/studente/Scrivania/" + (a.options?.defaultPath ?? "file");
+          return HOME + tx("/Scrivania/", "/Desktop/") + (a.options?.defaultPath ?? "file");
         case "export_write_text":
           window.__written = { dest: a.dest, text: a.text };
           return null;
@@ -119,7 +129,7 @@
           chats[a.lessonId] = [
             ...(chats[a.lessonId] ?? []),
             { role: "user", text: a.question, scope: a.scope, at, refs: {} },
-            { role: "model", text: "Il **test del rapporto minimo** sceglie la variabile uscente [F1 00:12:30].", scope: a.scope, at, refs: audio ? { F1: audio.id } : {} },
+            { role: "model", text: tx("Il **test del rapporto minimo** sceglie la variabile uscente [F1 00:12:30].", "The **minimum ratio test** chooses the leaving variable [F1 00:12:30]."), scope: a.scope, at, refs: audio ? { F1: audio.id } : {} },
           ];
           return { messages: chats[a.lessonId], usage: { promptTokenCount: 30000, candidatesTokenCount: 300, thoughtsTokenCount: 0 } };
         }
@@ -132,34 +142,38 @@
             const c = courses.find((x) => x.id === l.courseId);
             const o = outputs[l.id];
             for (const [sid, t] of Object.entries(o?.extracts ?? {}))
-              if (t.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "extract", sourceId: sid, label: "registrazione 10-11.m4a", snippet: clean(t), time: 750, score: 1 });
-            if (o?.summary?.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "summary", sourceId: null, label: "Sintesi", snippet: clean(o.summary), time: null, score: 1 });
+              if (t.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "extract", sourceId: sid, label: REC, snippet: clean(t), time: 750, score: 1 });
+            if (o?.summary?.toLowerCase().includes(q)) hits.push({ courseId: c.id, course: c.name, lessonId: l.id, lesson: l.title, date: l.date, area: "summary", sourceId: null, label: tx("Sintesi", "Summary"), snippet: clean(o.summary), time: null, score: 1 });
           }
           return hits;
         }
         case "package_inspect":
-          return { course: { name: "Economia applicata", teacher: "Verdi" }, exported: now(), lessons: [{ id: "pkg-l1", title: "Break-even", date: "2026-11-05", sources: 3, omitted: 1, exists: false }], matchingCourse: null };
+          return { course: { name: tx("Economia applicata", "Applied economics"), teacher: tx("Verdi", "Green") }, exported: now(), lessons: [{ id: "pkg-l1", title: "Break-even", date: "2026-11-05", sources: 3, omitted: 1, exists: false }], matchingCourse: null };
         case "package_import": {
-          const c = { id: id(), name: "Economia applicata", teacher: "Verdi", created: now(), path: `${libraryDir}/Economia applicata` };
+          const name = tx("Economia applicata", "Applied economics");
+          const c = { id: id(), name, teacher: tx("Verdi", "Green"), created: now(), path: `${libraryDir}/${name}` };
           courses.push(c);
-          lessons.push({ id: "pkg-l1", title: "Break-even", date: "2026-11-05", notes: "", created: now(), sources: [{ id: "s-rec", file: "reg.m4a", kind: "audio", originalName: "reg.m4a", size: 1, added: now(), omitted: true }], courseId: c.id, path: `${c.path}/2026-11-05 Break-even` });
+          lessons.push({ id: "pkg-l1", title: "Break-even", date: "2026-11-05", notes: "", created: now(), sources: [{ id: "s-rec", file: tx("reg.m4a", "rec.m4a"), kind: "audio", originalName: tx("reg.m4a", "rec.m4a"), size: 1, added: now(), omitted: true }], courseId: c.id, path: `${c.path}/2026-11-05 Break-even` });
           return { courseId: c.id, imported: ["pkg-l1"], skipped: [] };
         }
         case "settings_get":
-          return { libraryDir, suggestedDir: "/home/studente/Documenti/Lezioni" };
+          return { libraryDir, suggestedDir: HOME + tx("/Documenti/Lezioni", "/Documents/Lezioni"), language: uiLanguage };
+        case "settings_set_language":
+          uiLanguage = a.language;
+          return null;
         case "settings_set_library":
           libraryDir = a.dir;
           return null;
         case "courses_list":
           return courses.map(course);
         case "course_create": {
-          const c = { id: id(), name: a.name, teacher: a.teacher, terms: a.terms ?? "", created: now(), path: `${libraryDir}/${a.name}` };
+          const c = { id: id(), name: a.name, teacher: a.teacher, terms: a.terms ?? "", created: now(), path: `${libraryDir}/${a.name}`, ...(a.langs ?? {}) };
           courses.push(c);
           return course(c);
         }
         case "course_update": {
           const c = courses.find((x) => x.id === a.id);
-          Object.assign(c, { name: a.name, teacher: a.teacher, terms: a.terms });
+          Object.assign(c, { name: a.name, teacher: a.teacher, terms: a.terms, ...(a.langs ?? {}) });
           return course(c);
         }
         case "extract_save": {
@@ -190,7 +204,7 @@
           return find(a.id);
         case "lesson_create": {
           const c = courses.find((x) => x.id === a.courseId);
-          const l = { id: id(), title: a.title || "Lezione", date: a.date, notes: "", created: now(), sources: [], courseId: a.courseId, path: `${c.path}/${a.date} ${a.title}` };
+          const l = { id: id(), title: a.title || tx("Lezione", "Lecture"), date: a.date, notes: "", created: now(), sources: [], courseId: a.courseId, path: `${c.path}/${a.date} ${a.title}` };
           lessons.push(l);
           return l;
         }
@@ -208,7 +222,8 @@
         }
         case "source_add_text": {
           const l = find(a.lessonId);
-          l.sources.push(src(`${a.title || "Testo incollato"}.md`, a.title || "Testo incollato", a.text.length));
+          const name = a.title || tx("Testo incollato", "Pasted text");
+          l.sources.push(src(`${name}.md`, name, a.text.length));
           return l;
         }
         case "source_remove": {
@@ -229,7 +244,7 @@
           aiProvider = a.provider;
           return null;
         case "ai_check":
-          return a.provider === "openrouter" ? "Credito residuo: 9,62 $ (usati 0,38 $)" : "Funziona";
+          return a.provider === "openrouter" ? tx("Credito residuo: 9,62 $ (usati 0,38 $)", "Credit left: $9.62 ($0.38 used)") : tx("Funziona", "It works");
         case "openrouter_models":
           return [
             { id: "anthropic/claude-haiku-5.5", name: "Anthropic: Claude Haiku 5.5", input: 0.1, output: 0.5, images: true, files: true },
@@ -260,9 +275,16 @@
           const send = (message) => cbs[a.channel.id]?.({ index: 0, message });
           setTimeout(() => {
             courseSummaries[a.courseId] = {
-              summary:
+              summary: tx(
                 "## Programmazione lineare\nUn problema di PL si scrive in **forma standard** $\\max\\, c^T x$ con $Ax = b,\\ x \\ge 0$; le soluzioni di base sono i vertici del poliedro. [L1]\n\n## Il metodo del simplesso\nSi passa da un vertice all'altro con il **pivot**: la variabile entrante ha costo ridotto negativo, la uscente si sceglie con il test del rapporto minimo. Con rapporti uguali la soluzione è **degenere** e serve la regola di Bland. [L1]",
-              questions: [{ domanda: "Illustra il metodo del simplesso e il caso degenere.", traccia: "Forma standard, base ammissibile, pivot, rapporto minimo, regola di Bland.", lezioni: ["L1"] }],
+                "## Linear programming\nAn LP problem is written in **standard form** $\\max\\, c^T x$ with $Ax = b,\\ x \\ge 0$; the basic solutions are the vertices of the polyhedron. [L1]\n\n## The simplex method\nWe move from one vertex to the next with a **pivot**: the entering variable has a negative reduced cost, the leaving one is chosen with the minimum ratio test. With equal ratios the solution is **degenerate** and Bland's rule is needed. [L1]",
+              ),
+              questions: [
+                tx(
+                  { domanda: "Illustra il metodo del simplesso e il caso degenere.", traccia: "Forma standard, base ammissibile, pivot, rapporto minimo, regola di Bland.", lezioni: ["L1"] },
+                  { domanda: "Explain the simplex method and the degenerate case.", traccia: "Standard form, basic feasible solution, pivot, minimum ratio, Bland's rule.", lezioni: ["L1"] },
+                ),
+              ],
               info: { generated: now(), model: "anthropic/claude-haiku-5.5", usage: { promptTokenCount: 9000, candidatesTokenCount: 2500, thoughtsTokenCount: 0, cost: 0.006 }, refs: Object.fromEntries(ls.map((l, i) => ["L" + (i + 1), l.id])) },
               ready: ls.length,
               changed: 0,
@@ -297,7 +319,10 @@
           return outputs[a.lessonId].slides[0]?.steps.length ?? 0;
         case "extract_mark_pauses": {
           const o = outputs[a.lessonId];
-          o.extracts[a.sourceId] = o.extracts[a.sourceId].replace("[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie", "[00:03:10] *(pausa fino a 00:12:30)*");
+          o.extracts[a.sourceId] = o.extracts[a.sourceId].replace(
+            tx("[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie", "[00:03:10] thank you\n\n[00:03:40] thank you thank you thank you thank you"),
+            tx("[00:03:10] *(pausa fino a 00:12:30)*", "[00:03:10] *(pause until 00:12:30)*"),
+          );
           o.pauses = {};
           find(a.lessonId).sources.find((s) => s.id === a.sourceId).edited = now();
           return 1;
@@ -316,7 +341,7 @@
           outputs[a.lessonId].summary = OLD_SUMMARY;
           return find(a.lessonId);
         case "extract_reclean":
-          return { text: "[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con i vincoli $Ax \\le b$, come spiega bene il libro di TIM.", usage: { promptTokenCount: 900, candidatesTokenCount: 120, thoughtsTokenCount: 0, cost: 0.0004 }, model: "google/gemini-3.5-flash-lite" };
+          return { text: tx("[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con i vincoli $Ax \\le b$, come spiega bene il libro di TIM.", "[00:12:30] The objective function is $\\max\\, c^T x$ subject to the constraints $Ax \\le b$, as the book by TIM explains well."), usage: { promptTokenCount: 900, candidatesTokenCount: 120, thoughtsTokenCount: 0, cost: 0.0004 }, model: "google/gemini-3.5-flash-lite" };
         case "bookmark_add":
           (marks[a.lessonId] ??= []).push({ id: id(), sourceId: a.sourceId, at: a.at, kind: a.kind, note: a.note, created: now() });
           return sortMarks(a.lessonId);
@@ -335,28 +360,65 @@
           })();
           const audio = l.sources.find((s) => s.kind === "audio");
           const pdf = l.sources.find((s) => s.kind === "pdf");
-          const board = l.sources.find((s) => s.originalName === "lavagna.jpg");
+          const board = l.sources.find((s) => s.originalName === tx("lavagna.jpg", "whiteboard.jpg"));
           const pasted = l.sources.find((s) => s.kind === "image" && s !== board);
-          setTimeout(() => send({ event: "step", done: 0.33, total: 3, message: "Trascrizione sul computer di registrazione.m4a, parte 2 di 3: 00:20:00–00:40:00 di 00:52:10" }), 50);
-          setTimeout(() => send({ event: "detail", message: "Whisper: 43% · ripulitura della parte 1" }), 80);
+          setTimeout(() => send({ event: "step", done: 0.33, total: 3, message: tx("Trascrizione sul computer di registrazione.m4a, parte 2 di 3: 00:20:00–00:40:00 di 00:52:10", "Transcribing recording.m4a on the computer, part 2 of 3: 00:20:00–00:40:00 of 00:52:10") }), 50);
+          setTimeout(() => send({ event: "detail", message: tx("Whisper: 43% · ripulitura della parte 1", "Whisper: 43% · cleaning up part 1") }), 80);
           window.__finishJob = () => {
             outputs[l.id] = {
-              extracts: audio ? { [audio.id]: "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team." } : {},
+              extracts: audio
+                ? {
+                    [audio.id]: tx(
+                      "### Introduzione\n[00:00:05] Oggi vediamo il metodo del simplesso.\n\n[00:03:10] grazie\n\n[00:03:40] grazie grazie grazie grazie\n\n[00:12:30] La funzione obiettivo è $\\max\\, c^T x$ con vincoli $Ax \\le b$. Lo spiega bene il libro di Team.",
+                      "### Introduction\n[00:00:05] Today we look at the simplex method.\n\n[00:03:10] thank you\n\n[00:03:40] thank you thank you thank you thank you\n\n[00:12:30] The objective function is $\\max\\, c^T x$ with constraints $Ax \\le b$. It's explained well in the book by Team.",
+                    ),
+                  }
+                : {},
               pauses: audio ? { [audio.id]: 1 } : {},
-              ...(pdf && { pdfText: { [pdf.id]: "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*\n\n## Pagina 2\nIl pivot: variabile entrante e test del rapporto minimo.\n\n## Pagina 3\nDegenerazione e regola di Bland." } }),
+              ...(pdf && {
+                pdfText: {
+                  [pdf.id]: tx(
+                    "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*\n\n## Pagina 2\nIl pivot: variabile entrante e test del rapporto minimo.\n\n## Pagina 3\nDegenerazione e regola di Bland.",
+                    "## Page 1\n**The simplex method**: we go from vertex to vertex. *(handwritten: remember Bland's rule to avoid cycling!)*\n\n*(graph of the polyhedron with numbered vertices)*\n\n## Page 2\nThe pivot: entering variable and minimum ratio test.\n\n## Page 3\nDegeneracy and Bland's rule.",
+                  ),
+                },
+              }),
               slides: audio && pdf ? [{ recording: audio.id, pdf: pdf.id, pages: 3, steps: [{ at: 5, page: 1 }, { at: 750, page: 2 }] }] : [],
               // The board photo found from the time it was taken; the pasted screenshot not found.
-              photos: [...(audio && board ? [{ image: board.id, recording: audio.id, at: 750, by: "orario" }] : []), ...(pasted ? [{ image: pasted.id, recording: "", at: null, by: "modello", why: "nella trascrizione non si parla di questo schema" }] : [])],
-              photoText: { ...(board && { [board.id]: "*(poliedro disegnato alla lavagna, con i vertici numerati da 1 a 5)*" }), ...(pasted && { [pasted.id]: "Schema del tableau con le colonne delle variabili di base." }) },
-              raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
-              summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n" + (board ? "![Il poliedro alla lavagna](F2)\n\n" : "") + "$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
-              map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
-              study: {
-                glossario: [{ termine: "Base", definizione: "Insieme di m variabili linearmente indipendenti." }],
-                flashcard: [{ domanda: "Cos'è il test del rapporto minimo?", risposta: "Sceglie la variabile uscente mantenendo l'ammissibilità: $\\min_i b_i / a_{ij}$ con $a_{ij} > 0$." }],
-                domandeEsame: [{ domanda: "Illustra il metodo del simplesso.", traccia: "Forma standard, base iniziale, pivot, criterio di ottimalità." }],
+              photos: [...(audio && board ? [{ image: board.id, recording: audio.id, at: 750, by: "orario" }] : []), ...(pasted ? [{ image: pasted.id, recording: "", at: null, by: "modello", why: tx("nella trascrizione non si parla di questo schema", "the transcript doesn't talk about this diagram") }] : [])],
+              photoText: {
+                ...(board && { [board.id]: tx("*(poliedro disegnato alla lavagna, con i vertici numerati da 1 a 5)*", "*(polyhedron drawn on the whiteboard, with the vertices numbered 1 to 5)*") }),
+                ...(pasted && { [pasted.id]: tx("Schema del tableau con le colonne delle variabili di base.", "Diagram of the tableau with the columns of the basic variables.") }),
               },
-              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: { ...(audio && { F1: audio.id }), ...(board && { F2: board.id }) } },
+              raw: audio
+                ? {
+                    [audio.id]: tx(
+                      "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team.",
+                      "[00:00:05] So, uhm, today we look at the simplex method, that is...\n\n[00:12:30] the objective function is max c transpose x with constraints a x less than or equal to b. it's explained well in the book by team.",
+                    ),
+                  }
+                : {},
+              summary: tx(
+                "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n" + (board ? "![Il poliedro alla lavagna](F2)\n\n" : "") + "$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
+                "## The simplex method\nWe start from a **basic feasible solution** and move along the vertices. [F1 00:12:30]\n\n" + (board ? "![The polyhedron on the whiteboard](F2)\n\n" : "") + "$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Step | Action |\n|---|---|\n| 1 | Choose the entering variable |\n| 2 | Minimum ratio test |",
+              ),
+              map: tx(
+                { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
+                { etichetta: "Simplex", figli: [{ etichetta: "Standard form", figli: [{ etichetta: "Slack variables" }] }, { etichetta: "Basic feasible solution" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Entering variable" }, { etichetta: "Minimum ratio" }] }] },
+              ),
+              study: tx(
+                {
+                  glossario: [{ termine: "Base", definizione: "Insieme di m variabili linearmente indipendenti." }],
+                  flashcard: [{ domanda: "Cos'è il test del rapporto minimo?", risposta: "Sceglie la variabile uscente mantenendo l'ammissibilità: $\\min_i b_i / a_{ij}$ con $a_{ij} > 0$." }],
+                  domandeEsame: [{ domanda: "Illustra il metodo del simplesso.", traccia: "Forma standard, base iniziale, pivot, criterio di ottimalità." }],
+                },
+                {
+                  glossario: [{ termine: "Basis", definizione: "A set of m linearly independent variables." }],
+                  flashcard: [{ domanda: "What is the minimum ratio test?", risposta: "It chooses the leaving variable keeping the solution feasible: $\\min_i b_i / a_{ij}$ with $a_{ij} > 0$." }],
+                  domandeEsame: [{ domanda: "Explain the simplex method.", traccia: "Standard form, initial basis, pivot, optimality criterion." }],
+                },
+              ),
+              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: tx("Simplesso", "Simplex"), sources: { ...(audio && { F1: audio.id }), ...(board && { F2: board.id }) } },
             };
             versions[l.id] = [{ area: "generati", stamp: "2026-11-10 09-15-00", files: ["info.json", "mappa.json", "mappa.mmd", "sintesi.md", "studio.json"] }];
             Object.assign(outputs[l.id].extracts, outputs[l.id].pdfText ?? {});

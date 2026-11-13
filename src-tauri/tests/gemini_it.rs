@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use lezioni_lib::ai::{Gemini, Part, Request, prompts};
 use lezioni_lib::audio;
+use lezioni_lib::lang::Lang::It;
 use tokio_util::sync::CancellationToken;
 
 fn enabled() -> Option<(Gemini, String)> {
@@ -52,7 +53,7 @@ async fn real_api() {
     let tokens = g.count_tokens(&model, std::slice::from_ref(&part), &cancel).await.expect("countTokens");
     println!("countTokens: {tokens} (atteso ≈ {:.0})", parts[0].secs * 32.0);
 
-    let req = Request { system: Some(prompts::SYSTEM.into()), parts: vec![part, Part::Text(prompts::transcribe_clip(1, parts.len(), "00:00:00"))], thinking: Some("LOW"), max_output_tokens: Some(8000), ..Default::default() };
+    let req = Request { system: Some(prompts::system(It)), parts: vec![part, Part::Text(prompts::transcribe_clip(It, 1, parts.len(), "00:00:00"))], thinking: Some("LOW"), max_output_tokens: Some(8000), ..Default::default() };
     let a = g.generate(&model, &req, &cancel).await.expect("trascrizione");
     println!("trascrizione ({} / {:?}):\n{}\n", a.finish, a.usage, a.text.chars().take(1500).collect::<String>());
     g.delete_file(&f.name).await;
@@ -62,8 +63,8 @@ async fn real_api() {
 
     // Structured output with the real schema, on a small text.
     let req = Request {
-        system: Some(prompts::SYSTEM.into()),
-        parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Prova", "2026-11-10", "", "", "", "", "", "[F1] appunti (testo)\nIl metodo del simplesso si muove tra i vertici del poliedro ammissibile. [00:01:00] La variabile entrante si sceglie col costo ridotto più negativo."))],
+        system: Some(prompts::system(It)),
+        parts: vec![Part::Text(prompts::generate(It, It, "Ricerca operativa", "Prova", "2026-11-10", "", "", "", "", "", "[F1] appunti (testo)\nIl metodo del simplesso si muove tra i vertici del poliedro ammissibile. [00:01:00] La variabile entrante si sceglie col costo ridotto più negativo."))],
         schema: Some(prompts::generate_schema()),
         max_output_tokens: Some(8000),
         ..Default::default()
