@@ -129,15 +129,18 @@ FONTI:\n\n{sources}"
     )
 }
 
+/// Fixed depth instead of `$ref` recursion: root + 3 levels is plenty for a lesson.
+/// `figli` is required where it exists: with it optional, gemini-3.5-flash-lite answered with
+/// the root alone 3 times out of 3 (OpenRouter, Nov 2026); required, 4 full trees out of 4.
 fn node(depth: u32) -> Value {
     let mut props = json!({ "etichetta": { "type": "string" }, "rif": { "type": "string" } });
-    if depth > 0 {
-        props["figli"] = json!({ "type": "array", "items": node(depth - 1) });
+    if depth == 0 {
+        return json!({ "type": "object", "properties": props, "required": ["etichetta"] });
     }
-    json!({ "type": "object", "properties": props, "required": ["etichetta"] })
+    props["figli"] = json!({ "type": "array", "items": node(depth - 1) });
+    json!({ "type": "object", "properties": props, "required": ["etichetta", "figli"] })
 }
 
-/// Fixed depth instead of `$ref` recursion: root + 3 levels is plenty for a lesson.
 /// Summary of a whole course from the summaries of its lessons ([L1], [L2]…).
 pub fn course_summary(course: &str, terms: &str, lessons: usize, text: &str) -> String {
     let terms = terms_line(terms);

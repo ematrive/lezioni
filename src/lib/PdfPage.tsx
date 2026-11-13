@@ -35,6 +35,7 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
   const canvas = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [failed, setFailed] = useState<string | null>(null);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -46,6 +47,13 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
     if (!width || !canvas.current) return;
     let task: RenderTask | null = null;
     let live = true;
+    // A render cancelled by the next page is normal; anything else must show, not leave a blank page.
+    const fail = (e: unknown) => {
+      if (!live || (e as Error)?.name === "RenderingCancelledException") return;
+      console.error("pdf.js", e);
+      setFailed(String((e as Error)?.message ?? e));
+    };
+    setFailed(null);
     doc.getPage(Math.min(Math.max(page, 1), doc.numPages)).then((p) => {
       if (!live || !canvas.current) return;
       const base = p.getViewport({ scale: 1 });
@@ -57,8 +65,8 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
       c.style.width = `${width}px`;
       c.style.height = `${Math.floor(vp.height / ratio)}px`;
       task = p.render({ canvas: c, viewport: vp });
-      task.promise.catch(() => {});
-    });
+      task.promise.catch(fail);
+    }).catch(fail);
     return () => {
       live = false;
       task?.cancel();
@@ -67,6 +75,7 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
   return (
     <div ref={box} className="w-full">
       <canvas ref={canvas} className="rounded border border-zinc-200 bg-white shadow-sm dark:border-zinc-700" data-pdf-page={page} />
+      {failed && <p className="mt-1 text-xs text-red-600">Non riesco a disegnare la pagina {page}: {failed}</p>}
     </div>
   );
 }

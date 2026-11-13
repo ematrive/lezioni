@@ -1,5 +1,10 @@
 # Novità
 
+## Prossima versione
+
+- La **mappa** non resta più con il solo argomento della lezione: il modello di riserva (Gemini Flash-Lite su OpenRouter) a volte rispondeva senza i concetti sotto la radice.
+- Se una slide non si riesce a disegnare accanto alla trascrizione, sotto la pagina compare il motivo invece di un riquadro bianco.
+
 ## 1.0.2
 
 - Su Mac l'app non chiede più a ogni avvio l'accesso alla cartella Documenti e la password del Portachiavi: rispondi una volta (**Consenti**, e **Consenti sempre** per il Portachiavi) e se ne ricorda. Dopo un aggiornamento macOS può chiederlo ancora una volta.

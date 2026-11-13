@@ -1366,7 +1366,10 @@ mod tests {
         assert!(!serde_json::to_string(&old).unwrap().contains("rif"), "nothing written when there is none");
         let schema = prompts::generate_schema();
         assert_eq!(schema["properties"]["mappa"]["properties"]["rif"]["type"], "string");
-        assert_eq!(schema["properties"]["mappa"]["required"], serde_json::json!(["etichetta"]));
+        assert_eq!(schema["properties"]["mappa"]["required"], serde_json::json!(["etichetta", "figli"]));
+        let leaf = &schema["properties"]["mappa"]["properties"]["figli"]["items"]["properties"]["figli"]["items"]["properties"]["figli"]["items"];
+        assert_eq!(leaf["required"], serde_json::json!(["etichetta"]));
+        assert!(leaf["properties"].get("figli").is_none());
     }
 
     #[test]
