@@ -97,7 +97,7 @@ Se è un testo lungo e già digitale, riportalo fedelmente. Rispondi solo con il
 /// `marks`: the student's bookmarks, one per line ("- [F1 00:12:30] importante: nota").
 /// `slides`: when the recording talks about each page of the slides ("- F2 pagina 3 = F1 00:05:10").
 #[allow(clippy::too_many_arguments)]
-pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, marks: &str, slides: &str, sources: &str) -> String {
+pub fn generate(course: &str, title: &str, date: &str, notes: &str, terms: &str, marks: &str, slides: &str, photos: &str, sources: &str) -> String {
     let terms = terms_line(terms);
     let notes = if notes.trim().is_empty() { String::new() } else { format!("\nNote dello studente sulla lezione:\n{notes}\n") };
     let marks = if marks.trim().is_empty() {
@@ -113,8 +113,16 @@ e spiega con più calma e con un esempio i punti «non capito»; le note dicono 
     } else {
         format!("\nSlide e registrazione: quando il docente parla di ciascuna pagina delle slide. Segui l'ordine delle slide e, dove serve, cita insieme pagina e minuto:\n{slides}")
     };
+    let photos = if photos.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nFoto e registrazione: a che minuto si riferisce ogni foto. Dove una foto aiuta a capire (uno schema, un disegno, un esercizio alla lavagna), \
+inseriscila nella sintesi su una riga a sé, nel punto giusto, così: ![titolo breve](F3) con il codice della foto. Ogni foto al massimo una volta:\n{photos}"
+        )
+    };
     format!(
-        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}{marks}{slides}\n\
+        "Corso: {course}\nLezione: {title} ({date})\n{terms}{notes}{marks}{slides}{photos}\n\
 Qui sotto ci sono tutte le fonti della lezione, ognuna con un codice [F1], [F2]…: la trascrizione della registrazione, appunti, foto della lavagna, slide. \
 Collegale tra loro: gli appunti e le slide spesso spiegano o correggono ciò che si sente nella registrazione, e viceversa.\n\n\
 Produci:\n\
@@ -168,6 +176,27 @@ Indica i momenti in cui il docente passa a una slide: per ogni passaggio il temp
 In ordine di tempo; il docente può saltare pagine o tornare indietro. Se per un tratto non usa le slide, non mettere passaggi in quel tratto. \
 Non inventare: metti una slide solo se il parlato ne tratta davvero il contenuto.\n\nSLIDE:\n{pages}\nTRASCRIZIONE:\n{transcript}"
     )
+}
+
+pub fn link_photos(photos: &str, transcripts: &str) -> String {
+    format!(
+        "Qui sotto ci sono le foto scattate durante una lezione (lavagna, appunti, slide fotografate), ognuna con un codice FOTO1, FOTO2… \
+e il testo che se ne è letto, e le trascrizioni delle registrazioni della lezione (REG1, REG2…), con i tempi [hh:mm:ss] all'inizio dei paragrafi.\n\
+Per ogni foto indica la registrazione e il tempo del paragrafo in cui il docente comincia a parlare di quello che c'è nella foto (o lo scrive alla lavagna). \
+Il titolo e la descrizione dati dallo studente, se ci sono, sono le indicazioni più affidabili. \
+Non inventare: se una foto non corrisponde a nessun punto delle registrazioni, lascia vuoti registrazione e inizio e scrivi in motivo, in poche parole, perché. \
+Una voce per ogni foto.\n\nFOTO:\n{photos}TRASCRIZIONI:\n{transcripts}"
+    )
+}
+
+pub fn link_photos_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": { "foto": { "type": "array", "items": { "type": "object", "properties": {
+            "codice": { "type": "string" }, "registrazione": { "type": "string" }, "inizio": { "type": "string" }, "motivo": { "type": "string" }
+        }, "required": ["codice", "registrazione", "inizio", "motivo"] } } },
+        "required": ["foto"]
+    })
 }
 
 pub fn align_slides_schema() -> Value {

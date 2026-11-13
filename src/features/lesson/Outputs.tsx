@@ -7,6 +7,8 @@ import { buildMapHtml } from "../share/html";
 import { toast } from "../../lib/toast";
 import { VersionsButton } from "./Versions";
 import { SlidesPanel } from "./SlidesPanel";
+import { type PhotoAt, PhotosPanel, photoTitle } from "./PhotosPanel";
+import { PhotoPicker } from "./PhotoPicker";
 import { FlashCard, ReviewSession } from "../study/Review";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
@@ -596,6 +598,9 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
     }
   }, [side]);
   const [slidePage, setSlidePage] = useState<Record<string, number>>({});
+  /** The photo shown next to each recording, and the menu that links a photo to a paragraph. */
+  const [photoCur, setPhotoCur] = useState<Record<string, string>>({});
+  const [picker, setPicker] = useState<{ sourceId: string; at: number; anchor: DOMRect } | null>(null);
   /** The note being written, at a minute of a recording. */
   const [draft, setDraft] = useState<{ sourceId: string; at: number; note: string } | null>(null);
   const mark = useCallback(
@@ -676,7 +681,16 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
     const pdf = al && lesson.sources.find((x) => x.id === al.pdf);
     return al && pdf ? { al, pdf } : null;
   };
-  const wide = side && withText.some((s) => linked(s.id));
+  /** The photos linked to a recording, by minute. */
+  const photosFor = (sid: string): PhotoAt[] =>
+    outputs.photos
+      .filter((l) => l.recording === sid && l.at !== null)
+      .flatMap((l) => {
+        const src = lesson.sources.find((x) => x.id === l.image && !x.omitted);
+        return src ? [{ src, at: l.at as number }] : [];
+      })
+      .sort((a, b) => a.at - b.at);
+  const wide = side && withText.some((s) => linked(s.id) || photosFor(s.id).length);
   // The text of a PDF of slides: each page links to when the teacher talks about it.
   const pageRefsOf = (sid: string) => {
     const al = outputs.slides.find((a) => a.pdf === sid);
@@ -798,6 +812,7 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
               />
             ) : (() => {
               const link = media ? linked(s.id) : null;
+              const photos = media ? photosFor(s.id) : [];
               const text = (
                 <Markdown
                   text={showRaw ? raw : outputs.extracts[s.id]}
@@ -809,35 +824,54 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
                     setSide(true);
                     setSlidePage((cur) => ({ ...cur, [s.id]: page }));
                   }}
+                  photos={photos.length ? photos.map((p) => ({ at: p.at, id: p.src.id, title: photoTitle(p.src), url: fileUrl(sourceFile(lesson, p.src)) })) : undefined}
+                  onPhoto={(id) => {
+                    setSide(true);
+                    setPhotoCur((cur) => ({ ...cur, [s.id]: id }));
+                  }}
+                  onAttach={media && editing && !showRaw ? (at, el) => setPicker({ sourceId: s.id, at, anchor: el.getBoundingClientRect() }) : undefined}
                   pageRefs={s.kind === "pdf" ? pageRefsOf(s.id) : undefined}
                 />
               );
-              if (!link) return text;
+              if (!link && !photos.length) return text;
               return (
                 <>
                   <div className="-mt-2 mb-3 flex items-center gap-2 text-xs text-zinc-500">
                     <label className="flex cursor-pointer items-center gap-1.5">
                       <input type="checkbox" checked={side} onChange={(e) => setSide(e.target.checked)} />
-                      Slide accanto
+                      {link && photos.length ? "Slide e foto accanto" : link ? "Slide accanto" : "Foto accanto"}
                     </label>
                     <span>
-                      · {link.pdf.originalName}, {link.al.steps.length} passaggi
+                      {link && <>· {link.pdf.originalName}, {link.al.steps.length} passaggi </>}
+                      {photos.length > 0 && <>· {photos.length === 1 ? "1 foto" : `${photos.length} foto`}</>}
                     </span>
                   </div>
                   {side ? (
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,42%)]">
                       <div className="min-w-0">{text}</div>
                       <div className="order-first lg:order-none">
-                        <div className="lg:sticky lg:top-40">
-                          <SlidesPanel
-                            lessonId={lesson.id}
-                            pdf={link.pdf}
-                            al={link.al}
-                            page={slidePage[s.id] ?? link.al.steps[0]?.page ?? 1}
-                            setPage={(p) => setSlidePage((cur) => (cur[s.id] === p ? cur : { ...cur, [s.id]: p }))}
-                            player={() => players.current[s.id] ?? null}
-                            section={() => sections.current[s.id] ?? null}
-                          />
+                        <div className="space-y-6 lg:sticky lg:top-40">
+                          {link && (
+                            <SlidesPanel
+                              lessonId={lesson.id}
+                              pdf={link.pdf}
+                              al={link.al}
+                              page={slidePage[s.id] ?? link.al.steps[0]?.page ?? 1}
+                              setPage={(p) => setSlidePage((cur) => (cur[s.id] === p ? cur : { ...cur, [s.id]: p }))}
+                              player={() => players.current[s.id] ?? null}
+                              section={() => sections.current[s.id] ?? null}
+                            />
+                          )}
+                          {photos.length > 0 && (
+                            <PhotosPanel
+                              lesson={lesson}
+                              photos={photos}
+                              current={photoCur[s.id] ?? photos[0].src.id}
+                              setCurrent={(id) => setPhotoCur((cur) => (cur[s.id] === id ? cur : { ...cur, [s.id]: id }))}
+                              player={() => players.current[s.id] ?? null}
+                              section={() => sections.current[s.id] ?? null}
+                            />
+                          )}
                         </div>
                       </div>
                     </div>
@@ -850,8 +884,39 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
           </section>
         );
       })}
+      {picker && (
+        <PhotoPicker
+          lesson={lesson}
+          links={outputs.photos}
+          at={picker.at}
+          listening={(() => {
+            const p = players.current[picker.sourceId];
+            return p && p.currentTime > 0 ? p.currentTime : null;
+          })()}
+          anchor={picker.anchor}
+          onClose={() => setPicker(null)}
+          onPick={async (imageId, at) => {
+            const sid = picker.sourceId;
+            setPicker(null);
+            try {
+              await ai.setPhotoLink(lesson.id, imageId, sid, at);
+              const p = lesson.sources.find((x) => x.id === imageId);
+              toast(`${p ? photoTitle(p) : "Foto"} agganciata a ${clock(at)}.${outputs.summary ? " Premi Rigenera per metterla nella sintesi." : ""}`);
+              editing?.onSaved();
+            } catch (e) {
+              toast(toAppError(e).message, "error");
+            }
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** A photo placed in the summary as `![titolo](F3)`: its file. */
+function photoUrl(lesson: Lesson, outputs: Outputs, code: string): string | undefined {
+  const s = lesson.sources.find((x) => x.id === outputs.info?.sources[code] && x.kind === "image" && !x.omitted);
+  return s ? fileUrl(sourceFile(lesson, s)) : undefined;
 }
 
 export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesson: Lesson; outputs: Outputs; onRef: (href: string) => void; process: React.ReactNode; editing?: Editing }) {
@@ -883,7 +948,7 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
           }}
         />
       ) : (
-        <Markdown text={outputs.summary} onRef={onRef} />
+        <Markdown text={outputs.summary} onRef={onRef} imgSrc={(code) => photoUrl(lesson, outputs, code)} />
       )}
     </div>
   );

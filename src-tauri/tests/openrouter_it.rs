@@ -72,7 +72,7 @@ async fn compare_models() {
         let sources = format!("[F1] lezione.m4a (registrazione)\n{}\n\n[F2] slide.pdf (PDF)\n{pdf_text}\n", clean.text);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", "", &sources))],
+            parts: vec![Part::Text(prompts::generate(&course, &title, "2026-11-10", "", &terms, "", "", "", &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(16000),
             ..Default::default()
@@ -212,4 +212,49 @@ async fn slides_align() {
             Err(e) => println!("\n=== {m}: ERRORE {e:#}"),
         }
     }
+}
+
+/// Photos linked to the transcript by the model, then a summary that knows where they are:
+/// one photo of the minimum ratio test (should land at 00:21:30), one unrelated (should not be
+/// linked). Under 1 cent.
+///   LEZIONI_IT_OPENROUTER=1 OPENROUTER_API_KEY=… cargo test --test openrouter_it photos_linked -- --nocapture
+#[tokio::test]
+async fn photos_linked() {
+    if std::env::var("LEZIONI_IT_OPENROUTER").is_err() {
+        eprintln!("LEZIONI_IT_OPENROUTER non impostata: test saltato");
+        return;
+    }
+    use lezioni_lib::ai::Ai;
+    use lezioni_lib::photos::{Photo, Recording, link};
+    let o = lezioni_lib::ai::Provider::OpenRouter(OpenRouter::new(std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY")));
+    let model = std::env::var("LEZIONI_IT_MODELS").unwrap_or_else(|_| "google/gemini-3.5-flash-lite".into());
+    let model = model.split(',').next().unwrap();
+    let photos = [
+        Photo { id: "rapporto", name: "IMG_2041.jpg", title: "", description: "", text: "Test del rapporto minimo: $\\min_i b_i / a_{ij}$ con $a_{ij} > 0$; se nessun $a_{ij} > 0$ → illimitato" },
+        Photo { id: "bode", name: "IMG_2042.jpg", title: "", description: "", text: "Diagramma di Bode: modulo in dB e fase di un filtro passa-basso del primo ordine" },
+    ];
+    let recordings = [Recording { id: "reg", name: "lezione.m4a", text: RAW }];
+    let t = Instant::now();
+    let (links, u) = link(&o, model, &photos, &recordings, &CancellationToken::new()).await.unwrap();
+    eprintln!("aggancio ({model}, {:.1} s, {:.5} $): {links:#?}", t.elapsed().as_secs_f64(), cost(&u));
+    assert_eq!((links[0].recording.as_str(), links[0].at), ("reg", Some(21 * 60 + 30)), "rapporto minimo");
+    assert_eq!(links[1].at, None, "Bode non c'entra");
+
+    // The summary, told where the photo is.
+    let summary_model = std::env::var("LEZIONI_IT_SUMMARY_MODEL").unwrap_or_else(|_| "anthropic/claude-haiku-5.5".into());
+    let photo_lines = "- F2 foto «IMG_2041.jpg» = F1 00:21:30\n";
+    let sources = format!("[F1] lezione.m4a (registrazione)\n{RAW}\n\n[F2] IMG_2041.jpg (foto/appunti)\n{}\n", photos[0].text);
+    let req = Request {
+        system: Some(prompts::SYSTEM.into()),
+        parts: vec![Part::Text(prompts::generate("Ricerca operativa", "Metodo del simplesso", "2026-11-10", "", "", "", "", photo_lines, &sources))],
+        schema: Some(prompts::generate_schema()),
+        max_output_tokens: Some(16000),
+        ..Default::default()
+    };
+    let t = Instant::now();
+    let a = o.generate(&summary_model, &req, &CancellationToken::new()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_str(&a.text).unwrap();
+    let sintesi = v["sintesi"].as_str().unwrap();
+    eprintln!("--- sintesi ({summary_model}, {:.1} s, {:.5} $):\n{sintesi}", t.elapsed().as_secs_f64(), cost(&a.usage));
+    assert!(sintesi.contains("](F2)"), "la foto non è nella sintesi");
 }

@@ -161,9 +161,116 @@ pub fn split(path: &Path, out_dir: &Path, window: u64, cancel: &CancellationToke
     Ok(w.chunks)
 }
 
+/// Length of a recording in seconds, from its header (nothing is decoded).
+pub fn duration_secs(path: &Path) -> Option<f64> {
+    if let Some((_, d)) = mp4_header(path) {
+        return Some(d);
+    }
+    let file = File::open(path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default()).ok()?;
+    let t = probed.format.tracks().iter().find(|t| t.codec_params.codec != CODEC_TYPE_NULL)?;
+    let frames = t.codec_params.n_frames?;
+    let rate = t.codec_params.sample_rate?;
+    Some(frames as f64 / rate as f64)
+}
+
+/// Creation time and length from the `mvhd` box of an m4a/mp4/mov file. Phones write the
+/// creation time there; some apps when the recording starts, others when it ends.
+pub fn mp4_header(path: &Path) -> Option<(chrono::DateTime<chrono::Utc>, f64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    // Walks the boxes between `from` and `to`; returns the start and end of the content of `kind`.
+    fn find(f: &mut File, from: u64, to: u64, kind: &[u8; 4]) -> Option<(u64, u64)> {
+        let mut pos = from;
+        while pos + 8 <= to {
+            f.seek(SeekFrom::Start(pos)).ok()?;
+            let mut h = [0u8; 8];
+            f.read_exact(&mut h).ok()?;
+            let mut size = u32::from_be_bytes(h[0..4].try_into().ok()?) as u64;
+            let mut head = 8;
+            if size == 1 {
+                let mut b = [0u8; 8];
+                f.read_exact(&mut b).ok()?;
+                size = u64::from_be_bytes(b);
+                head = 16;
+            } else if size == 0 {
+                size = to - pos;
+            }
+            if size < head {
+                return None;
+            }
+            if &h[4..8] == kind {
+                return Some((pos + head, (pos + size).min(to)));
+            }
+            pos += size;
+        }
+        None
+    }
+    let (ms, me) = find(&mut f, 0, len, b"moov")?;
+    let (hs, he) = find(&mut f, ms, me, b"mvhd")?;
+    let mut b = vec![0u8; (he - hs).min(64) as usize];
+    f.seek(SeekFrom::Start(hs)).ok()?;
+    f.read_exact(&mut b).ok()?;
+    let u32_at = |i: usize| -> Option<u64> { Some(u32::from_be_bytes(b.get(i..i + 4)?.try_into().ok()?) as u64) };
+    let u64_at = |i: usize| -> Option<u64> { Some(u64::from_be_bytes(b.get(i..i + 8)?.try_into().ok()?)) };
+    let (created, scale, dur) = match b.first()? {
+        0 => (u32_at(4)?, u32_at(12)?, u32_at(16)?),
+        1 => (u64_at(4)?, u32_at(20)?, u64_at(24)?),
+        _ => return None,
+    };
+    // Seconds since 1904-01-01 UTC; 0 (or a date before the 2000s) means "not set".
+    let unix = created.checked_sub(2_082_844_800)? as i64;
+    if unix < 946_684_800 || scale == 0 {
+        return None;
+    }
+    Some((chrono::DateTime::from_timestamp(unix, 0)?, dur as f64 / scale as f64))
+}
+
+/// When a recording started: the mp4 header (true: it may be the end instead), or else the date
+/// the original file was last changed (`modified`, the end of the recording) minus its length.
+pub fn started_at(copy: &Path, modified: Option<std::time::SystemTime>) -> Option<(chrono::DateTime<chrono::Utc>, bool)> {
+    if let Some((at, _)) = mp4_header(copy) {
+        return Some((at, true));
+    }
+    let end: chrono::DateTime<chrono::Utc> = modified?.into();
+    let d = duration_secs(copy)?;
+    Some((end - chrono::Duration::milliseconds((d * 1000.0) as i64), false))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mp4_header_times() {
+        // ftyp, a free box, then moov with a version 0 mvhd: created 2026-11-10 19:43:31 UTC, 494.5 s.
+        let created: u32 = (1_794_339_811u64 + 2_082_844_800) as u32;
+        let mut mvhd = vec![0u8; 4];
+        for v in [created, created, 1000, 494_500] {
+            mvhd.extend(v.to_be_bytes());
+        }
+        let boxed = |kind: &[u8], body: &[u8]| [&((body.len() + 8) as u32).to_be_bytes()[..], kind, body].concat();
+        let file = [boxed(b"ftyp", b"M4A "), boxed(b"free", &[0; 10]), boxed(b"moov", &boxed(b"mvhd", &mvhd))].concat();
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.m4a");
+        std::fs::write(&p, file).unwrap();
+        let (at, d) = mp4_header(&p).unwrap();
+        assert_eq!(at.to_rfc3339(), "2026-11-10T19:43:31+00:00");
+        assert!((d - 494.5).abs() < 0.001);
+        assert_eq!(duration_secs(&p), Some(494.5));
+        assert_eq!(started_at(&p, None), Some((at, true)));
+        // Not an mp4: the file's date minus the length.
+        let w = dir.path().join("b.wav");
+        tone(&w, 3);
+        let end = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_794_340_000);
+        assert_eq!(started_at(&w, Some(end)).unwrap().0.timestamp(), 1_794_339_997);
+    }
 
     /// 44.1 kHz stereo WAV of `secs` seconds (a 440 Hz tone).
     pub fn tone(path: &Path, secs: u32) {

@@ -956,6 +956,24 @@ impl<A: Ai> Ctx<'_, A> {
         Ok(())
     }
 
+    /// Links the photos to the recordings (see `photos::link_lesson`).
+    async fn link_photos(&self, lesson_id: &str, report: &mut Report) -> Result<()> {
+        let lesson = self.archive.lesson(lesson_id)?;
+        if !lesson.meta.sources.iter().any(|s| s.kind == SourceKind::Image) {
+            return Ok(());
+        }
+        self.check()?;
+        (self.detail)("Aggancio le foto alla registrazione…".into());
+        let found = crate::photos::link_lesson(self.ai, &self.models.transcribe, &lesson, false, self.cancel).await?;
+        report.usage.add(&found.usage);
+        report.warnings.extend(found.warnings);
+        if !found.links.is_empty() {
+            let _g = self.archive.lock.lock().unwrap_or_else(|e| e.into_inner());
+            crate::photos::save_found(&self.archive.lesson(lesson_id)?.path, found.links)?;
+        }
+        Ok(())
+    }
+
     pub async fn run(&self, lesson_id: &str, opts: &Options) -> Result<Report> {
         let mut report = Report::default();
         let lesson = self.archive.lesson(lesson_id)?;
@@ -1042,6 +1060,7 @@ impl<A: Ai> Ctx<'_, A> {
             );
         }
         self.link_slides(lesson_id, &mut report).await?;
+        self.link_photos(lesson_id, &mut report).await?;
         if opts.extract_only {
             self.fallback_warning(&mut report);
             return Ok(report);
@@ -1058,9 +1077,10 @@ impl<A: Ai> Ctx<'_, A> {
         let code_of = |sid: &str| extracts.iter().find(|(_, s, _)| s.id == sid).map(|(c, _, _)| c.to_string());
         let marks = crate::bookmarks::prompt_lines(&crate::bookmarks::read(&lesson.path), code_of);
         let slides = crate::slides::prompt_lines(&crate::slides::read(&lesson.path), code_of);
+        let photos = crate::photos::prompt_lines(&crate::photos::read(&lesson.path), &lesson.meta.sources, code_of);
         let req = Request {
             system: Some(prompts::SYSTEM.into()),
-            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &slides, &sources))],
+            parts: vec![Part::Text(prompts::generate(&course.0, &lesson.meta.title, &lesson.meta.date.to_string(), &lesson.meta.notes, &course.1, &marks, &slides, &photos, &sources))],
             schema: Some(prompts::generate_schema()),
             max_output_tokens: Some(48_000),
             ..Default::default()
@@ -1155,6 +1175,8 @@ pub struct Outputs {
     pub pauses: BTreeMap<String, usize>,
     /// Slides linked to recordings (`allineamento.json`).
     pub slides: Vec<crate::slides::Alignment>,
+    /// Photos linked to a minute of a recording (`foto.json`).
+    pub photos: Vec<crate::photos::ImageLink>,
 }
 
 /// Just the study material (`generati/studio.json`), for the review.
@@ -1187,6 +1209,7 @@ pub fn outputs(lesson: &Lesson) -> Outputs {
         bookmarks: crate::bookmarks::read(&lesson.path),
         versions: crate::versions::list(lesson),
         slides: crate::slides::read(&lesson.path),
+        photos: crate::photos::read(&lesson.path),
     }
 }
 
@@ -1242,7 +1265,8 @@ mod tests {
 
     impl Ai for Fake {
         async fn generate(&self, model: &str, req: &Request, _c: &CancellationToken) -> Result<Answer> {
-            if req.schema.is_some() {
+            let photos_req = req.parts.iter().any(|p| matches!(p, Part::Text(t) if t.contains("FOTO:\n")));
+            if req.schema.is_some() && !photos_req {
                 self.summary_models.lock().unwrap().push(model.to_string());
                 if self.truncate_summaries.load(Ordering::SeqCst) > 0 {
                     self.truncate_summaries.fetch_sub(1, Ordering::SeqCst);
@@ -1265,6 +1289,8 @@ mod tests {
                 raw.replace("ehm allora ", "")
             } else if let Some(raw) = prompt.split("Pezzo:\n").nth(1) {
                 raw.replace("ehm allora ", "")
+            } else if photos_req {
+                r#"{"foto":[{"codice":"FOTO1","registrazione":"REG1","inizio":"00:00:15","motivo":""}]}"#.into()
             } else if prompt.contains("SLIDE:\n") {
                 r#"{"passaggi":[{"inizio":"00:00:01","pagina":1},{"inizio":"00:00:11","pagina":2}]}"#.into()
             } else if req.schema.is_some() && self.empty_summaries.load(Ordering::SeqCst) > 0 {
@@ -1668,8 +1694,8 @@ Con $\nu$ e $\frac{a}{b}$ [F2 00:01:00]\n\n## Scarichi\n### Legge di scarico\n$Q
         // 25 s in parts of 10 s: 3 parts, small enough to go inline (no upload).
         assert_eq!(count(&ai, "Questa è la parte"), 3);
         assert_eq!(ai.uploads.load(Ordering::SeqCst), 0);
-        // 3 parts + photo + summary, each billed once.
-        assert_eq!(r.usage.prompt_token_count, 500);
+        // 3 parts + photo + its link to the recording + summary, each billed once.
+        assert_eq!(r.usage.prompt_token_count, 600);
 
         let l = st.lib.lesson(&st.lesson).unwrap();
         let out = outputs(&l);
@@ -1681,12 +1707,45 @@ Con $\nu$ e $\frac{a}{b}$ [F2 00:01:00]\n\n## Scarichi\n### Legge di scarico\n$Q
         assert_eq!(out.study.unwrap().flashcard.len(), 1);
         let mmd = fs::read_to_string(l.path.join("generati/mappa.mmd")).unwrap();
         assert!(mmd.contains("root((Simplesso))") && mmd.contains("Base ammissibile"), "{mmd}");
+        // The photo linked by the model, and told to the summary.
+        let photo = &l.meta.sources[1];
+        assert_eq!(out.photos.iter().map(|p| (p.image.as_str(), p.at, p.by)).collect::<Vec<_>>(), [(photo.id.as_str(), Some(15), crate::photos::By::Modello)]);
+        assert!(ai.prompts.lock().unwrap().last().unwrap().contains("foto «lavagna.jpg» = F1 00:00:15"));
 
         // Second run: extracts reused, only the summary is asked again; old outputs kept.
         let before = ai.prompts.lock().unwrap().len();
         run(&st, &ai, Options::default()).await.unwrap();
         assert_eq!(ai.prompts.lock().unwrap().len(), before + 1);
         assert_eq!(fs::read_dir(l.path.join("generati/versioni")).unwrap().count(), 1);
+
+        // A new title asks again; a link by hand never.
+        st.lib.set_source_info(&st.lesson, &photo.id, "Bazin", "").unwrap();
+        run(&st, &ai, Options::default()).await.unwrap();
+        assert_eq!(count(&ai, "Titolo dato dallo studente: Bazin"), 1);
+        crate::photos::save(&l.path, vec![crate::photos::ImageLink { image: photo.id.clone(), recording: l.meta.sources[0].id.clone(), at: Some(25), by: crate::photos::By::Mano, why: String::new(), inputs: String::new() }]).unwrap();
+        st.lib.set_source_info(&st.lesson, &photo.id, "Bazin", "stramazzo").unwrap();
+        run(&st, &ai, Options::default()).await.unwrap();
+        assert_eq!(count(&ai, "FOTO:\n"), 2);
+        assert_eq!(outputs(&l).photos[0].at, Some(25));
+        assert!(ai.prompts.lock().unwrap().last().unwrap().contains("foto «Bazin» (stramazzo) = F1 00:00:25"));
+    }
+
+    #[tokio::test]
+    async fn photo_linked_from_the_clocks() {
+        // Recorded until now (the file's date), 25 s long; the photo taken 10 s ago.
+        let taken = (Utc::now() - chrono::Duration::seconds(10)).format("%Y:%m:%d %H:%M:%S").to_string();
+        let jpeg = crate::photos::tests::jpeg_with_exif(&taken, Some("+00:00"));
+        let st = setup(&[("reg.wav", None), ("lavagna.jpg", Some(&jpeg))]);
+        let l = st.lib.lesson(&st.lesson).unwrap();
+        assert!(l.meta.sources[0].started.is_some() && !l.meta.sources[0].started_mp4);
+        assert!(l.meta.sources[1].taken.is_some());
+        let ai = Fake::default();
+        let r = run(&st, &ai, Options::default()).await.unwrap();
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        assert_eq!(count(&ai, "FOTO:\n"), 0, "no question to the model");
+        let link = &outputs(&l).photos[0];
+        assert_eq!(link.by, crate::photos::By::Orario);
+        assert!((13..=17).contains(&link.at.unwrap()), "{link:?}");
     }
 
     #[tokio::test]

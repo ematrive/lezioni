@@ -727,6 +727,57 @@ pub async fn slides_align(state: State<'_, AppState>, lesson_id: String, pdf_id:
     Ok(steps)
 }
 
+// ---------- photos linked to the recording ----------
+
+/// Title and description of a photo, written by the user.
+#[tauri::command(async)]
+pub fn source_set_info(state: State<'_, AppState>, lesson_id: String, source_id: String, title: String, description: String) -> CmdResult<Lesson> {
+    let _w = state.writing();
+    Ok(state.library()?.set_source_info(&lesson_id, &source_id, &title, &description)?)
+}
+
+/// Links the photos of the lesson again (not those linked by hand); returns the warnings.
+#[tauri::command]
+pub async fn photos_link(state: State<'_, AppState>, lesson_id: String) -> CmdResult<Vec<String>> {
+    not_busy(&state, &lesson_id)?;
+    let settings = state.settings.lock().unwrap().clone();
+    let model = settings.effective_models().transcribe;
+    let ai = provider(&settings)?;
+    let lib = state.library()?;
+    let lesson = lib.lesson(&lesson_id)?;
+    if !lesson.meta.sources.iter().any(|s| matches!(s.kind, crate::library::SourceKind::Audio | crate::library::SourceKind::Video)) {
+        return Err(anyhow::anyhow!("nella lezione non c'è una registrazione a cui agganciare le foto").into());
+    }
+    let found = crate::photos::link_lesson(&ai, &model, &lesson, true, &tokio_util::sync::CancellationToken::new()).await?;
+    let _w = state.writing();
+    crate::photos::save_found(&lib.lesson(&lesson_id)?.path, found.links)?;
+    if found.usage.prompt_token_count > 0
+        && let Err(e) = crate::costs::record_lesson(&lib, &lesson_id, "foto", [(model, found.usage)].into())
+    {
+        log::warn!("costi: {e:#}");
+    }
+    Ok(found.warnings)
+}
+
+/// A photo linked by hand to a minute of a recording, or unlinked (`at` = None): the automatic
+/// linking leaves it alone from now on.
+#[tauri::command(async)]
+pub fn photo_set_link(state: State<'_, AppState>, lesson_id: String, image_id: String, recording_id: Option<String>, at: Option<u64>) -> CmdResult<()> {
+    let _w = state.writing();
+    let lesson = state.library()?.lesson(&lesson_id)?;
+    let at = recording_id.as_ref().and(at);
+    let link = crate::photos::ImageLink { image: image_id, recording: recording_id.unwrap_or_default(), at, by: crate::photos::By::Mano, why: String::new(), inputs: String::new() };
+    Ok(crate::photos::save(&lesson.path, vec![link])?)
+}
+
+/// Forgets a photo's link: the next processing (or «Aggancia») links it automatically again.
+#[tauri::command(async)]
+pub fn photo_forget_link(state: State<'_, AppState>, lesson_id: String, image_id: String) -> CmdResult<()> {
+    let _w = state.writing();
+    let lesson = state.library()?.lesson(&lesson_id)?;
+    Ok(crate::photos::forget(&lesson.path, &image_id)?)
+}
+
 /// The bytes of a source (the slides' pages are drawn in the app with pdf.js).
 #[tauri::command(async)]
 pub fn source_read(state: State<'_, AppState>, lesson_id: String, source_id: String) -> CmdResult<tauri::ipc::Response> {

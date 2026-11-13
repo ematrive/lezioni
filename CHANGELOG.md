@@ -4,6 +4,10 @@
 
 - Le **sintesi** non mostrano più `\n` e `##` al posto di a capo e titoli, né formule spezzate su più righe («mu», «sqrt2g»): succedeva quando il modello rovinava il testo a metà risposta. Le sintesi già salvate si vedono di nuovo bene senza rielaborare la lezione; vale anche per glossario, flashcard, domande d'esame e sintesi del corso.
 - I riferimenti alle pagine dei PDF nella sintesi, come **[F1 pag. 2]**, diventano cliccabili e aprono la fonte, come gli altri.
+- Le **foto** (lavagna, appunti) vengono **agganciate al minuto** della registrazione in cui il docente ne parla: dall'orario di scatto quando c'è, altrimenti con il modello. Nella Trascrizione compaiono nel paragrafo giusto e accanto al testo, come le slide; nelle Fonti ogni foto mostra il suo minuto, o **non agganciata** con il motivo.
+- Ogni foto può avere un **titolo** e una **descrizione breve**, scritti da te: aiutano l'aggancio e compaiono al posto del nome del file.
+- **Aggancio a mano**: dal pulsante su un paragrafo della trascrizione (anche al minuto che stai ascoltando) o dalla scheda della foto nelle Fonti, dove si può anche sganciare.
+- La **sintesi** può mostrare le foto nel punto in cui aiutano a capire, anche nelle esportazioni HTML, PDF e Markdown.
 
 ## 1.0.3
 

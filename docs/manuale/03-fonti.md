@@ -45,6 +45,26 @@ Nelle Fonti, sotto ogni PDF, scegli che cos'è:
 
 Quando legge un PDF, l'app propone da sola il tipo (accanto compare «proposto»); se sbaglia, cambialo con un clic. Il collegamento si fa da solo all'elaborazione; dopo aver cambiato il tipo non serve rielaborare: **Collega alla registrazione** lo fa subito, **Ricollega** lo rifà.
 
+## Foto agganciate alla registrazione
+
+Le foto (la lavagna, una pagina di appunti, una slide fotografata) vengono **agganciate al minuto** della registrazione in cui il docente ne parla. Così nella Trascrizione le vedi accanto al testo e nella sintesi compaiono nel punto giusto (vedi [Studiare](05-studiare.md#foto-accanto-alla-trascrizione)). L'aggancio si fa da solo quando elabori la lezione:
+
+- se la foto ha l'**orario di scatto** (le foto fatte con il telefono ce l'hanno) e si conosce l'ora d'inizio della registrazione, il minuto si calcola dagli orari: è preciso e non costa niente. Le foto mandate con WhatsApp e gli screenshot incollati perdono l'orario;
+- altrimenti il modello di lettura confronta il testo letto dalla foto con la trascrizione (circa un millesimo di dollaro per lezione).
+
+Sotto ogni foto c'è il minuto a cui è agganciata, o **⚠ non agganciata** in arancione quando l'app non ha trovato il punto: il motivo compare passandoci sopra, e lo trovi anche tra gli avvisi a fine elaborazione.
+
+![Le foto nelle Fonti, con il minuto a cui sono agganciate](img/fonti-foto.png)
+
+La matita sulla foto apre la sua scheda:
+
+- **Titolo** e **Descrizione breve** sono facoltativi: scrivi che cosa c'è e di che parte della lezione è («Il poliedro dei vertici», «esercizio sul pivot»). Il modello li usa per agganciare la foto, e il titolo compare nella trascrizione e nella sintesi al posto del nome del file;
+- **Minuto della registrazione**: scrivilo (per esempio `00:12:30`) per agganciarla tu. **Sgancia** la toglie dalla registrazione; **Torna all'aggancio automatico** la ridà all'app.
+
+![Titolo, descrizione e minuto di una foto](img/foto-dialogo.png)
+
+Una foto agganciata o sganciata da te non viene più spostata dall'app. Dopo aver scritto titoli e descrizioni, **Aggancia le foto alla registrazione** (sopra le foto) rifà subito l'aggancio delle altre, senza rielaborare la lezione. Puoi anche agganciare una foto direttamente da un paragrafo della trascrizione (vedi [Studiare](05-studiare.md#agganciare-una-foto-a-mano)).
+
 ## Appunti a mano su slide e foto
 
 PDF e foto vengono letti dal modello come immagini, pagina per pagina: vede anche quello che hai scritto a mano sopra una slide stampata o una dispensa, le evidenziature e le frecce. Questi appunti finiscono nel testo letto nel punto in cui sono, ognuno su una riga sua, e nell'app si vedono **in blu, con una matita** davanti, così li distingui dal testo stampato (nel file Markdown sono scritti come *(nota a mano: …)*); per un'evidenziatura viene scritto cosa è evidenziato. Così entrano anche nella sintesi e nelle domande. Una grafia molto difficile può essere letta male: controlla nella scheda Trascrizione, dove ogni fonte ha il suo testo e si corregge con **Modifica**. Con OpenRouter un PDF può pesare fino a 50 MB (provato con 59 pagine di slide annotate, 33 MB: circa mezzo minuto e 3 centesimi).

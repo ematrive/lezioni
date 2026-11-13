@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ai, api, fileUrl, fmtSize, sourceFile, toAppError, type Course, type Lesson, type Outputs, type Source, type SourceKind } from "../../lib/api";
 import { ShareDialog } from "../share/ShareDialog";
 import { ChatTab } from "./ChatTab";
+import { PhotoCard } from "./PhotoCard";
 import { JobBar, MapTab, startProcessing, StudyTab, SummaryTab, TranscriptTab, useJob, type Editing, type Seek } from "./Outputs";
 import { Modal } from "../../lib/Modal";
 import { FindBar } from "../../lib/findInPage";
@@ -454,6 +455,18 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
       setLinking(null);
     }
   };
+  const linkPhotos = async () => {
+    setLinking("photos");
+    try {
+      const warnings = await ai.linkPhotos(lesson.id);
+      toast(warnings.length ? warnings.join("\n") : "Foto agganciate alla registrazione.", warnings.length ? "error" : undefined);
+      onLinked();
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    } finally {
+      setLinking(null);
+    }
+  };
   const [notes, setNotes] = useState(lesson.notes);
   const remove = async (s: Source) => {
     const extracted = s.kind === "audio" || s.kind === "video" ? " e la sua trascrizione" : s.kind === "text" ? "" : " e il testo estratto";
@@ -499,19 +512,16 @@ function Sources({ lesson, busy, onPick, onPasteText, onChanged, outputs, onLink
         <section key={kind}>
           <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             <KindIcon kind={kind} className="size-4" /> {KIND_LABEL[kind]} <span className="font-normal text-zinc-400">{list.length}</span>
+            {kind === "image" && hasRecording && list.some((s) => outputs?.extracts[s.id] !== undefined) && (
+              <button className="btn btn-sm ml-auto font-normal" disabled={linking === "photos" || busy} onClick={linkPhotos} title="Cerca di nuovo il minuto di ogni foto (non tocca quelle che hai agganciato tu)">
+                {linking === "photos" ? "Aggancio…" : "Aggancia le foto alla registrazione"}
+              </button>
+            )}
           </h3>
           {kind === "image" && list.every((s) => !s.omitted) ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
               {list.map((s) => (
-                <figure key={s.id} className="group relative overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-                  <button className="block w-full" onClick={() => api.openSource(lesson.id, s.id)} title="Apri">
-                    <img src={fileUrl(sourceFile(lesson, s))} alt={s.originalName} className="aspect-[4/3] w-full bg-zinc-100 object-cover dark:bg-zinc-900" loading="lazy" />
-                  </button>
-                  <figcaption className="truncate px-2 py-1 text-xs text-zinc-500">{s.originalName}</figcaption>
-                  <button className="absolute top-1 right-1 hidden rounded bg-black/50 p-1 text-white group-hover:block" title="Rimuovi" onClick={() => remove(s)}>
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </figure>
+                <PhotoCard key={s.id} lesson={lesson} source={s} outputs={outputs} onRemove={() => remove(s)} onChanged={(l) => (l ? onChanged(l) : onLinked())} />
               ))}
             </div>
           ) : (

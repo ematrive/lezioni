@@ -1,5 +1,5 @@
 import "katex/dist/katex.min.css";
-import { Pause, PenLine } from "lucide-react";
+import { ImagePlus, Pause, PenLine } from "lucide-react";
 import { createElement, Fragment, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -126,8 +126,16 @@ export function Markdown({
   inline,
   slides,
   onSlide,
+  photos,
+  onPhoto,
+  onAttach,
   pageRefs,
 }: {
+  /** Photos linked to a minute: a chip with the thumbnail before that paragraph. */
+  photos?: { at: number; id: string; title: string; url: string }[];
+  onPhoto?: (id: string) => void;
+  /** A button on each paragraph with a minute, to link a photo there (`at`, the button). */
+  onAttach?: (at: number, el: HTMLElement) => void;
   /** Where the teacher moves to each slide: a "Slide N" chip before that paragraph. */
   slides?: { at: number; page: number }[];
   onSlide?: (page: number) => void;
@@ -148,6 +156,7 @@ export function Markdown({
 }) {
   const byParagraph = useMemo(() => (marks?.length ? marksByParagraph(text, marks) : null), [text, marks]);
   const slidesByParagraph = useMemo(() => (slides?.length ? marksByParagraph(text, slides) : null), [text, slides]);
+  const photosByParagraph = useMemo(() => (photos?.length ? marksByParagraph(text, photos) : null), [text, photos]);
   const Wrap = inline ? "span" : "div";
   return (
     <Wrap className={inline ? "select-text" : "prose-lezioni select-text"}>
@@ -179,30 +188,51 @@ export function Markdown({
                 </p>
               );
             }
-            const t = byParagraph || slidesByParagraph ? firstTime(node) : null;
+            const t = byParagraph || slidesByParagraph || photosByParagraph || onAttach ? firstTime(node) : null;
             const ms = t === null ? undefined : byParagraph?.get(t);
             const sl = t === null ? undefined : slidesByParagraph?.get(t);
-            const chips = sl?.length ? (
-              <span className="mb-1 flex flex-wrap gap-1 select-none">
-                {[...new Set(sl.map((s) => s.page))].map((page) => (
-                  <button key={page} className="rounded border border-violet-300 bg-violet-50 px-1.5 text-xs text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300" onClick={() => onSlide?.(page)} title="Mostra questa slide" data-slide-chip={page}>
-                    ▤ Slide {page}
-                  </button>
-                ))}
-              </span>
-            ) : null;
+            const ph = t === null ? undefined : photosByParagraph?.get(t);
+            const chips =
+              sl?.length || ph?.length ? (
+                <span className="mb-1 flex flex-wrap gap-1 select-none">
+                  {[...new Set((sl ?? []).map((s) => s.page))].map((page) => (
+                    <button key={page} className="rounded border border-violet-300 bg-violet-50 px-1.5 text-xs text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300" onClick={() => onSlide?.(page)} title="Mostra questa slide" data-slide-chip={page}>
+                      ▤ Slide {page}
+                    </button>
+                  ))}
+                  {(ph ?? []).map((p) => (
+                    <button key={p.id} className="flex max-w-56 items-center gap-1 rounded border border-emerald-300 bg-emerald-50 py-px pr-1.5 pl-px text-xs text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300" onClick={() => onPhoto?.(p.id)} title={`Mostra la foto «${p.title}»`} data-photo-chip={p.id}>
+                      <img src={p.url} alt="" className="size-5 rounded-sm object-cover" loading="lazy" />
+                      <span className="truncate">{p.title}</span>
+                    </button>
+                  ))}
+                </span>
+              ) : null;
+            const attach =
+              onAttach && t !== null && !exported ? (
+                <button
+                  className="absolute -top-1 right-0 hidden rounded border border-zinc-200 bg-white p-1 text-zinc-500 shadow-sm select-none group-hover:block hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
+                  onClick={(e) => onAttach(t, e.currentTarget)}
+                  title="Aggancia una foto a questo punto"
+                  aria-label="Aggancia una foto a questo punto"
+                  data-attach={t}
+                >
+                  <ImagePlus className="size-4" />
+                </button>
+              ) : null;
+            const hover = attach ? "group relative" : "";
             if (!ms)
-              return chips ? (
-                <p>
+              return (
+                <p className={hover || undefined}>
+                  {attach}
                   {chips}
                   {children}
                 </p>
-              ) : (
-                <p>{children}</p>
               );
             const top = ms.find((m) => m.kind === "dubbio") ?? ms.find((m) => m.kind === "importante") ?? ms[0];
             return (
-              <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]}`} data-mark={top.kind}>
+              <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]} ${hover}`} data-mark={top.kind}>
+                {attach}
                 {chips}
                 <span className="mr-1 select-none font-semibold" title={ms.map((m) => MARK_LABEL[m.kind] + (m.note ? `: ${m.note}` : "")).join("\n")}>
                   {[...new Set(ms.map((m) => MARK_ICON[m.kind]))].join("")}
@@ -226,8 +256,19 @@ export function Markdown({
             );
           },
           img: ({ src, alt }) => {
-            const url = typeof src === "string" ? (imgSrc?.(src) ?? src) : undefined;
-            return url ? <img src={url} alt={alt ?? ""} className="my-2 rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800" loading="lazy" /> : null;
+            // `![titolo](F3)`: a photo of the lesson placed in the summary.
+            const photo = typeof src === "string" && /^F\d+$/.test(src);
+            const url = typeof src === "string" ? (imgSrc?.(src) ?? (photo ? undefined : src)) : undefined;
+            if (!url) return photo && alt ? <em>({alt})</em> : null;
+            const img = <img src={url} alt={alt ?? ""} className="my-2 rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800" loading="lazy" />;
+            return photo ? (
+              <span className="my-3 block text-center" data-summary-photo={src}>
+                {img}
+                {alt && <span className="block text-sm text-zinc-500">{alt}</span>}
+              </span>
+            ) : (
+              img
+            );
           },
           a: ({ href, children }) =>
             onLink && href && !/^(mailto:|#)/.test(href) ? (

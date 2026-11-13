@@ -17,6 +17,22 @@ export interface Source {
   role?: "slide" | "materiale";
   /** `role` proposed by the model, not chosen. */
   roleGuessed?: boolean;
+  /** A photo: title and short description written by the user. */
+  title?: string;
+  description?: string;
+  /** A photo: when it was taken (EXIF, ISO date). */
+  taken?: string;
+  /** A recording: when it started (ISO date). */
+  started?: string;
+}
+
+/** A photo linked to a minute of a recording (`foto.json`). `at` null: not found, or unlinked by hand. */
+export interface PhotoLink {
+  image: string;
+  recording: string;
+  at: number | null;
+  by: "orario" | "modello" | "mano";
+  why?: string;
 }
 
 export interface SlideAlignment {
@@ -216,6 +232,8 @@ export interface Outputs {
   pauses: Record<string, number>;
   /** slides linked to recordings */
   slides: SlideAlignment[];
+  /** photos linked to recordings */
+  photos: PhotoLink[];
 }
 
 export interface Version {
@@ -308,6 +326,14 @@ export const ai = {
   setRole: (lessonId: string, sourceId: string, role: "slide" | "materiale") => invoke<Lesson>("source_set_role", { lessonId, sourceId, role }),
   /** Links a PDF of slides to the recordings now; returns how many steps were found. */
   alignSlides: (lessonId: string, pdfId: string) => invoke<number>("slides_align", { lessonId, pdfId }),
+  /** Title and description of a photo. */
+  setSourceInfo: (lessonId: string, sourceId: string, title: string, description: string) => invoke<Lesson>("source_set_info", { lessonId, sourceId, title, description }),
+  /** Links the photos to the recordings again (not those linked by hand); returns the warnings. */
+  linkPhotos: (lessonId: string) => invoke<string[]>("photos_link", { lessonId }),
+  /** A photo linked by hand (`recordingId` and `at`), or unlinked (both null). */
+  setPhotoLink: (lessonId: string, imageId: string, recordingId: string | null, at: number | null) => invoke<void>("photo_set_link", { lessonId, imageId, recordingId, at }),
+  /** Back to the automatic linking for this photo. */
+  forgetPhotoLink: (lessonId: string, imageId: string) => invoke<void>("photo_forget_link", { lessonId, imageId }),
   /** The bytes of a source (for pdf.js). */
   sourceBytes: (lessonId: string, sourceId: string) => invoke<ArrayBuffer>("source_read", { lessonId, sourceId }),
   markPauses: (lessonId: string, sourceId: string) => invoke<number>("extract_mark_pauses", { lessonId, sourceId }),

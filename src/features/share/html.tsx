@@ -4,7 +4,7 @@
 import katexCss from "katex/dist/katex.min.css?raw";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Course, Lesson, MapNode, Outputs } from "../../lib/api";
-import { fmtDate } from "../../lib/api";
+import { ai, fmtDate } from "../../lib/api";
 import { Markdown } from "../../lib/Markdown";
 import proseCss from "../../lib/prose.css?raw";
 
@@ -26,6 +26,31 @@ export interface ExportParts {
 export interface ExportLesson {
   lesson: Lesson;
   outputs: Outputs;
+  /** The photos placed in the summary (`![titolo](F3)`): code → data URL. */
+  photos?: Record<string, string>;
+}
+
+/** The photos placed in the summary, made smaller (1600 px, JPEG) and embedded in the page. */
+export async function summaryPhotos(lesson: Lesson, outputs: Outputs): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const codes = new Set([...(outputs.summary ?? "").matchAll(/!\[[^\]]*\]\((F\d+)\)/g)].map((m) => m[1]));
+  for (const code of codes) {
+    const src = lesson.sources.find((s) => s.id === outputs.info?.sources[code] && s.kind === "image" && !s.omitted);
+    if (!src) continue;
+    try {
+      const bytes = await ai.sourceBytes(lesson.id, src.id);
+      const bitmap = await createImageBitmap(new Blob([bytes]));
+      const k = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * k);
+      canvas.height = Math.round(bitmap.height * k);
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      out[code] = canvas.toDataURL("image/jpeg", 0.85);
+    } catch {
+      // Not readable here (HEIC on Windows, a damaged file): the caption stays.
+    }
+  }
+  return out;
 }
 
 function Outline({ node }: { node: MapNode }) {
@@ -75,7 +100,7 @@ const MAP_CSS = `
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 `;
 
-function LessonDoc({ lesson, outputs, parts, course, drawMap }: ExportLesson & { parts: ExportParts; course: Course; drawMap?: boolean }) {
+function LessonDoc({ lesson, outputs, photos, parts, course, drawMap }: ExportLesson & { parts: ExportParts; course: Course; drawMap?: boolean }) {
   const codes = Object.entries(outputs.info?.sources ?? {});
   const name = (id: string) => lesson.sources.find((s) => s.id === id)?.originalName ?? "";
   const transcripts = lesson.sources.filter((s) => outputs.extracts[s.id] !== undefined);
@@ -92,7 +117,7 @@ function LessonDoc({ lesson, outputs, parts, course, drawMap }: ExportLesson & {
       {parts.summary && outputs.summary && (
         <section>
           <h2 className="part">Sintesi</h2>
-          <Markdown text={outputs.summary} exported />
+          <Markdown text={outputs.summary} exported imgSrc={(src) => photos?.[src]} />
           {codes.length > 0 && (
             <p className="legend">
               Fonti:{" "}

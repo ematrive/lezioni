@@ -38,6 +38,23 @@ La casella **Slide accanto** la nasconde o la rimostra. Con le colonne di corsi 
 
 ![La slide del momento accanto alla trascrizione](img/slide-accanto.png)
 
+### Foto accanto alla trascrizione
+
+Le foto agganciate alla registrazione (vedi [Fonti](03-fonti.md#foto-agganciate-alla-registrazione)) compaiono nella trascrizione:
+
+- all'inizio del paragrafo in cui il docente ne parla c'è un'etichetta verde con la **miniatura** e il titolo della foto: cliccala per vederla accanto al testo;
+- accanto alla trascrizione, sotto la slide se ci sono anche le slide, c'è la **foto del momento**: come la slide, segue l'audio e il testo che stai leggendo; **‹ ›** sfogliano le foto, **▶** fa ascoltare da quel punto e un clic sulla foto la apre a tutto schermo con l'app del sistema.
+
+La casella sopra il testo (**Foto accanto**, o **Slide e foto accanto**) nasconde o rimostra il pannello.
+
+### Agganciare una foto a mano
+
+Passando con il mouse su un paragrafo della trascrizione, in alto a destra compare l'icona di una foto con il **+**. Cliccala: si apre l'elenco delle foto della lezione, con la miniatura e dove sono agganciate ora. Scegli la foto e viene agganciata al minuto di quel paragrafo. Se stai ascoltando la registrazione, in alto puoi scegliere **In ascolto 00:13:05** per agganciarla al punto esatto che senti invece che all'inizio del paragrafo.
+
+![L'elenco delle foto da agganciare a un paragrafo](img/aggancia-foto.png)
+
+Per spostarla o sganciarla usa la sua scheda nelle Fonti.
+
 ### Pause
 
 Se la registrazione è rimasta accesa durante un intervallo o un silenzio, Whisper tende a riempire il vuoto con parole inventate (tipicamente «grazie grazie grazie…», o «sottotitoli a cura di…»). L'app le riconosce e le sostituisce con una sola riga grigia: **Pausa 00:12:23 – 00:16:19 (4 min)**, con il minuto cliccabile. Il testo inventato non arriva al modello, quindi non sporca sintesi e domande.
@@ -74,7 +91,7 @@ La lente a destra delle schede (o **⌘F** sul Mac, **Ctrl+F** su Windows) cerca
 
 ## Sintesi
 
-La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, elenchi, tabelle, formule ed esempi. Alla fine di ogni paragrafo ci sono i **riferimenti**: **F1 00:12:30** vuol dire «fonte 1, al minuto 12:30». Cliccandolo si apre la trascrizione con la registrazione già a quel punto: comodo per riascoltare un passaggio poco chiaro. Per i PDF il riferimento può indicare la pagina, come **F2 pag. 3**: cliccandolo si apre quella fonte.
+La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, elenchi, tabelle, formule ed esempi. Alla fine di ogni paragrafo ci sono i **riferimenti**: **F1 00:12:30** vuol dire «fonte 1, al minuto 12:30». Cliccandolo si apre la trascrizione con la registrazione già a quel punto: comodo per riascoltare un passaggio poco chiaro. Per i PDF il riferimento può indicare la pagina, come **F2 pag. 3**: cliccandolo si apre quella fonte. Le foto agganciate alla registrazione possono comparire nella sintesi, con il loro titolo sotto, nel punto in cui aiutano a capire (uno schema, un esercizio alla lavagna): dopo averne agganciate di nuove, premi **Rigenera**. Compaiono anche nell'esportazione in HTML, PDF e Markdown.
 
 ![La sintesi con i riferimenti alle fonti](img/sintesi.png)
 

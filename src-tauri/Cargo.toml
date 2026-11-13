@@ -41,6 +41,8 @@ env_logger = "0.11"
 # Transcription on the computer (whisper.cpp).
 whisper-rs = { version = "0.16", features = ["log_backend"] }
 sha2 = "0.10"
+# When a photo was taken (EXIF), to link it to the recording.
+kamadak-exif = "0.6.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16", features = ["metal", "log_backend"] }

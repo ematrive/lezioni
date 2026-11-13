@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ai, api, share, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
-import { buildHtml, type ExportParts } from "./html";
+import { buildHtml, type ExportParts, summaryPhotos } from "./html";
 
 type Format = "package" | "pdf" | "html" | "markdown" | "anki";
 
@@ -42,7 +42,12 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
         await share.exportPackage(ids, { media, files, notes }, dest);
         toast(`Pacchetto salvato: ${ls.length === 1 ? "1 lezione" : `${ls.length} lezioni`}. Mandalo come un normale file (WhatsApp, mail, Drive).`);
       } else if (format === "pdf" || format === "html") {
-        const docs = await Promise.all(ls.map(async (l) => ({ lesson: l, outputs: await ai.outputs(l.id) })));
+        const docs = await Promise.all(
+          ls.map(async (l) => {
+            const outputs = await ai.outputs(l.id);
+            return { lesson: l, outputs, photos: parts.summary ? await summaryPhotos(l, outputs) : undefined };
+          }),
+        );
         if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length)) throw { message: "Niente da esportare: elabora prima la lezione con Gemini" };
         if (format === "pdf") {
           await share.print(slug(name), buildHtml(course, docs, parts, true));

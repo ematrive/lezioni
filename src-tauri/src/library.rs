@@ -100,6 +100,20 @@ pub struct Source {
     /// `role` was proposed by the model, not chosen by the user.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub role_guessed: bool,
+    /// A photo: title and short description written by the user (they help to link it).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// A photo: when it was taken (EXIF), to link it to the recording without the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken: Option<DateTime<Utc>>,
+    /// A recording: when it started, from the file (see `audio::started_at`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started: Option<DateTime<Utc>>,
+    /// `started` comes from the mp4 header: it may be the end of the recording instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub started_mp4: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -186,7 +200,7 @@ pub fn is_plain_file_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':', '\0']) && Path::new(name).file_name().and_then(|f| f.to_str()) == Some(name)
 }
 
-fn source_file(l: &Lesson, s: &Source) -> Result<PathBuf> {
+pub(crate) fn source_file(l: &Lesson, s: &Source) -> Result<PathBuf> {
     if !is_plain_file_name(&s.file) {
         bail!("nome di file non valido nella lezione: {}", s.file);
     }
@@ -486,6 +500,11 @@ impl Library {
             edited: None,
             role: None,
             role_guessed: false,
+            title: String::new(),
+            description: String::new(),
+            taken: None,
+            started: None,
+            started_mp4: false,
         };
         l.meta.sources.push(src.clone());
         Ok(src)
@@ -511,7 +530,20 @@ impl Library {
             let dest = unique_path(&dir, &safe_file_name(&name, 120), None);
             match fs::copy(p, &dest) {
                 Ok(_) => {
-                    self.push_source(&mut l, &dest, &name)?;
+                    let mut src = self.push_source(&mut l, &dest, &name)?;
+                    // Times read now: the copy does not keep the date of the original.
+                    match src.kind {
+                        SourceKind::Image => src.taken = crate::photos::taken_at(&dest),
+                        SourceKind::Audio | SourceKind::Video => {
+                            if let Some((at, mp4)) = crate::audio::started_at(&dest, fs::metadata(p).and_then(|m| m.modified()).ok()) {
+                                (src.started, src.started_mp4) = (Some(at), mp4);
+                            }
+                        }
+                        _ => {}
+                    }
+                    if let Some(last) = l.meta.sources.last_mut() {
+                        *last = src;
+                    }
                 }
                 Err(e) => warnings.push(format!("{name}: {e}")),
             }
@@ -561,6 +593,7 @@ impl Library {
         }
         crate::bookmarks::remove_source(&l.path, source_id)?;
         crate::slides::remove_source(&l.path, source_id)?;
+        crate::photos::remove_source(&l.path, source_id)?;
         self.save_lesson(&l)?;
         Ok(l)
     }
@@ -573,6 +606,16 @@ impl Library {
             return Ok(l);
         }
         s.edited = when;
+        self.save_lesson(&l)?;
+        Ok(l)
+    }
+
+    /// Title and description of a photo, written by the user.
+    pub fn set_source_info(&self, lesson_id: &str, source_id: &str, title: &str, description: &str) -> Result<Lesson> {
+        let mut l = self.find_lesson(lesson_id)?;
+        let s = l.meta.sources.iter_mut().find(|s| s.id == source_id).ok_or_else(|| anyhow!("fonte non trovata"))?;
+        s.title = title.trim().to_string();
+        s.description = description.trim().to_string();
         self.save_lesson(&l)?;
         Ok(l)
     }

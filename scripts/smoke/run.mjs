@@ -20,8 +20,9 @@ await server.listen();
 const browser = await chromium.launch();
 const errors = [];
 let ok = false;
+let page = null;
 try {
-  const p = await browser.newPage({ viewport: { width: 1300, height: 820 } });
+  const p = (page = await browser.newPage({ viewport: { width: 1300, height: 820 } }));
   p.on("pageerror", (e) => errors.push(e.message));
   p.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await p.addInitScript({ path: path.join(root, "scripts/smoke/mock.js") });
@@ -102,7 +103,7 @@ try {
   // [F1 00:12:30] jumps to the transcript.
   await p.getByRole("button", { name: "F1 00:12:30" }).click();
   await p.getByText("Oggi vediamo il metodo del simplesso.").waitFor();
-  await p.getByRole("button", { name: "00:12:30", exact: true }).waitFor();
+  await p.locator('button[data-t="750"]').first().waitFor();
   // The transcript scrolled to that paragraph (not left at the top).
   await p.waitForTimeout(700);
   const visible = await p.locator('[data-t="750"]').first().evaluate((b) => {
@@ -188,6 +189,9 @@ try {
   if (!(await p.getByRole("heading", { name: "Pagina 1" }).evaluate((h) => h.getBoundingClientRect().top < window.innerHeight))) throw new Error("salto al documento non riuscito");
   // The slides next to the transcript: page drawn by pdf.js, "Slide 2" in the text moves it.
   await p.locator("[data-slides-panel] canvas").first().waitFor();
+  // Scrolled there first: scrolling moves the slide too, and the click must come last.
+  await p.locator("[data-slide-chip='2']").first().scrollIntoViewIfNeeded();
+  await p.waitForTimeout(300);
   await p.locator("[data-slide-chip='2']").first().click();
   await p.locator("[data-slides-panel]").getByText("Slide 2 di 3").waitFor();
   await p.waitForFunction(() => {
@@ -209,7 +213,45 @@ try {
     box.scrollBy(0, b.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight * 0.2);
   });
   await p.locator("[data-slides-panel]").getByText("Slide 2 di 3").waitFor();
+  // Photos linked to a minute: a chip in the paragraph, the photo under the slide.
+  await p.locator("[data-photos-panel]").getByText("Foto 1 di 1").waitFor();
+  await p.locator("[data-photo-chip]").first().click();
+  // A photo linked by hand: the button on the paragraph, then the photo in the menu.
+  await p.evaluate(() => document.querySelectorAll("audio").forEach((a) => Object.defineProperty(a, "currentTime", { configurable: true, get: () => 752, set: () => {} })));
+  const para = p.locator("p", { has: p.locator('[data-attach="750"]') }).first();
+  await para.hover();
+  await para.locator('[data-attach="750"]').click();
+  await p.locator("[data-photo-picker]").getByText("non agganciata").waitFor();
+  await shot("aggancia-foto");
+  await p.locator("[data-photo-picker]").getByRole("button", { name: "In ascolto 00:12:32" }).click();
+  await p.locator("[data-photo-picker]").getByRole("menuitem", { name: /lavagna\.jpg/ }).click();
+  await p.getByText(/lavagna\.jpg agganciata a 00:12:32/).waitFor();
   await p.keyboard.press("Escape");
+  // In the Sources: where each photo is; a title, a description and the minute by hand.
+  await p.getByRole("button", { name: "Fonti", exact: true }).click();
+  await p.locator("[data-photo-card]").getByText("⚠ non agganciata").waitFor();
+  await p.locator("[data-photo-card]").getByText("00:12:32").waitFor();
+  await shot("fonti-foto");
+  const pastedCard = p.locator("[data-photo-card]", { hasText: "non agganciata" });
+  await pastedCard.hover();
+  await pastedCard.getByTitle("Titolo, descrizione e minuto").click();
+  await p.getByPlaceholder(/^incollato-/).fill("Tableau del simplesso");
+  await p.getByPlaceholder(/Che cosa c'è/).fill("Le colonne delle variabili di base");
+  await p.getByLabel("Minuto (hh:mm:ss)").fill("00:12:30");
+  await shot("foto-dialogo");
+  await p.getByRole("button", { name: "Salva", exact: true }).click();
+  await p.getByText("Foto salvata.").waitFor();
+  await p.locator("[data-photo-card]", { hasText: "Tableau del simplesso" }).getByText("00:12:30").waitFor();
+  await p.getByRole("button", { name: "Trascrizione", exact: true }).click();
+  // In the normal layout too, the button to link a photo is inside the text column, not cut off.
+  const para2 = p.locator("p", { has: p.locator('[data-attach="750"]') }).first();
+  await para2.waitFor({ state: "attached" });
+  await p.waitForTimeout(500);
+  await para2.scrollIntoViewIfNeeded();
+  await para2.hover();
+  const [btn, col] = await Promise.all([para2.locator("[data-attach]").boundingBox(), p.locator("[data-lesson-content]").boundingBox()]);
+  if (!btn || btn.x < col.x || btn.x + btn.width > col.x + col.width) throw new Error("pulsante per agganciare una foto fuori dalla colonna");
+  if (!manual) await shot("aggancia-pulsante");
   // Notes written by hand on the slides: pen blue, on their own line, without "nota a mano:".
   await p.locator(".handwritten").getByText(/regola di Bland/).waitFor();
   if ((await p.locator(".handwritten").first().innerText()).includes("nota a mano")) throw new Error("nota a mano: ancora scritto");
@@ -323,8 +365,9 @@ try {
   // PDF: same page, opened for printing with the answers visible.
   await p.getByRole("button", { name: "Condividi" }).click();
   await p.getByText("PDF", { exact: true }).click();
+  await p.evaluate(() => (window.__printed = ""));
   await p.getByRole("button", { name: "Esporta…" }).click();
-  await p.getByText(/Salva come PDF/).first().waitFor();
+  await p.waitForFunction(() => window.__printed);
   if (!(await p.evaluate(() => window.__printed.includes("<details open")))) throw new Error("PDF: flashcard chiuse");
 
   // Search across the archive, then jump into the transcript.
@@ -379,6 +422,8 @@ try {
   ok = errors.length === 0;
 } catch (e) {
   errors.push(String(e));
+  // What the page looked like when it failed.
+  await page?.screenshot({ path: `${out}/errore.png` }).catch(() => {});
 } finally {
   await browser.close();
   await server.close();

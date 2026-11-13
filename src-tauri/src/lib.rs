@@ -10,6 +10,7 @@ pub mod error;
 pub mod jobs;
 pub mod library;
 pub mod pauses;
+pub mod photos;
 pub mod pipeline;
 pub mod review;
 pub mod search;
@@ -143,6 +144,10 @@ pub fn run() {
             extract_mark_pauses,
             source_set_role,
             slides_align,
+            photos_link,
+            photo_set_link,
+            photo_forget_link,
+            source_set_info,
             source_read,
         ])
         .build(tauri::generate_context!())

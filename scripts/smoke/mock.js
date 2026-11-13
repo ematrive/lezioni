@@ -239,7 +239,7 @@
         case "whisper_status":
           return { ready: true, downloading: null, error: null };
         case "lesson_outputs":
-          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [], slides: [], ...(outputs[a.id]?.slides && { slides: outputs[a.id].slides }) };
+          return { ...(outputs[a.id] ?? { extracts: {}, raw: {}, summary: null, map: null, study: null, info: null }), bookmarks: marks[a.id] ?? [], versions: versions[a.id] ?? [], slides: [], ...(outputs[a.id]?.slides && { slides: outputs[a.id].slides }), photos: outputs[a.id]?.photos ?? [] };
         case "terms_get":
           return globalTerms;
         case "terms_set":
@@ -278,6 +278,21 @@
           Object.assign(s, { role: a.role, roleGuessed: false });
           return find(a.lessonId);
         }
+        case "source_set_info": {
+          const s = find(a.lessonId).sources.find((x) => x.id === a.sourceId);
+          Object.assign(s, { title: a.title, description: a.description });
+          return find(a.lessonId);
+        }
+        case "photos_link":
+          return [];
+        case "photo_set_link": {
+          const o = outputs[a.lessonId];
+          o.photos = (o.photos ?? []).filter((x) => x.image !== a.imageId).concat([{ image: a.imageId, recording: a.recordingId ?? "", at: a.recordingId ? a.at : null, by: "mano" }]);
+          return null;
+        }
+        case "photo_forget_link":
+          outputs[a.lessonId].photos = (outputs[a.lessonId].photos ?? []).filter((x) => x.image !== a.imageId);
+          return null;
         case "slides_align":
           return outputs[a.lessonId].slides[0]?.steps.length ?? 0;
         case "extract_mark_pauses": {
@@ -320,6 +335,8 @@
           })();
           const audio = l.sources.find((s) => s.kind === "audio");
           const pdf = l.sources.find((s) => s.kind === "pdf");
+          const board = l.sources.find((s) => s.originalName === "lavagna.jpg");
+          const pasted = l.sources.find((s) => s.kind === "image" && s !== board);
           setTimeout(() => send({ event: "step", done: 0.33, total: 3, message: "Trascrizione sul computer di registrazione.m4a, parte 2 di 3: 00:20:00–00:40:00 di 00:52:10" }), 50);
           setTimeout(() => send({ event: "detail", message: "Whisper: 43% · ripulitura della parte 1" }), 80);
           window.__finishJob = () => {
@@ -328,18 +345,23 @@
               pauses: audio ? { [audio.id]: 1 } : {},
               ...(pdf && { pdfText: { [pdf.id]: "## Pagina 1\n**Metodo del simplesso**: si va di vertice in vertice. *(nota a mano: ricordare la regola di Bland per evitare i cicli!)*\n\n*(grafico del poliedro con i vertici numerati)*\n\n## Pagina 2\nIl pivot: variabile entrante e test del rapporto minimo.\n\n## Pagina 3\nDegenerazione e regola di Bland." } }),
               slides: audio && pdf ? [{ recording: audio.id, pdf: pdf.id, pages: 3, steps: [{ at: 5, page: 1 }, { at: 750, page: 2 }] }] : [],
+              // The board photo found from the time it was taken; the pasted screenshot not found.
+              photos: [...(audio && board ? [{ image: board.id, recording: audio.id, at: 750, by: "orario" }] : []), ...(pasted ? [{ image: pasted.id, recording: "", at: null, by: "modello", why: "nella trascrizione non si parla di questo schema" }] : [])],
+              photoText: { ...(board && { [board.id]: "*(poliedro disegnato alla lavagna, con i vertici numerati da 1 a 5)*" }), ...(pasted && { [pasted.id]: "Schema del tableau con le colonne delle variabili di base." }) },
               raw: audio ? { [audio.id]: "[00:00:05] Allora, ehm, oggi vediamo il metodo del simplesso, cioè...\n\n[00:12:30] la funzione obiettivo è max c trasposto x con vincoli a x minore uguale b. Lo spiega bene il libro di team." } : {},
-              summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
+              summary: "## Metodo del simplesso\nSi parte da una **base ammissibile** e ci si sposta sui vertici. [F1 00:12:30]\n\n" + (board ? "![Il poliedro alla lavagna](F2)\n\n" : "") + "$$\\max\\; c^T x \\quad \\text{s.t. } Ax \\le b,\\ x \\ge 0$$\n\n| Passo | Azione |\n|---|---|\n| 1 | Scegli la variabile entrante |\n| 2 | Test del rapporto minimo |",
               map: { etichetta: "Simplesso", figli: [{ etichetta: "Forma standard", figli: [{ etichetta: "Variabili di slack" }] }, { etichetta: "Base ammissibile" }, { etichetta: "Pivot", rif: "F1 00:12:30", figli: [{ etichetta: "Variabile entrante" }, { etichetta: "Rapporto minimo" }] }] },
               study: {
                 glossario: [{ termine: "Base", definizione: "Insieme di m variabili linearmente indipendenti." }],
                 flashcard: [{ domanda: "Cos'è il test del rapporto minimo?", risposta: "Sceglie la variabile uscente mantenendo l'ammissibilità: $\\min_i b_i / a_{ij}$ con $a_{ij} > 0$." }],
                 domandeEsame: [{ domanda: "Illustra il metodo del simplesso.", traccia: "Forma standard, base iniziale, pivot, criterio di ottimalità." }],
               },
-              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: audio ? { F1: audio.id } : {} },
+              info: { generated: now(), model: "gemini-3.8-flash", usage: { promptTokenCount: 120000, candidatesTokenCount: 15000, thoughtsTokenCount: 2000, cost: 0.034 }, suggestedTitle: "Simplesso", sources: { ...(audio && { F1: audio.id }), ...(board && { F2: board.id }) } },
             };
             versions[l.id] = [{ area: "generati", stamp: "2026-11-10 09-15-00", files: ["info.json", "mappa.json", "mappa.mmd", "sintesi.md", "studio.json"] }];
             Object.assign(outputs[l.id].extracts, outputs[l.id].pdfText ?? {});
+            Object.assign(outputs[l.id].extracts, outputs[l.id].photoText);
+            delete outputs[l.id].photoText;
             if (pdf) Object.assign(pdf, { role: "slide", roleGuessed: true });
             delete outputs[l.id].pdfText;
             costs[l.id] = (costs[l.id] ?? []).concat([{ when: now(), total: 0.034 }]);

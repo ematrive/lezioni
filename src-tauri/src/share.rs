@@ -320,6 +320,15 @@ pub fn export_markdown(lib: &Library, lesson_ids: &[String], dest: &Path) -> Res
             .filter_map(|(code, sid)| l.meta.sources.iter().find(|s| &s.id == sid).map(|s| format!("- **{code}**: {}\n", s.original_name)))
             .collect();
         if let Some(s) = &o.summary {
+            // Photos placed in the summary as `![titolo](F3)`: copied next to it, in `img/`.
+            static IMG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"!\[([^\]]*)\]\((F\d+)\)").unwrap());
+            let s = IMG.replace_all(s, |c: &regex::Captures| {
+                let photo = codes.iter().find(|(code, _)| *code == c[2]).and_then(|(_, sid)| l.meta.sources.iter().find(|s| &s.id == sid && s.kind == SourceKind::Image && !s.omitted));
+                match photo.and_then(|p| crate::library::source_file(&l, p).ok().map(|f| (p, f))) {
+                    Some((p, from)) if fs::create_dir_all(dir.join("img")).and_then(|_| fs::copy(&from, dir.join("img").join(&p.file))).is_ok() => format!("![{}](<img/{}>)", &c[1], p.file),
+                    _ => format!("*({})*", &c[1]),
+                }
+            });
             let legend = if legend.is_empty() { String::new() } else { format!("\n\n---\n\n**Fonti**\n\n{legend}") };
             fs::write(dir.join("Sintesi.md"), format!("{front}# {}\n\n{s}{legend}\n", l.meta.title))?;
         }
@@ -407,7 +416,8 @@ mod tests {
         fs::write(&img, b"jpg").unwrap();
         let (l, _) = lib.add_files(&l.meta.id, &[a, img]).unwrap();
         fs::write(l.path.join(extract_rel(&l.meta.sources[0])), "[00:00:05] Oggi il simplesso.").unwrap();
-        fs::write(l.path.join("generati/sintesi.md"), "## Simplesso\nVertici. [F1 00:00:05]").unwrap();
+        fs::write(l.path.join("generati/sintesi.md"), "## Simplesso\nVertici. [F1 00:00:05]\n\n![Lavagna](F2)").unwrap();
+        crate::photos::save(&l.path, vec![crate::photos::ImageLink { image: l.meta.sources[1].id.clone(), recording: l.meta.sources[0].id.clone(), at: Some(5), by: crate::photos::By::Mano, why: String::new(), inputs: String::new() }]).unwrap();
         fs::write(l.path.join("generati/mappa.json"), r#"{"etichetta":"Simplesso","figli":[{"etichetta":"Pivot"}]}"#).unwrap();
         let st = Study {
             glossario: vec![Term { termine: "Base".into(), definizione: "variabili".into() }],
@@ -415,7 +425,7 @@ mod tests {
             domande_esame: vec![ExamQuestion { domanda: "Spiega il simplesso".into(), traccia: "…".into() }],
         };
         fs::write(l.path.join("generati/studio.json"), serde_json::to_vec(&st).unwrap()).unwrap();
-        fs::write(l.path.join("generati/info.json"), format!(r#"{{"generated":"2026-11-10T10:00:00Z","model":"m","usage":{{}},"suggestedTitle":"x","sources":{{"F1":"{}"}}}}"#, l.meta.sources[0].id)).unwrap();
+        fs::write(l.path.join("generati/info.json"), format!(r#"{{"generated":"2026-11-10T10:00:00Z","model":"m","usage":{{}},"suggestedTitle":"x","sources":{{"F1":"{}","F2":"{}"}}}}"#, l.meta.sources[0].id, l.meta.sources[1].id)).unwrap();
         fs::create_dir_all(l.path.join("generati/versioni/vecchia")).unwrap();
         fs::write(l.path.join("generati/versioni/vecchia/sintesi.md"), "old").unwrap();
         fs::create_dir_all(l.path.join("estratti/versioni/vecchia")).unwrap();
@@ -448,6 +458,7 @@ mod tests {
         let o = pipeline::outputs(&got);
         assert_eq!(o.extracts[&got.meta.sources[0].id], "[00:00:05] Oggi il simplesso.", "transcript travels without the audio");
         assert!(o.summary.is_some() && o.study.is_some() && o.map.is_some());
+        assert_eq!(o.photos.len(), 1, "photo links travel");
         assert!(!got.path.join("generati/versioni").exists(), "old versions not shared");
         assert!(!got.path.join("estratti/versioni").exists(), "copies of corrected transcripts not shared");
         assert!(fs::read_dir(b.path()).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with(".importazione")));
@@ -556,6 +567,7 @@ mod tests {
         assert!(sintesi.contains("**F1**: reg.m4a"));
         assert!(fs::read_to_string(dirs[0].join("Mappa.md")).unwrap().contains("```mermaid\nmindmap"));
         assert!(dirs[0].join("Trascrizione - reg.m4a.md").is_file());
+        assert!(sintesi.contains("![Lavagna](<img/lavagna.jpg>)") && dirs[0].join("img/lavagna.jpg").is_file(), "{sintesi}");
 
         let anki = t.path().join("carte.txt");
         assert_eq!(export_anki(&lib, &[l.meta.id.clone()], &anki).unwrap(), 2);
