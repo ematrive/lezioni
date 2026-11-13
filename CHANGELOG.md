@@ -1,6 +1,6 @@
 # Novità
 
-## In arrivo
+## 1.1.0
 
 - Le **sintesi** non mostrano più `\n` e `##` al posto di a capo e titoli, né formule spezzate su più righe («mu», «sqrt2g»): succedeva quando il modello rovinava il testo a metà risposta. Le sintesi già salvate si vedono di nuovo bene senza rielaborare la lezione; vale anche per glossario, flashcard, domande d'esame e sintesi del corso.
 - I riferimenti alle pagine dei PDF nella sintesi, come **[F1 pag. 2]**, diventano cliccabili e aprono la fonte, come gli altri.

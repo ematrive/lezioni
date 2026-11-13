@@ -390,7 +390,7 @@ try {
 
   // Version and what's new (the CHANGELOG), bottom left.
   await p.getByRole("button", { name: /^Lezioni \d+\.\d+\.\d+ · Novità/ }).click();
-  await p.getByRole("heading", { name: "1.0.3", exact: true }).waitFor();
+  await p.getByRole("heading", { name: "1.1.0", exact: true }).waitFor();
   await p.getByRole("heading", { name: "0.7.0", exact: true }).waitFor();
   await shot("novita");
   await p.keyboard.press("Escape");
