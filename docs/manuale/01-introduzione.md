@@ -32,6 +32,6 @@ Questa guida si apre in qualsiasi momento con **F1** o con **Guida** in basso a 
 
 ![La guida nell'app](img/guida.png)
 
-Sotto la Guida c'è la **versione** dell'app (per esempio *Lezioni 1.1.0 · Novità*): cliccala per leggere le novità di ogni versione. Un pallino blu accanto vuol dire che l'app è stata aggiornata e ci sono novità che non hai ancora letto.
+Sotto la Guida c'è la **versione** dell'app (per esempio *Lezioni 1.2.0 · Novità*): cliccala per leggere le novità di ogni versione. Un pallino blu accanto vuol dire che l'app è stata aggiornata e ci sono novità che non hai ancora letto.
 
 ![Le novità della versione](img/novita.png)

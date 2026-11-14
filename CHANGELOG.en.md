@@ -1,6 +1,6 @@
 # What's new
 
-## Next version
+## 1.2.0
 
 - **English**: the app can be used in English. By default it follows the system language; you change it in **Settings → Language**.
 - Each course has a **language of the lectures** (the one the lecturer speaks, for the transcription) and a **language of the materials** (summary, map, study material, chat and exports). A course taught in English can have its materials in Italian, and vice versa.

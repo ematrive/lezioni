@@ -32,6 +32,6 @@ You can open this guide at any time with **F1** or with **Guide** at the bottom 
 
 ![The guide in the app](img/guida.png)
 
-Below the Guide there is the app's **version** (for example *Lezioni 1.1.0 · What's new*): click it to read what is new in each version. A blue dot next to it means the app has been updated and there is news you have not read yet.
+Below the Guide there is the app's **version** (for example *Lezioni 1.2.0 · What's new*): click it to read what is new in each version. A blue dot next to it means the app has been updated and there is news you have not read yet.
 
 ![What's new in the version](img/novita.png)

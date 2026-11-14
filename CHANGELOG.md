@@ -1,6 +1,6 @@
 # Novità
 
-## Prossima versione
+## 1.2.0
 
 - **Inglese**: l'app si può usare in inglese. Di default segue la lingua del sistema; si cambia da **Impostazioni → Lingua**.
 - Ogni corso ha una **lingua delle lezioni** (quella in cui parla il docente, per la trascrizione) e una **lingua dei materiali** (sintesi, mappa, studio, chat ed esportazioni). Un corso in inglese può avere i materiali in italiano, e viceversa.
