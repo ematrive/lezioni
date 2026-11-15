@@ -5,7 +5,7 @@ import { t, tn } from "../../i18n";
 import { ai, api, share, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
-import { buildHtml, type ExportParts, summaryPhotos } from "./html";
+import { buildHtml, DEFAULT_PARTS, type ExportParts, lessonPhotos, slidePages, summaryPhotos } from "./html";
 
 type Format = "package" | "pdf" | "html" | "markdown" | "anki";
 
@@ -18,6 +18,26 @@ const formats = (): { id: Format; label: string; hint: string; icon: React.React
   { id: "anki", label: t("Flashcard per Anki"), hint: t("File di testo da importare in Anki (File → Importa): flashcard e domande d'esame."), icon: <Layers className="size-5" /> },
 ];
 
+/** The parts chosen last time (this computer only); missing ones take the default. */
+const PARTS_KEY = "export:parts";
+function loadParts(): ExportParts {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PARTS_KEY) ?? "{}");
+    const out = { ...DEFAULT_PARTS };
+    for (const k of Object.keys(out) as (keyof ExportParts)[]) if (typeof saved[k] === "boolean") out[k] = saved[k];
+    return out;
+  } catch {
+    return { ...DEFAULT_PARTS };
+  }
+}
+function saveParts(p: ExportParts) {
+  try {
+    localStorage.setItem(PARTS_KEY, JSON.stringify(p));
+  } catch {
+    // Storage blocked: the choice is just not remembered.
+  }
+}
+
 const slug = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, " ") || t("lezione|nome di file");
 
 /** Export one lesson, or a whole course (`lesson` null). */
@@ -26,7 +46,11 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
   const [media, setMedia] = useState(false);
   const [files, setFiles] = useState(true);
   const [notes, setNotes] = useState(false);
-  const [parts, setParts] = useState<ExportParts>({ summary: true, map: true, study: true, transcript: false });
+  const [parts, setPartsState] = useState<ExportParts>(loadParts);
+  const setParts = (p: ExportParts) => {
+    setPartsState(p);
+    saveParts(p);
+  };
   const [busy, setBusy] = useState(false);
   const name = lesson ? `${lesson.date} ${lesson.title}` : course.name;
 
@@ -47,10 +71,16 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
         const docs = await Promise.all(
           ls.map(async (l) => {
             const outputs = await ai.outputs(l.id);
-            return { lesson: l, outputs, photos: parts.summary ? await summaryPhotos(l, outputs) : undefined };
+            return {
+              lesson: l,
+              outputs,
+              photos: parts.summary && parts.summaryPhotos ? await summaryPhotos(l, outputs) : undefined,
+              gallery: parts.photos ? await lessonPhotos(l, outputs) : undefined,
+              slides: parts.slides ? await slidePages(l) : undefined,
+            };
           }),
         );
-        if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length)) throw { message: t("Niente da esportare: elabora prima la lezione con Gemini") };
+        if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length || d.gallery?.length || d.slides?.length || (parts.notes && d.lesson.notes.trim()))) throw { message: t("Niente da esportare: elabora prima la lezione con Gemini") };
         if (format === "pdf") {
           await share.print(slug(name), buildHtml(course, docs, parts, true));
           toast(t("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF»."));
@@ -90,6 +120,14 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
     </label>
   );
 
+  const part = (k: keyof ExportParts, label: string, hint?: string) => <div key={k}>{check(label, parts[k], (v) => setParts({ ...parts, [k]: v }), hint)}</div>;
+  const group = (title: string, items: React.ReactNode[]) => (
+    <div>
+      <p className="mb-1 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{title}</p>
+      <div className="grid grid-cols-2 gap-2">{items}</div>
+    </div>
+  );
+
   return (
     <Modal
       wide
@@ -127,11 +165,26 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
           </div>
         )}
         {(format === "pdf" || format === "html") && (
-          <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-900">
-            {check(t("Sintesi"), parts.summary, (v) => setParts({ ...parts, summary: v }))}
-            {check(t("Mappa concettuale"), parts.map, (v) => setParts({ ...parts, map: v }))}
-            {check(t("Flashcard, domande e glossario"), parts.study, (v) => setParts({ ...parts, study: v }))}
-            {check(t("Trascrizioni (in appendice)"), parts.transcript, (v) => setParts({ ...parts, transcript: v }))}
+          <div className="space-y-3 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-900">
+            {group(t("Contenuti"), [
+              part("summary", t("Sintesi")),
+              part("map", t("Mappa concettuale")),
+              part("flashcards", t("Flashcard")),
+              part("questions", t("Domande d'esame")),
+              part("glossary", t("Glossario")),
+              part("transcript", t("Trascrizioni (in appendice)")),
+            ])}
+            {group(t("Foto e appunti"), [
+              part("summaryPhotos", t("Foto nella sintesi"), t("Quelle che la sintesi inserisce nel testo.")),
+              part("handwritten", t("Appunti a mano"), t("Quello che hai scritto sulle slide e nelle foto, raccolto in una sezione.")),
+              part("photos", t("Tutte le foto (in appendice)"), t("Con titolo, descrizione e minuto della registrazione.")),
+              part("slides", t("Slide del docente (in appendice)"), t("Pesano e servono il permesso del docente.")),
+            ])}
+            {group(t("Personali"), [
+              part("notes", t("Le mie note sulla lezione")),
+              part("bookmarks", t("I miei segnaposti"), t("Con il punto della trascrizione in cui li hai messi.")),
+            ])}
+            {group(t("Aspetto"), [part("refs", t("Riferimenti alle fonti"), t("I rimandi come [F1 00:12:30] e l'elenco delle fonti: toglili per una dispensa più pulita."))])}
           </div>
         )}
       </div>

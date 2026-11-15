@@ -7,7 +7,7 @@
 | Formato | Per chi | Cosa contiene |
 |---|---|---|
 | **Pacchetto .lezione** | Chi usa Lezioni | La lezione completa: fonti, trascrizioni, sintesi, mappa, studio. Si apre con un doppio clic e non serve rielaborarla |
-| **PDF** | Chiunque | Una dispensa con sintesi, mappa (disegnata come nell'app), flashcard, domande e glossario, e a scelta le trascrizioni in appendice. La sola mappa si esporta in PDF anche dalla scheda Mappa |
+| **PDF** | Chiunque | Una dispensa con sintesi, mappa (disegnata come nell'app), flashcard, domande e glossario; a scelta appunti a mano, foto, slide, le tue note e i tuoi segnaposti, e le trascrizioni in appendice. La sola mappa si esporta in PDF anche dalla scheda Mappa |
 | **Pagina web** | Chiunque | Lo stesso contenuto in un file `.html` che si apre in qualsiasi browser, anche dal telefono e senza internet, con le flashcard cliccabili |
 | **Markdown** | Chi usa Obsidian o NotebookLM | Una cartella per lezione con Sintesi, Mappa, Studio e Trascrizioni in file `.md` |
 | **Flashcard per Anki** | Chi ripassa con Anki | Un file di testo da importare in Anki con *File → Importa* |
@@ -22,6 +22,20 @@
 ## PDF
 
 Scegliendo **PDF** si apre il browser con la finestra di stampa: come stampante scegli **Salva come PDF** (su Mac in basso a sinistra, su Windows «Microsoft Print to PDF»). Le flashcard compaiono già girate, con la risposta.
+
+## PDF e pagina web: cosa includere
+
+![Cosa mettere nella dispensa](img/condividi-pdf.png)
+
+Sotto i formati scegli cosa mettere nella dispensa; l'app ricorda le scelte per la volta dopo.
+
+- **Contenuti**: sintesi, mappa concettuale, flashcard, domande d'esame, glossario, e le trascrizioni in appendice (escluse di default).
+- **Foto nella sintesi**: le foto che la sintesi inserisce nel testo. Togliendole resta la didascalia.
+- **Appunti a mano**: quello che hai scritto sopra slide, dispense e foto (vedi [Appunti a mano su slide e foto](03-fonti.md#appunti-a-mano-su-slide-e-foto)), raccolto in una sezione, per fonte e per pagina, in blu con la matita come nell'app.
+- **Tutte le foto**: in appendice, con titolo, descrizione e il minuto della registrazione a cui sono agganciate.
+- **Slide del docente**: le pagine dei PDF segnati come slide, in appendice, due per pagina in stampa. Rendono il file più pesante e per diffonderle serve il permesso del docente.
+- **Le mie note sulla lezione** e **I miei segnaposti** (con il paragrafo della trascrizione in cui li hai messi): sono tuoi, quindi esclusi se non li spunti.
+- **Riferimenti alle fonti**: i rimandi come [F1 00:12:30] e l'elenco delle fonti sotto la sintesi. Toglili per una dispensa più pulita da dare a chi non ha la registrazione.
 
 ## Importare un pacchetto ricevuto
 

@@ -1,5 +1,9 @@
 # Novità
 
+## Prossima versione
+
+- **Esportare in PDF o come pagina web**: scegli cosa mettere nella dispensa. Flashcard, domande d'esame e glossario si scelgono uno per uno; si aggiungono gli **appunti a mano** letti da slide e foto, raccolti in una sezione, **tutte le foto** della lezione con titolo, descrizione e minuto, e le **slide del docente** in appendice (due per pagina in stampa). Le parti personali, cioè **le tue note** e **i tuoi segnaposti** con il punto della trascrizione, restano escluse se non le spunti. Si possono togliere i **riferimenti alle fonti** come [F1 00:12:30] per una dispensa più pulita, e le foto inserite nella sintesi. L'app ricorda le scelte per la volta dopo.
+
 ## 1.2.0
 
 - **Inglese**: l'app si può usare in inglese. Di default segue la lingua del sistema; si cambia da **Impostazioni → Lingua**.

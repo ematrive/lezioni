@@ -80,3 +80,32 @@ export function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) 
     </div>
   );
 }
+
+/** Every page of a PDF as a JPEG data URL, at most `maxWidth` pixels wide (exports). */
+export async function renderPdfPages(data: ArrayBuffer, maxWidth: number): Promise<string[]> {
+  const task = getDocument({ data: new Uint8Array(data) });
+  const doc = await task.promise;
+  try {
+    const out: string[] = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const p = await doc.getPage(n);
+      const base = p.getViewport({ scale: 1 });
+      const vp = p.getViewport({ scale: maxWidth / base.width });
+      const c = document.createElement("canvas");
+      c.width = Math.floor(vp.width);
+      c.height = Math.floor(vp.height);
+      // JPEG has no transparency: a white page, not a black one.
+      const ctx = c.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, c.width, c.height);
+      }
+      await p.render({ canvas: c, viewport: vp }).promise;
+      out.push(c.toDataURL("image/jpeg", 0.8));
+      p.cleanup();
+    }
+    return out;
+  } finally {
+    task.destroy();
+  }
+}

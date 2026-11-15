@@ -148,7 +148,10 @@ export function Markdown({
   onAttach,
   pageRefs,
   lang,
+  hideRefs,
 }: {
+  /** With `exported`: no `[F1 00:12:30]` chips (a cleaner handout). */
+  hideRefs?: boolean;
   /** Language of the few words the renderer adds (exports: the materials'); default the interface's. */
   lang?: Lang;
   /** Photos linked to a minute: a chip with the thumbnail before that paragraph. */
@@ -297,7 +300,7 @@ export function Markdown({
                 {children}
               </button>
             ) : href?.startsWith("#") && exported ? (
-              <span className="ref">{children}</span>
+              hideRefs ? null : <span className="ref">{children}</span>
             ) : href?.startsWith("#") ? (
               <button
                 data-t={href.match(/@(\d+)$/)?.[1]}

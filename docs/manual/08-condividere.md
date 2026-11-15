@@ -7,7 +7,7 @@
 | Format | For whom | What it contains |
 |---|---|---|
 | **.lezione package** | People who use Lezioni | The complete lecture: sources, transcripts, summary, map, study material. It opens with a double-click and doesn't need processing again |
-| **PDF** | Anyone | A handout with summary, map (drawn as in the app), flashcards, questions and glossary, and optionally the transcripts in an appendix. The map alone can also be exported to PDF from the Map tab |
+| **PDF** | Anyone | A handout with summary, map (drawn as in the app), flashcards, questions and glossary; optionally handwritten notes, photos, slides, your notes and your bookmarks, and the transcripts in an appendix. The map alone can also be exported to PDF from the Map tab |
 | **Web page** | Anyone | The same content in an `.html` file that opens in any browser, even on a phone and offline, with clickable flashcards |
 | **Markdown** | People who use Obsidian or NotebookLM | One folder per lecture with Summary, Map, Study and Transcripts as `.md` files |
 | **Flashcards for Anki** | People who review with Anki | A text file to import into Anki with *File → Import* |
@@ -22,6 +22,20 @@
 ## PDF
 
 Choosing **PDF** opens the browser with the print dialog: as the printer, choose **Save as PDF** (on Mac at the bottom left, on Windows "Microsoft Print to PDF"). Flashcards appear already turned over, with the answer.
+
+## PDF and web page: what to include
+
+![What to put in the handout](img/condividi-pdf.png)
+
+Below the formats, choose what goes into the handout; the app remembers your choices for next time.
+
+- **Contents**: summary, concept map, flashcards, exam questions, glossary, and the transcripts in an appendix (left out by default).
+- **Photos in the summary**: the photos the summary places in its text. Without them the caption stays.
+- **Handwritten notes**: what you wrote on slides, handouts and photos (see [Handwritten notes on slides and photos](03-fonti.md#handwritten-notes-on-slides-and-photos)), gathered in one section, by source and page, in blue with the pen as in the app.
+- **All the photos**: in an appendix, with title, description and the minute of the recording they are linked to.
+- **The lecturer's slides**: the pages of the PDFs marked as slides, in an appendix, two per page when printed. They make the file heavier, and you need the lecturer's permission to share them.
+- **My notes on the lecture** and **My bookmarks** (with the paragraph of the transcript where you placed them): they are yours, so they stay out unless you tick them.
+- **References to the sources**: references like [F1 00:12:30] and the list of sources below the summary. Leave them out for a cleaner handout for people who don't have the recording.
 
 ## Importing a package you received
 

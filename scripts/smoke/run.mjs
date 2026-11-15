@@ -417,6 +417,22 @@ try {
   await p.getByRole("button", { name: T("Esporta…") }).click();
   await p.waitForFunction(() => window.__printed);
   if (!(await p.evaluate(() => window.__printed.includes("<details open")))) throw new Error("PDF: flashcard chiuse");
+  if (await p.evaluate(() => window.__printed.includes('class="mark '))) throw new Error("PDF: segnaposti esportati senza chiederlo");
+  // PDF with the handwritten notes, the bookmarks and the slides, without the references.
+  await p.getByRole("button", { name: T("Condividi") }).click();
+  await p.getByText("PDF", { exact: true }).click();
+  for (const name of [T("Appunti a mano"), T("I miei segnaposti"), T("Slide del docente (in appendice)"), T("Riferimenti alle fonti")]) await p.getByRole("checkbox", { name }).click();
+  await p.getByRole("checkbox", { name: T("Riferimenti alle fonti") }).scrollIntoViewIfNeeded();
+  await shot("condividi-pdf");
+  await p.evaluate(() => (window.__printed = ""));
+  await p.getByRole("button", { name: T("Esporta…") }).click();
+  await p.waitForFunction(() => window.__printed, null, { timeout: 30000 });
+  const printed = await p.evaluate(() => window.__printed);
+  if (!manual) writeFileSync(`${out}/lezione-stampa.html`, printed);
+  if (!printed.includes('class="handwritten"') || !printed.includes(L("regola di Bland per evitare", "rule to avoid cycling"))) throw new Error("PDF: appunti a mano mancanti");
+  if (!printed.includes('class="mark mk-dub"') || !printed.includes(note)) throw new Error("PDF: segnaposti mancanti");
+  if (!printed.includes('class="slides"') || !printed.includes("data:image/jpeg")) throw new Error("PDF: slide mancanti");
+  if (printed.includes('class="ref"') || printed.includes('class="legend"')) throw new Error("PDF: riferimenti alle fonti non tolti");
 
   // Search across the archive, then jump into the transcript.
   await p.getByPlaceholder(searchAll).fill(L("funzione obiettivo", "objective function"));
