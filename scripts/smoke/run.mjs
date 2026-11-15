@@ -454,7 +454,7 @@ try {
 
   // Version and what's new (the CHANGELOG), bottom left.
   await p.getByRole("button", { name: new RegExp(`^Lezioni \\d+\\.\\d+\\.\\d+ · ${T("Novità")}`) }).click();
-  await p.getByRole("heading", { name: "1.2.0", exact: true }).waitFor();
+  await p.getByRole("heading", { name: "1.3.0", exact: true }).waitFor();
   await p.getByRole("heading", { name: "0.7.0", exact: true }).waitFor();
   await shot("novita");
   await p.keyboard.press("Escape");

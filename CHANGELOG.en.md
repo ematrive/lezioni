@@ -1,6 +1,6 @@
 # What's new
 
-## Next version
+## 1.3.0
 
 - **Exporting to PDF or as a web page**: choose what goes into the handout. Flashcards, exam questions and glossary can be picked one by one; you can add the **handwritten notes** read from slides and photos, gathered in one section, **all the photos** of the lecture with title, description and minute, and the **lecturer's slides** in an appendix (two per page when printed). The personal parts, **your notes** and **your bookmarks** with the point of the transcript, stay out unless you tick them. You can leave out the **references to the sources** like [F1 00:12:30] for a cleaner handout, and the photos placed in the summary. The app remembers your choices for next time.
 
