@@ -97,6 +97,18 @@ The **Summary** brings all the sources together into a well-ordered text, with h
 
 The summary can also be corrected with **Edit**, with the same find and replace. With **Regenerate** the corrected version is not lost: it stays in `generati/versioni`.
 
+### Putting an image in the summary
+
+If you add a photo or an image in **Sources** after processing the lecture, you can put it in the summary wherever you like, without reprocessing anything and at no cost. Hover over a paragraph, a heading, a list or a table: the **Image** button appears at the bottom right. Choose the image from the list (those **not yet in the summary** come first), write the caption (it starts as the photo's title) and press **Insert**: the image goes right below that block.
+
+![Choosing the image to put in the summary](img/sintesi-immagine.png)
+
+When you hover over an image in the summary, even one placed by the model, arrows appear to **move it** up or down one block, and an **X** to remove it (the file stays in Sources). In **Edit** there is also an **Insert image** button, which puts it after the line where the cursor is. In the text the image is a line of its own, with the caption in square brackets and `img:` followed by the code of the source.
+
+![The image in the summary, with the buttons to move or remove it](img/sintesi-immagine-messa.png)
+
+Images placed this way also appear in the HTML, PDF and Markdown exports. They count as a correction by hand: **Regenerate** writes the summary again, and the version with your images stays among the **earlier versions**.
+
 ### Earlier versions
 
 Every time you press **Regenerate**, the previous summary, map and study material become an **earlier version**. The same goes for a transcript corrected by hand and then redone with *Process the sources again too*. The **Earlier versions** button (in the Summary, and next to each transcript that has some) opens the list by date:

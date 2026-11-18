@@ -288,6 +288,30 @@ try {
   await p.getByRole("button", { name: T("Salva"), exact: true }).click();
   await p.getByText(T("Foto salvata.")).waitFor();
   await p.locator("[data-photo-card]", { hasText: L("Tableau del simplesso", "Simplex tableau") }).getByText("00:12:30").waitFor();
+  // An image added after the processing, put by hand after a block of the summary (no Rigenera).
+  await p.getByRole("button", { name: T("Sintesi"), exact: true }).click();
+  const block = p.locator(".group\\/blk", { hasText: L("base ammissibile", "basic feasible solution") }).first();
+  await block.hover();
+  await block.locator("[data-insert-image]").click();
+  const picker = p.locator("[data-image-picker]");
+  await picker.getByRole("menuitem", { name: L("Tableau del simplesso", "Simplex tableau") }).getByText(T("non ancora nella sintesi")).waitFor();
+  await shot("sintesi-immagine");
+  await picker.getByRole("menuitem", { name: L("Tableau del simplesso", "Simplex tableau") }).click();
+  await picker.locator("[data-image-caption]").fill(L("Il tableau iniziale", "The initial tableau"));
+  await picker.getByRole("button", { name: T("Inserisci"), exact: true }).click();
+  await p.getByText(L(/Immagine messa nella sintesi/, /Image placed in the summary/)).waitFor();
+  const placed = p.locator('[data-summary-photo^="img:"]');
+  await placed.getByText(L("Il tableau iniziale", "The initial tableau")).waitFor();
+  // Right after the paragraph, before the photo the model placed (F2).
+  const order = await p.locator("[data-summary-photo]").evaluateAll((els) => els.map((e) => e.getAttribute("data-summary-photo")));
+  if (!/^img:/.test(order[0]) || order[1] !== "F2") throw new Error(`immagine nel punto sbagliato: ${order}`);
+  // Moved down: after the photo of the model.
+  await placed.hover();
+  await placed.locator('[data-image-action="down"]').click();
+  await p.waitForFunction(() => document.querySelectorAll("[data-summary-photo]")[1]?.getAttribute("data-summary-photo")?.startsWith("img:"));
+  await placed.scrollIntoViewIfNeeded();
+  await placed.hover();
+  await shot("sintesi-immagine-messa");
   await p.getByRole("button", { name: T("Trascrizione"), exact: true }).click();
   // In the normal layout too, the button to link a photo is inside the text column, not cut off.
   const para2 = p.locator("p", { has: p.locator('[data-attach="750"]') }).first();
@@ -410,6 +434,8 @@ try {
   const html = await p.evaluate(() => window.__written.text);
   if (!html.includes(L("base ammissibile", "basic feasible solution")) || !html.includes("data:font/woff2;base64") || !html.includes('class="katex"') || !html.includes(ratio)) throw new Error("HTML esportato incompleto");
   if (!manual) writeFileSync(`${out}/lezione.html`, html);
+  // The image put in the summary by hand (img:<id>) is embedded, like the one the model placed.
+  if (!/data-summary-photo="img:[\w-]+"><img src="data:image\//.test(html)) throw new Error("HTML: immagine messa a mano nella sintesi mancante");
   // PDF: same page, opened for printing with the answers visible.
   await p.getByRole("button", { name: T("Condividi") }).click();
   await p.getByText("PDF", { exact: true }).click();

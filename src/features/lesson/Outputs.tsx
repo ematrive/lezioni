@@ -10,6 +10,8 @@ import { VersionsButton } from "./Versions";
 import { SlidesPanel } from "./SlidesPanel";
 import { type PhotoAt, PhotosPanel, photoTitle } from "./PhotosPanel";
 import { PhotoPicker } from "./PhotoPicker";
+import { SummaryImagePicker } from "./SummaryImagePicker";
+import { imageLine, imageRef, imageRefId, insertAfterLine, insertAtOffset, placedImages } from "../../lib/summaryImages";
 import { FlashCard, ReviewSession } from "../study/Review";
 
 // ---------- running jobs, by lesson (they go on while you look at other lessons) ----------
@@ -280,8 +282,9 @@ function Reclean({ lessonId, sourceId, text, sel, onReplace }: { lessonId: strin
 
 /** Markdown text editor with find and replace (all occurrences, ignoring case). With `reclean`,
  *  a selected piece of a transcript can be cleaned again from Whisper's text. */
-export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string }; timed?: Lang | false }) {
+export function TextEditor({ initial, course, onSave, onCancel, reclean, timed, images }: { initial: string; course?: Course | null; onSave: (text: string) => Promise<void>; onCancel: () => void; reclean?: { lessonId: string; sourceId: string }; timed?: Lang | false; /** A button to put an image of the lesson at the cursor (the summary). */ images?: { lesson: Lesson; placed: (text: string) => Set<string> } }) {
   const [text, setText] = useState(initial);
+  const [picker, setPicker] = useState<DOMRect | null>(null);
   const [sel, setSel] = useState<[number, number]>([0, 0]);
   const [find, setFind] = useState("");
   const [repl, setRepl] = useState("");
@@ -315,6 +318,11 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
         >
           {t("Sostituisci tutte ({n})", { n })}
         </button>
+        {images && images.lesson.sources.some((s) => s.kind === "image" && !s.omitted) && (
+          <button className="btn" onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())} title={t("Mette un'immagine della lezione dopo la riga del cursore")} data-editor-image>
+            <ImageIcon className="size-4" /> {t("Inserisci immagine")}
+          </button>
+        )}
         {replaced && course && (
           <button
             className="text-sm text-sky-700 hover:underline dark:text-sky-400"
@@ -365,6 +373,18 @@ export function TextEditor({ initial, course, onSave, onCancel, reclean, timed }
           {t("Salva")}
         </button>
       </div>
+      {picker && images && (
+        <SummaryImagePicker
+          lesson={images.lesson}
+          placed={images.placed(text)}
+          anchor={picker}
+          onClose={() => setPicker(null)}
+          onPick={(id, caption) => {
+            setPicker(null);
+            setText(insertAtOffset(text, sel[1], imageLine(caption, imageRef(id))));
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -923,14 +943,37 @@ export function TranscriptTab({ lesson, outputs, seek, process, editing, onBookm
   );
 }
 
-/** A photo placed in the summary as `![titolo](F3)`: its file. */
+/** A photo placed in the summary as `![titolo](F3)` (by the model) or `![titolo](img:<id>)` (by hand): its file. */
 function photoUrl(lesson: Lesson, outputs: Outputs, code: string): string | undefined {
-  const s = lesson.sources.find((x) => x.id === outputs.info?.sources[code] && x.kind === "image" && !x.omitted);
+  const id = imageRefId(code) ?? outputs.info?.sources[code];
+  const s = lesson.sources.find((x) => x.id === id && x.kind === "image" && !x.omitted);
   return s ? fileUrl(sourceFile(lesson, s)) : undefined;
+}
+
+/** Ids of the images already in a summary, placed by the model (`F3`) or by hand (`img:<id>`). */
+function summaryImageIds(text: string, outputs: Outputs): Set<string> {
+  const ids = placedImages(text);
+  for (const m of text.matchAll(/!\[[^\]\n]*\]\((F\d+)\)/g)) {
+    const id = outputs.info?.sources[m[1]];
+    if (id) ids.add(id);
+  }
+  return ids;
 }
 
 export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesson: Lesson; outputs: Outputs; onRef: (href: string) => void; process: React.ReactNode; editing?: Editing }) {
   const [edit, setEdit] = useState(false);
+  const [picker, setPicker] = useState<{ afterLine: number; anchor: DOMRect } | null>(null);
+  const hasImages = lesson.sources.some((s) => s.kind === "image" && !s.omitted);
+  /** A change made from the view (an image put in, moved, taken away): saved as a hand correction. */
+  const saveImages = async (text: string, done: string) => {
+    try {
+      await ai.saveSummary(lesson.id, text);
+      editing?.onSaved();
+      toast(done);
+    } catch (e) {
+      toast(toAppError(e).message, "error");
+    }
+  };
   if (!outputs.summary) return <Placeholder text={t("La sintesi della lezione, costruita da tutte le fonti insieme, con i riferimenti al minuto della registrazione.")} action={process} />;
   return (
     <div className="mx-auto max-w-3xl">
@@ -950,6 +993,7 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
           initial={outputs.summary}
           course={editing.course}
           onCancel={() => setEdit(false)}
+          images={{ lesson, placed: (text) => summaryImageIds(text, outputs) }}
           onSave={async (text) => {
             await ai.saveSummary(lesson.id, text);
             setEdit(false);
@@ -958,7 +1002,26 @@ export function SummaryTab({ lesson, outputs, onRef, process, editing }: { lesso
           }}
         />
       ) : (
-        <Markdown text={outputs.summary} onRef={onRef} imgSrc={(code) => photoUrl(lesson, outputs, code)} />
+        <Markdown
+          text={outputs.summary}
+          onRef={onRef}
+          imgSrc={(code) => photoUrl(lesson, outputs, code)}
+          onInsertImage={editing && hasImages ? (afterLine, el) => setPicker({ afterLine, anchor: el.getBoundingClientRect() }) : undefined}
+          onImagesChange={editing ? (text) => saveImages(text, t("Sintesi salvata.")) : undefined}
+        />
+      )}
+      {picker && !edit && (
+        <SummaryImagePicker
+          lesson={lesson}
+          placed={summaryImageIds(outputs.summary, outputs)}
+          anchor={picker.anchor}
+          onClose={() => setPicker(null)}
+          onPick={(id, caption) => {
+            const after = picker.afterLine;
+            setPicker(null);
+            saveImages(insertAfterLine(outputs.summary!, after, imageLine(caption, imageRef(id))), t("Immagine messa nella sintesi. Con Rigenera la sintesi viene riscritta: questa versione resta in generati/versioni."));
+          }}
+        />
       )}
     </div>
   );

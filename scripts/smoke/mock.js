@@ -294,6 +294,8 @@
           return null;
         }
         case "source_read":
+          // A photo: a small real PNG (the export makes it smaller with createImageBitmap).
+          if (find(a.lessonId).sources.find((x) => x.id === a.sourceId)?.kind === "image") return Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0)).buffer;
           return slidesPdf.slice(0);
         case "source_set_role": {
           const s = find(a.lessonId).sources.find((x) => x.id === a.sourceId);

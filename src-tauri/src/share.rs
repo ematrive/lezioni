@@ -334,10 +334,12 @@ pub fn export_markdown(lib: &Library, lesson_ids: &[String], dest: &Path) -> Res
             .filter_map(|(code, sid)| l.meta.sources.iter().find(|s| &s.id == sid).map(|s| format!("- **{code}**: {}\n", s.original_name)))
             .collect();
         if let Some(s) = &o.summary {
-            // Photos placed in the summary as `![titolo](F3)`: copied next to it, in `img/`.
-            static IMG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"!\[([^\]]*)\]\((F\d+)\)").unwrap());
+            // Photos placed in the summary as `![titolo](F3)` (by the model) or `![titolo](img:<source id>)`
+            // (by hand): copied next to it, in `img/`.
+            static IMG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"!\[([^\]]*)\]\((F\d+|img:[\w-]+)\)").unwrap());
             let s = IMG.replace_all(s, |c: &regex::Captures| {
-                let photo = codes.iter().find(|(code, _)| *code == c[2]).and_then(|(_, sid)| l.meta.sources.iter().find(|s| &s.id == sid && s.kind == SourceKind::Image && !s.omitted));
+                let sid = c[2].strip_prefix("img:").map(str::to_string).or_else(|| codes.iter().find(|(code, _)| *code == c[2]).map(|(_, sid)| sid.clone()));
+                let photo = sid.and_then(|sid| l.meta.sources.iter().find(|s| s.id == sid && s.kind == SourceKind::Image && !s.omitted));
                 match photo.and_then(|p| crate::library::source_file(&l, p).ok().map(|f| (p, f))) {
                     Some((p, from)) if fs::create_dir_all(dir.join("img")).and_then(|_| fs::copy(&from, dir.join("img").join(&p.file))).is_ok() => format!("![{}](<img/{}>)", &c[1], p.file),
                     _ => format!("*({})*", &c[1]),
@@ -612,6 +614,15 @@ mod tests {
         assert!(fs::read_to_string(dirs[0].join("Mappa.md")).unwrap().contains("```mermaid\nmindmap"));
         assert!(dirs[0].join("Trascrizione - reg.m4a.md").is_file());
         assert!(sintesi.contains("![Lavagna](<img/lavagna.jpg>)") && dirs[0].join("img/lavagna.jpg").is_file(), "{sintesi}");
+
+        // An image placed by hand: `img:<source id>`, not a code of the generation.
+        let l = lib.lesson(&l.meta.id).unwrap();
+        let id = &l.meta.sources.iter().find(|s| s.file == "lavagna.jpg").unwrap().id;
+        fs::write(l.path.join("generati/sintesi.md"), format!("## Simplesso\n\n![Schema a mano](img:{id})\n\n![Persa](img:nessuna)")).unwrap();
+        let dirs = export_markdown(&lib, &[l.meta.id.clone()], &t.path().join("md2")).unwrap();
+        let sintesi = fs::read_to_string(dirs[0].join("Sintesi.md")).unwrap();
+        assert!(sintesi.contains("![Schema a mano](<img/lavagna.jpg>)") && dirs[0].join("img/lavagna.jpg").is_file(), "{sintesi}");
+        assert!(sintesi.contains("*(Persa)*"), "{sintesi}");
 
         let anki = t.path().join("carte.txt");
         assert_eq!(export_anki(&lib, &[l.meta.id.clone()], &anki).unwrap(), 2);

@@ -97,6 +97,18 @@ La **Sintesi** mette insieme tutte le fonti in un testo ordinato, con titoli, el
 
 Anche la sintesi si corregge con **Modifica**, con lo stesso trova e sostituisci. Con **Rigenera** la versione corretta non si perde: resta in `generati/versioni`.
 
+### Mettere un'immagine nella sintesi
+
+Se aggiungi una foto o un'immagine nelle **Fonti** dopo aver elaborato la lezione, puoi metterla nella sintesi nel punto che vuoi, senza rielaborare niente e senza costi. Passa col mouse sopra un paragrafo, un titolo, un elenco o una tabella: in basso a destra compare il pulsante **Immagine**. Scegli l'immagine dall'elenco (in alto quelle **non ancora nella sintesi**), scrivi la didascalia (di partenza è il titolo della foto) e premi **Inserisci**: l'immagine va subito sotto quel blocco.
+
+![Scegliere l'immagine da mettere nella sintesi](img/sintesi-immagine.png)
+
+Passando sopra un'immagine della sintesi, anche una messa dal modello, compaiono le frecce per **spostarla** su o giù di un blocco e la **X** per toglierla (il file resta nelle Fonti). In **Modifica** c'è anche il pulsante **Inserisci immagine**, che la mette dopo la riga dove si trova il cursore. Nel testo l'immagine è una riga a sé, con la didascalia tra parentesi quadre e `img:` seguito dal codice della fonte.
+
+![L'immagine nella sintesi, con i pulsanti per spostarla o toglierla](img/sintesi-immagine-messa.png)
+
+Le immagini messe così compaiono anche nelle esportazioni in HTML, PDF e Markdown. Contano come una correzione a mano: **Rigenera** riscrive la sintesi, e la versione con le tue immagini resta tra le **versioni precedenti**.
+
 ### Versioni precedenti
 
 Ogni volta che premi **Rigenera**, sintesi, mappa e materiale di studio di prima diventano una **versione precedente**. Lo stesso vale per una trascrizione corretta a mano e poi rifatta con *Rielabora anche le fonti*. Il pulsante **Versioni precedenti** (nella Sintesi, e accanto a ogni trascrizione che ne ha) apre l'elenco per data:

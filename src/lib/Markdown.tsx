@@ -1,11 +1,12 @@
 import "katex/dist/katex.min.css";
-import { ImagePlus, Pause, PenLine } from "lucide-react";
-import { createElement, Fragment, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
+import { ArrowDown, ArrowUp, ImagePlus, Pause, PenLine, X } from "lucide-react";
+import { createElement, Fragment, useMemo, useRef } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { t, tFor, uiLang, type Lang } from "../i18n";
+import { displayLines, imageRefId, moveImage, removeImage } from "./summaryImages";
 
 /** Seconds from "hh:mm:ss" or "mm:ss". */
 export function toSecs(t: string): number {
@@ -131,6 +132,24 @@ function firstTime(node: unknown): number | null {
   return null;
 }
 
+type HastNode = { type: string; position?: { start: { line: number }; end: { line: number } }; properties?: Record<string, unknown>; children?: HastNode[] };
+
+/** Marks each top-level block with its last line in the text before `linkRefs` (`dataBlockEnd`)
+ *  and collects all of them as [first line, last line] in `out`. */
+function rehypeBlocks(map: number[], out: { current: [number, number][] }) {
+  return () => (tree: HastNode) => {
+    const blocks: [number, number][] = [];
+    for (const n of tree.children ?? []) {
+      if (n.type !== "element" || !n.position) continue;
+      const s = map[n.position.start.line - 1] ?? n.position.start.line;
+      const e = map[n.position.end.line - 1] ?? n.position.end.line;
+      n.properties = { ...n.properties, dataBlockEnd: e };
+      blocks.push([s, e]);
+    }
+    out.current = blocks;
+  };
+}
+
 /** Markdown with GFM tables and LaTeX; `#t=…` / `#f=…` links go to `onRef`. */
 export function Markdown({
   text,
@@ -149,7 +168,13 @@ export function Markdown({
   pageRefs,
   lang,
   hideRefs,
+  onInsertImage,
+  onImagesChange,
 }: {
+  /** A button after each block of the summary, to put an image there (last line of the block, the button). */
+  onInsertImage?: (afterLine: number, el: HTMLElement) => void;
+  /** Buttons on the images of the summary to move them or take them away: the new text. */
+  onImagesChange?: (text: string) => void;
   /** With `exported`: no `[F1 00:12:30]` chips (a cleaner handout). */
   hideRefs?: boolean;
   /** Language of the few words the renderer adds (exports: the materials'); default the interface's. */
@@ -182,11 +207,34 @@ export function Markdown({
   const photosByParagraph = useMemo(() => (photos?.length ? marksByParagraph(text, photos) : null), [text, photos]);
   const Wrap = inline ? "span" : "div";
   const l = lang ?? uiLang();
+  const blocks = useRef<[number, number][]>([]);
+  const editImages = !!(onInsertImage || onImagesChange) && !exported && !inline;
+  const srcLines = useMemo(() => (editImages ? displayLines(text) : []), [editImages, text]);
+  const blockPlugin = useMemo(() => (editImages ? rehypeBlocks(srcLines, blocks) : null), [editImages, srcLines]);
+  /** A top-level block with the button to put an image after it. */
+  const block = (node: unknown, el: React.ReactElement): React.ReactElement => {
+    const end = (node as HastNode | undefined)?.properties?.dataBlockEnd;
+    if (!onInsertImage || typeof end !== "number") return el;
+    return (
+      <div className="group/blk relative">
+        {el}
+        <button
+          className="absolute -bottom-3 right-0 z-10 hidden items-center gap-1 rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-xs text-zinc-500 shadow-sm select-none group-hover/blk:flex hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
+          onClick={(e) => onInsertImage(end, e.currentTarget)}
+          title={t("Metti un'immagine qui sotto")}
+          data-insert-image={end}
+        >
+          <ImagePlus className="size-3.5" /> {t("Immagine")}
+        </button>
+      </div>
+    );
+  };
   return (
     <Wrap className={inline ? "select-text" : "prose-lezioni select-text"}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={blockPlugin ? [blockPlugin, rehypeKatex] : [rehypeKatex]}
+        urlTransform={(url) => (imageRefId(url) ? url : defaultUrlTransform(url))}
         components={{
           // Notes written by hand on a slide or a photo: in pen blue, with a pen.
           em: ({ node, children }) =>
@@ -246,15 +294,17 @@ export function Markdown({
               ) : null;
             const hover = attach ? "group relative" : "";
             if (!ms)
-              return (
+              return block(
+                node,
                 <p className={hover || undefined}>
                   {attach}
                   {chips}
                   {children}
-                </p>
+                </p>,
               );
             const top = ms.find((m) => m.kind === "dubbio") ?? ms.find((m) => m.kind === "importante") ?? ms[0];
-            return (
+            return block(
+              node,
               <p className={`-ml-3 rounded-r border-l-4 py-1 pl-2 ${MARK_STYLE[top.kind]} ${hover}`} data-mark={top.kind}>
                 {attach}
                 {chips}
@@ -262,13 +312,21 @@ export function Markdown({
                   {[...new Set(ms.map((m) => MARK_ICON[m.kind]))].join("")}
                 </span>
                 {children}
-              </p>
+              </p>,
             );
           },
+          h1: ({ node, ...props }) => block(node, <h1 {...props} />),
+          h3: ({ node, ...props }) => block(node, <h3 {...props} />),
+          h4: ({ node, ...props }) => block(node, <h4 {...props} />),
+          ul: ({ node, ...props }) => block(node, <ul {...props} />),
+          ol: ({ node, ...props }) => block(node, <ol {...props} />),
+          table: ({ node, ...props }) => block(node, <table {...props} />),
+          blockquote: ({ node, ...props }) => block(node, <blockquote {...props} />),
           h2: ({ node, children }) => {
             const n = pageRefs ? textOf(node).trim().match(/^(?:Pagina|Page)\s+(\d+)$/i) : null;
             const ref = n ? pageRefs?.[Number(n[1])] : undefined;
-            return (
+            return block(
+              node,
               <h2>
                 {children}
                 {ref && (
@@ -276,17 +334,48 @@ export function Markdown({
                     ▶ {ref.label}
                   </button>
                 )}
-              </h2>
+              </h2>,
             );
           },
-          img: ({ src, alt }) => {
-            // `![titolo](F3)`: a photo of the lesson placed in the summary.
-            const photo = typeof src === "string" && /^F\d+$/.test(src);
+          img: ({ node, src, alt }) => {
+            // `![titolo](F3)`: a photo of the lesson placed in the summary by the model;
+            // `![titolo](img:<id>)`: an image placed there by hand.
+            const photo = typeof src === "string" && (/^F\d+$/.test(src) || !!imageRefId(src));
             const url = typeof src === "string" ? (imgSrc?.(src) ?? (photo ? undefined : src)) : undefined;
             if (!url) return photo && alt ? <em>({alt})</em> : null;
             const img = <img src={url} alt={alt ?? ""} className="my-2 rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800" loading="lazy" />;
+            // The line of this image in `text` (the same image can be there twice).
+            const at = (node as HastNode | undefined)?.position?.start.line;
+            const line = at === undefined ? undefined : srcLines[at - 1];
+            const tools =
+              photo && onImagesChange && typeof src === "string" ? (
+                <span className="absolute top-3 right-0 hidden gap-1 select-none group-hover/img:flex">
+                  {(
+                    [
+                      [t("Sposta su"), <ArrowUp key="u" className="size-4" />, () => moveImage(text, src, -1, blocks.current, line), "up"],
+                      [t("Sposta giù"), <ArrowDown key="d" className="size-4" />, () => moveImage(text, src, 1, blocks.current, line), "down"],
+                      [t("Togli dalla sintesi"), <X key="x" className="size-4" />, () => removeImage(text, src, line), "remove"],
+                    ] as const
+                  ).map(([label, icon, next, k]) => (
+                    <button
+                      key={k}
+                      className="rounded border border-zinc-200 bg-white p-1 text-zinc-500 shadow-sm hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:text-zinc-200"
+                      onClick={() => {
+                        const out = next();
+                        if (out !== text) onImagesChange(out);
+                      }}
+                      title={label}
+                      aria-label={label}
+                      data-image-action={k}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </span>
+              ) : null;
             return photo ? (
-              <span className="my-3 block text-center" data-summary-photo={src}>
+              <span className="group/img relative my-3 block text-center" data-summary-photo={src}>
+                {tools}
                 {img}
                 {alt && <span className="block text-sm text-zinc-500">{alt}</span>}
               </span>

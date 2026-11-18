@@ -9,6 +9,7 @@ import { localeOf, tFor, type Lang } from "../../i18n";
 import { Markdown, MARK_ICON, toSecs } from "../../lib/Markdown";
 import { renderPdfPages } from "../../lib/PdfPage";
 import { hmsOf } from "../../lib/time";
+import { imageRefId } from "../../lib/summaryImages";
 import proseCss from "../../lib/prose.css?raw";
 
 const fonts = import.meta.glob("../../../node_modules/katex/dist/fonts/*.woff2", { query: "?inline", import: "default", eager: true }) as Record<string, string>;
@@ -93,9 +94,11 @@ async function shrinkImage(bytes: ArrayBuffer, max: number): Promise<string> {
 /** The photos placed in the summary, made smaller (1600 px, JPEG) and embedded in the page. */
 export async function summaryPhotos(lesson: Lesson, outputs: Outputs): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const codes = new Set([...(outputs.summary ?? "").matchAll(/!\[[^\]]*\]\((F\d+)\)/g)].map((m) => m[1]));
+  // `F3` (placed by the model) or `img:<source id>` (placed by hand).
+  const codes = new Set([...(outputs.summary ?? "").matchAll(/!\[[^\]]*\]\((F\d+|img:[\w-]+)\)/g)].map((m) => m[1]));
   for (const code of codes) {
-    const src = lesson.sources.find((s) => s.id === outputs.info?.sources[code] && s.kind === "image" && !s.omitted);
+    const id = imageRefId(code) ?? outputs.info?.sources[code];
+    const src = lesson.sources.find((s) => s.id === id && s.kind === "image" && !s.omitted);
     if (!src) continue;
     try {
       out[code] = await shrinkImage(await ai.sourceBytes(lesson.id, src.id), 1600);

@@ -1,5 +1,9 @@
 # Novità
 
+## Prossima versione
+
+- **Immagini nella sintesi a mano**: una foto aggiunta nelle Fonti dopo l'elaborazione si mette nel punto che vuoi della sintesi, senza rielaborare. Passa sopra un paragrafo e premi **Immagine**, oppure usa **Inserisci immagine** in Modifica. Le immagini della sintesi, anche quelle messe dal modello, si spostano su o giù e si tolgono con i pulsanti che compaiono passandoci sopra. Compaiono anche nelle esportazioni HTML, PDF e Markdown.
+
 ## 1.3.0
 
 - **Esportare in PDF o come pagina web**: scegli cosa mettere nella dispensa. Flashcard, domande d'esame e glossario si scelgono uno per uno; si aggiungono gli **appunti a mano** letti da slide e foto, raccolti in una sezione, **tutte le foto** della lezione con titolo, descrizione e minuto, e le **slide del docente** in appendice (due per pagina in stampa). Le parti personali, cioè **le tue note** e **i tuoi segnaposti** con il punto della trascrizione, restano escluse se non le spunti. Si possono togliere i **riferimenti alle fonti** come [F1 00:12:30] per una dispensa più pulita, e le foto inserite nella sintesi. L'app ricorda le scelte per la volta dopo.

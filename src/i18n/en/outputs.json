@@ -116,5 +116,16 @@
   "Risposta": "Answer",
   "Traccia di risposta": "Answer outline",
   "Termine": "Term",
-  "Definizione": "Definition"
+  "Definizione": "Definition",
+  "Mette un'immagine della lezione dopo la riga del cursore": "Puts an image of the lecture after the line of the cursor",
+  "Inserisci immagine": "Insert image",
+  "Sintesi salvata.": "Summary saved.",
+  "Immagine messa nella sintesi. Con Rigenera la sintesi viene riscritta: questa versione resta in generati/versioni.": "Image placed in the summary. Regenerate writes the summary again: this version stays in generati/versioni.",
+  "Didascalia": "Caption",
+  "Metti un'immagine nella sintesi": "Put an image in the summary",
+  "Indietro": "Back",
+  "Inserisci": "Insert",
+  "già nella sintesi": "already in the summary",
+  "non ancora nella sintesi": "not yet in the summary",
+  "Nella lezione non ci sono immagini: aggiungile nelle Fonti.": "The lecture has no images: add them in Sources."
 }
