@@ -1,6 +1,6 @@
 # Novità
 
-## Prossima versione
+## 1.4.0
 
 - **Immagini nella sintesi a mano**: una foto aggiunta nelle Fonti dopo l'elaborazione si mette nel punto che vuoi della sintesi, senza rielaborare. Passa sopra un paragrafo e premi **Immagine**, oppure usa **Inserisci immagine** in Modifica. Le immagini della sintesi, anche quelle messe dal modello, si spostano su o giù e si tolgono con i pulsanti che compaiono passandoci sopra. Compaiono anche nelle esportazioni HTML, PDF e Markdown.
 

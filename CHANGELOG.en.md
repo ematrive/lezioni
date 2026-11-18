@@ -1,6 +1,6 @@
 # What's new
 
-## Next version
+## 1.4.0
 
 - **Images in the summary by hand**: a photo added in Sources after processing can be put anywhere in the summary, without reprocessing. Hover over a paragraph and press **Image**, or use **Insert image** in Edit. Images in the summary, including those placed by the model, can be moved up or down and removed with the buttons that appear when you hover over them. They also appear in the HTML, PDF and Markdown exports.
 
