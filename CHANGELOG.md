@@ -1,5 +1,10 @@
 # Novità
 
+## 1.5.1
+
+- **Immagini nel PDF**: le immagini della sintesi si adattano alla larghezza del foglio invece di uscire a destra, con la didascalia centrata sotto; quelle molto alte restano in una pagina.
+- **Export senza riferimenti**: non resta più uno spazio prima del punto dove c'era un riferimento come [F1 00:12:30].
+
 ## 1.5.0
 
 - **Export uguale all'app**:

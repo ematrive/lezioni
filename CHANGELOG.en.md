@@ -1,5 +1,10 @@
 # What's new
 
+## 1.5.1
+
+- **Images in the PDF**: summary images fit the width of the page instead of running off the right edge, with the caption centred below; very tall ones stay on one page.
+- **Exports without references**: no more space before the full stop where a reference like [F1 00:12:30] was.
+
 ## 1.5.0
 
 - **Exports match the app**:
