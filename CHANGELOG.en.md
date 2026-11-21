@@ -1,6 +1,6 @@
 # What's new
 
-## Next version
+## 1.5.0
 
 - **Exports match the app**:
   - images placed in the summary, iPhone HEIC photos included, now go into the PDF and the web page; before, on a Mac, they could be left out with only the caption. If an image can't be read, the app says which one;

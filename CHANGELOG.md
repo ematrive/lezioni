@@ -1,6 +1,6 @@
 # Novità
 
-## Prossima versione
+## 1.5.0
 
 - **Export uguale all'app**:
   - le immagini messe nella sintesi, anche le foto HEIC dell'iPhone, ora entrano nel PDF e nella pagina web; prima, sul Mac, potevano restare fuori lasciando solo la didascalia. Se un'immagine non si riesce a leggere, l'app dice quale;
