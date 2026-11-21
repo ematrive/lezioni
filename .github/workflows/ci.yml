@@ -23,6 +23,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # A new runner image (new MSVC on Windows) must not reuse target/: the CMake cache of
+          # whisper.cpp keeps the old compiler's path ("not a full path to an existing compiler").
+          key: ${{ env.ImageVersion }}
       - run: pnpm install --frozen-lockfile
       - name: Interfaccia (TypeScript + build)
         run: pnpm build
@@ -56,6 +59,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # A new runner image (new MSVC on Windows) must not reuse target/: the CMake cache of
+          # whisper.cpp keeps the old compiler's path ("not a full path to an existing compiler").
+          key: ${{ env.ImageVersion }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Backend (Rust, Metal)
@@ -77,6 +83,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # A new runner image (new MSVC on Windows) must not reuse target/: the CMake cache of
+          # whisper.cpp keeps the old compiler's path ("not a full path to an existing compiler").
+          key: ${{ env.ImageVersion }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       # src-tauri/.cargo/config.toml makes whisper-rs-sys use the bindings bundled in the crate
