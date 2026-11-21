@@ -21,7 +21,7 @@
 
 ## PDF
 
-Choosing **PDF** opens the browser with the print dialog: as the printer, choose **Save as PDF** (on Mac at the bottom left, on Windows "Microsoft Print to PDF"). Flashcards appear already turned over, with the answer.
+Choosing **PDF** opens the browser with the print dialog: as the printer, choose **Save as PDF** (on Mac at the bottom left, on Windows "Microsoft Print to PDF"). Flashcards appear already turned over, with the answer. For a PDF without the date and the file path at the top and bottom of the pages, untick **Print headers and footers** (Safari) or **Headers and footers** (Chrome, Edge) in the print dialog.
 
 ## PDF and web page: what to include
 

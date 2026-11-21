@@ -46,6 +46,12 @@ export function linkRefs(md: string, source?: string): string {
   return out;
 }
 
+/** The links made by `linkRefs` taken out with the spaces before them, so no " ." is left
+ *  where a reference ended a sentence (exports without references). */
+export function dropRefs(md: string): string {
+  return md.replace(/[ \t]*\[[^\]\n]*\]\(#[tfl]=[^)\s]*\)/g, "");
+}
+
 /** A point the student marked in a recording (bookmark). */
 export interface Mark {
   at: number;
@@ -403,7 +409,7 @@ export function Markdown({
             ),
         }}
       >
-        {linkRefs(text, source)}
+        {hideRefs ? dropRefs(linkRefs(text, source)) : linkRefs(text, source)}
       </ReactMarkdown>
     </Wrap>
   );

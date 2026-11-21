@@ -21,7 +21,7 @@
 
 ## PDF
 
-Scegliendo **PDF** si apre il browser con la finestra di stampa: come stampante scegli **Salva come PDF** (su Mac in basso a sinistra, su Windows «Microsoft Print to PDF»). Le flashcard compaiono già girate, con la risposta.
+Scegliendo **PDF** si apre il browser con la finestra di stampa: come stampante scegli **Salva come PDF** (su Mac in basso a sinistra, su Windows «Microsoft Print to PDF»). Le flashcard compaiono già girate, con la risposta. Per un PDF senza data e percorso del file in cima e in fondo alle pagine, nella finestra di stampa togli **Stampa intestazioni e piè di pagina** (Safari) o **Intestazioni e piè di pagina** (Chrome, Edge).
 
 ## PDF e pagina web: cosa includere
 

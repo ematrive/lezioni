@@ -528,6 +528,10 @@ p[data-mark="nota"] { border-color: #38bdf8; background: #f0f9ff; }
 .mk-imp { border-color: #fbbf24; background: #fffbeb; }
 .mk-dub { border-color: #fb7185; background: #fff1f2; }
 .mk-not { border-color: #38bdf8; background: #f0f9ff; }
+.prose-lezioni img { max-width: 100%; height: auto; }
+[data-summary-photo] { display: block; margin: 16px 0; text-align: center; break-inside: avoid; }
+[data-summary-photo] img { display: block; margin: 0 auto; border: 1px solid #e4e4e7; border-radius: 6px; }
+[data-summary-photo] > span { display: block; margin-top: 4px; font-size: 13px; color: #71717a; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .gallery figure, .slides figure { margin: 0; break-inside: avoid; }
 .gallery img { width: 100%; border-radius: 6px; border: 1px solid #e4e4e7; }
@@ -546,6 +550,8 @@ footer { margin-top: 48px; font-size: 11px; color: #a1a1aa; text-align: center; 
   details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
   .card { break-inside: avoid; }
   .slides img { max-height: 115mm; width: auto; max-width: 100%; display: block; margin: 0 auto; }
+  /* A tall photo stays on one page, its caption with it (A4 less the margins). */
+  [data-summary-photo] img { width: auto; max-height: 225mm; }
   @page { margin: 18mm 16mm; }
 }
 `;
