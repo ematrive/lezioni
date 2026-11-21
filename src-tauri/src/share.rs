@@ -386,6 +386,44 @@ pub fn export_markdown(lib: &Library, lesson_ids: &[String], dest: &Path) -> Res
     Ok(out)
 }
 
+/// The course summary and its exam questions as one Markdown file in `dest`, next to the lesson
+/// folders. Returns the file, or None when the course has no summary yet.
+pub fn export_course_summary_markdown(lib: &Library, course_id: &str, dest: &Path) -> Result<Option<PathBuf>> {
+    let course = lib.course(course_id)?.meta;
+    let cs = crate::course::read(lib, course_id)?;
+    if cs.summary.is_none() && cs.questions.is_empty() {
+        return Ok(None);
+    }
+    let ml = course.materials_language;
+    let (kc, head, file) = ml.pick(("corso", "Sintesi del corso", "Sintesi del corso.md"), ("course", "Course summary", "Course summary.md"));
+    let mut t = format!("---\n{kc}: \"{}\"\n---\n\n# {head} · {}\n\n", course.name.replace('"', "'"), course.name);
+    if let Some(s) = &cs.summary {
+        t.push_str(s.trim_end());
+        t.push_str("\n\n");
+    }
+    // `L3` → the title of the lesson, as the app shows when the code is clicked.
+    let refs = cs.info.as_ref().map(|i| i.refs.clone()).unwrap_or_default();
+    let title = |code: &str| refs.get(code).and_then(|id| lib.lesson(id).ok()).map(|l| format!("{} {}", l.meta.date, l.meta.title));
+    if !cs.questions.is_empty() {
+        t.push_str(ml.pick("## Domande d'esame del corso\n\n", "## Course exam questions\n\n"));
+        for (i, q) in cs.questions.iter().enumerate() {
+            t.push_str(&format!("{}. **{}**\n\n   {}\n\n", i + 1, q.domanda, q.traccia.replace('\n', "\n   ")));
+            if !q.lezioni.is_empty() {
+                let ls: Vec<String> = q.lezioni.iter().map(|c| title(c).map_or_else(|| c.clone(), |t| format!("{c} ({t})"))).collect();
+                t.push_str(&format!("   *{}* {}\n\n", ml.pick("Da ripassare:", "To review:"), ls.join(", ")));
+            }
+        }
+    }
+    let legend: String = refs.keys().filter_map(|c| title(c).map(|t| format!("- **{c}**: {t}\n"))).collect();
+    if !legend.is_empty() {
+        t.push_str(&format!("---\n\n**{}**\n\n{legend}", ml.pick("Lezioni", "Lectures")));
+    }
+    fs::create_dir_all(dest)?;
+    let path = dest.join(format!("{}.md", safe_name(&format!("{} - {}", course.name, file.trim_end_matches(".md")), 110)));
+    fs::write(&path, t)?;
+    Ok(Some(path))
+}
+
 // ---------- Anki ----------
 
 fn anki_field(s: &str) -> String {
@@ -623,6 +661,19 @@ mod tests {
         let sintesi = fs::read_to_string(dirs[0].join("Sintesi.md")).unwrap();
         assert!(sintesi.contains("![Schema a mano](<img/lavagna.jpg>)") && dirs[0].join("img/lavagna.jpg").is_file(), "{sintesi}");
         assert!(sintesi.contains("*(Persa)*"), "{sintesi}");
+
+        // A whole course: its summary too, next to the lesson folders.
+        assert!(export_course_summary_markdown(&lib, &l.course_id, &t.path().join("md3")).unwrap().is_none());
+        let gdir = lib.course(&l.course_id).unwrap().path.join(GENERATED_DIR);
+        fs::create_dir_all(&gdir).unwrap();
+        fs::write(gdir.join("sintesi.md"), "## Programmazione lineare\n\nIl simplesso [L1].").unwrap();
+        fs::write(gdir.join("domande.json"), r#"[{"domanda":"Che cos'è il pivot?","traccia":"Cambio di base.","lezioni":["L1"]}]"#).unwrap();
+        let info = serde_json::json!({"generated": Utc::now(), "model": "m", "usage": {}, "refs": {"L1": l.meta.id}, "lessons": []});
+        fs::write(gdir.join("info.json"), info.to_string()).unwrap();
+        let f = export_course_summary_markdown(&lib, &l.course_id, &t.path().join("md3")).unwrap().unwrap();
+        let cs = fs::read_to_string(&f).unwrap();
+        assert!(f.file_name().unwrap().to_string_lossy().ends_with("Sintesi del corso.md"), "{f:?}");
+        assert!(cs.contains("Il simplesso [L1].") && cs.contains("1. **Che cos'è il pivot?**") && cs.contains(&format!("L1 ({} {})", l.meta.date, l.meta.title)), "{cs}");
 
         let anki = t.path().join("carte.txt");
         assert_eq!(export_anki(&lib, &[l.meta.id.clone()], &anki).unwrap(), 2);

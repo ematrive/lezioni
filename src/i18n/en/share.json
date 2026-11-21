@@ -53,6 +53,8 @@
   "Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF».": "The browser has opened: in the print dialog choose “Save as PDF”.",
   "Salva la pagina": "Save the page",
   "Pagina salvata.": "Page saved.",
+  "Un'immagine non si è potuta leggere ed è rimasta fuori: {names}": "One image could not be read and was left out: {names}",
+  "{n} immagini non si sono potute leggere e sono rimaste fuori: {names}": "{n} images could not be read and were left out: {names}",
   "Cartella in cui creare i file Markdown (ad esempio il vault di Obsidian)": "Folder to create the Markdown files in (for example the Obsidian vault)",
   "Creata 1 cartella di file Markdown.": "Created 1 folder of Markdown files.",
   "Create {n} cartelle di file Markdown.": "Created {n} folders of Markdown files.",

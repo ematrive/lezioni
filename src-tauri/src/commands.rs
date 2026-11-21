@@ -461,8 +461,14 @@ pub fn package_import(state: State<'_, AppState>, path: PathBuf, course_id: Opti
 }
 
 #[tauri::command(async)]
-pub fn export_markdown(state: State<'_, AppState>, lesson_ids: Vec<String>, dest: PathBuf) -> CmdResult<usize> {
-    Ok(share::export_markdown(&state.library()?, &lesson_ids, &dest)?.len())
+pub fn export_markdown(state: State<'_, AppState>, lesson_ids: Vec<String>, dest: PathBuf, course_id: Option<String>) -> CmdResult<usize> {
+    let lib = state.library()?;
+    let n = share::export_markdown(&lib, &lesson_ids, &dest)?.len();
+    // A whole course: its summary as well, as on the course page.
+    if let Some(c) = course_id {
+        share::export_course_summary_markdown(&lib, &c, &dest)?;
+    }
+    Ok(n)
 }
 
 #[tauri::command(async)]

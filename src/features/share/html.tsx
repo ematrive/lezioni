@@ -3,7 +3,7 @@
 // page works offline and prints formulas correctly.
 import katexCss from "katex/dist/katex.min.css?raw";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Bookmark, Course, Lesson, MapNode, Outputs } from "../../lib/api";
+import type { Bookmark, Course, CourseSummary, Lesson, MapNode, Outputs, Source } from "../../lib/api";
 import { ai, fmtDate } from "../../lib/api";
 import { localeOf, tFor, type Lang } from "../../i18n";
 import { Markdown, MARK_ICON, toSecs } from "../../lib/Markdown";
@@ -80,19 +80,60 @@ export interface ExportLesson {
   slides?: { name: string; pages: string[] }[];
 }
 
-/** A photo made smaller (`max` px on the longest side, JPEG), as a data URL. */
-async function shrinkImage(bytes: ArrayBuffer, max: number): Promise<string> {
-  const bitmap = await createImageBitmap(new Blob([bytes]));
-  const k = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+const IMAGE_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", heic: "image/heic", heif: "image/heif", avif: "image/avif", bmp: "image/bmp", tif: "image/tiff", tiff: "image/tiff" };
+
+/** The media type of an image from its file name ("" when unknown: the decoder sniffs it). */
+function imageType(file: string): string {
+  return IMAGE_TYPES[file.split(".").pop()?.toLowerCase() ?? ""] ?? "";
+}
+
+/** Decoded through an <img>, the same decoder that shows the image in the app (HEIC in WebKit,
+ *  where createImageBitmap may refuse it). A blob: URL has our origin: the canvas stays clean. */
+async function viaImgElement(blob: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    // Revoked once decoded: the decoded pixels stay with the element.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
+/** A photo made smaller (`max` px on the longest side, JPEG), as a data URL: any browser can show
+ *  it, also one that cannot read the original (Chrome and HEIC). */
+async function shrinkImage(bytes: ArrayBuffer, max: number, file: string): Promise<string> {
+  const blob = new Blob([bytes], { type: imageType(file) });
+  let pic: { width: number; height: number; draw: (c: CanvasRenderingContext2D, w: number, h: number) => void };
+  try {
+    const b = await createImageBitmap(blob);
+    pic = { width: b.width, height: b.height, draw: (c, w, h) => c.drawImage(b, 0, 0, w, h) };
+  } catch {
+    const img = await viaImgElement(blob);
+    pic = { width: img.naturalWidth, height: img.naturalHeight, draw: (c, w, h) => c.drawImage(img, 0, 0, w, h) };
+  }
+  if (!pic.width || !pic.height) throw new Error("empty image");
+  const k = Math.min(1, max / Math.max(pic.width, pic.height));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * k);
-  canvas.height = Math.round(bitmap.height * k);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.max(1, Math.round(pic.width * k));
+  canvas.height = Math.max(1, Math.round(pic.height * k));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no canvas");
+  // JPEG has no transparency: white under a transparent PNG instead of black.
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  pic.draw(ctx, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-/** The photos placed in the summary, made smaller (1600 px, JPEG) and embedded in the page. */
-export async function summaryPhotos(lesson: Lesson, outputs: Outputs): Promise<Record<string, string>> {
+/** The name of a source in the warnings: its title, or the file it came from. */
+const sourceLabel = (s: Source) => s.title || s.originalName;
+
+/** The photos placed in the summary, made smaller (1600 px, JPEG) and embedded in the page; the
+ *  names of those that could not be read go to `failed`. */
+export async function summaryPhotos(lesson: Lesson, outputs: Outputs, failed: string[] = []): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   // `F3` (placed by the model) or `img:<source id>` (placed by hand).
   const codes = new Set([...(outputs.summary ?? "").matchAll(/!\[[^\]]*\]\((F\d+|img:[\w-]+)\)/g)].map((m) => m[1]));
@@ -101,39 +142,44 @@ export async function summaryPhotos(lesson: Lesson, outputs: Outputs): Promise<R
     const src = lesson.sources.find((s) => s.id === id && s.kind === "image" && !s.omitted);
     if (!src) continue;
     try {
-      out[code] = await shrinkImage(await ai.sourceBytes(lesson.id, src.id), 1600);
-    } catch {
-      // Not readable here (HEIC on Windows, a damaged file): the caption stays.
+      out[code] = await shrinkImage(await ai.sourceBytes(lesson.id, src.id), 1600, src.file);
+    } catch (e) {
+      // Not readable here (HEIC on Windows, a damaged file): the caption stays, and the person is told.
+      console.warn("image", src.file, e);
+      failed.push(sourceLabel(src));
     }
   }
   return out;
 }
 
 /** Every photo of the lesson, with its title and the minute it is linked to. */
-export async function lessonPhotos(lesson: Lesson, outputs: Outputs): Promise<GalleryPhoto[]> {
+export async function lessonPhotos(lesson: Lesson, outputs: Outputs, failed: string[] = []): Promise<GalleryPhoto[]> {
   const codeOf = Object.fromEntries(Object.entries(outputs.info?.sources ?? {}).map(([c, id]) => [id, c]));
   const out: GalleryPhoto[] = [];
   for (const s of lesson.sources.filter((s) => s.kind === "image" && !s.omitted)) {
     try {
-      const url = await shrinkImage(await ai.sourceBytes(lesson.id, s.id), 1600);
+      const url = await shrinkImage(await ai.sourceBytes(lesson.id, s.id), 1600, s.file);
       const link = outputs.photos.find((p) => p.image === s.id && p.at !== null);
       const rec = link ? (codeOf[link.recording] ?? lesson.sources.find((x) => x.id === link.recording)?.originalName) : undefined;
       out.push({ code: codeOf[s.id], title: s.title || s.originalName, description: s.description || undefined, at: link && rec ? `${rec} ${hmsOf(link.at!)}` : undefined, url });
-    } catch {
-      // Not readable here (HEIC on Windows, a damaged file): left out.
+    } catch (e) {
+      // Not readable here (HEIC on Windows, a damaged file): left out, and the person is told.
+      console.warn("image", s.file, e);
+      if (!failed.includes(sourceLabel(s))) failed.push(sourceLabel(s));
     }
   }
   return out;
 }
 
 /** The pages of the teacher's slides (PDFs marked as slides), drawn as images. */
-export async function slidePages(lesson: Lesson): Promise<{ name: string; pages: string[] }[]> {
+export async function slidePages(lesson: Lesson, failed: string[] = []): Promise<{ name: string; pages: string[] }[]> {
   const out: { name: string; pages: string[] }[] = [];
   for (const s of lesson.sources.filter((s) => s.kind === "pdf" && s.role === "slide" && !s.omitted)) {
     try {
       out.push({ name: s.originalName, pages: await renderPdfPages(await ai.sourceBytes(lesson.id, s.id), 1400) });
     } catch (e) {
       console.error("pdf.js", e);
+      failed.push(sourceLabel(s));
     }
   }
   return out;
@@ -173,21 +219,6 @@ function paragraphAt(text: string, at: number): string | null {
 const MARK_CLASS: Record<Bookmark["kind"], string> = { importante: "mk-imp", dubbio: "mk-dub", nota: "mk-not" };
 const markWord = (l: Lang, k: Bookmark["kind"]) => (k === "importante" ? tFor(l, "Importante") : k === "dubbio" ? tFor(l, "Non ho capito") : tFor(l, "Nota|segnaposto"));
 
-function Outline({ node }: { node: MapNode }) {
-  return (
-    <li>
-      {node.etichetta}
-      {node.figli?.length ? (
-        <ul>
-          {node.figli.map((c, i) => (
-            <Outline key={i} node={c} />
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
 /** The concept map drawn as in the app: boxes joined by lines, colours by level (static CSS). */
 export function MapTree({ node, depth = 0 }: { node: MapNode; depth?: number }) {
   const kids = node.figli ?? [];
@@ -220,7 +251,7 @@ const MAP_CSS = `
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 `;
 
-function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, drawMap }: ExportLesson & { parts: ExportParts; course: Course; drawMap?: boolean }) {
+function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course }: ExportLesson & { parts: ExportParts; course: Course }) {
   const codes = Object.entries(outputs.info?.sources ?? {});
   const codeOf = Object.fromEntries(codes.map(([c, id]) => [id, c]));
   const name = (id: string) => lesson.sources.find((s) => s.id === id)?.originalName ?? "";
@@ -232,6 +263,8 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
   // In the language of the materials, whatever the interface's.
   const l = course.materialsLanguage ?? "it";
   const md = (text: string) => <Markdown text={text} exported lang={l} hideRefs={!parts.refs} />;
+  // Short texts written inline in the app too (question titles, glossary): formulas and bold kept.
+  const mdInline = (text: string) => <Markdown text={text} exported inline lang={l} hideRefs={!parts.refs} />;
   return (
     <article className="lesson">
       <header>
@@ -268,15 +301,10 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
       {parts.map && outputs.map && (
         <section>
           <h2 className="part">{tFor(l, "Mappa concettuale")}</h2>
-          {drawMap ? (
-            <div className="map-drawn">
-              <MapTree node={outputs.map} />
-            </div>
-          ) : (
-            <ul className="outline">
-              <Outline node={outputs.map} />
-            </ul>
-          )}
+          {/* Drawn as in the app, on the web page too (it scrolls sideways on a phone). */}
+          <div className="map-drawn">
+            <MapTree node={outputs.map} />
+          </div>
         </section>
       )}
       {hasStudy && study && (
@@ -287,8 +315,8 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
               <h3>{tFor(l, "Flashcard")}</h3>
               {study.flashcard.map((c, i) => (
                 <details key={i} className="card">
-                  <summary>{c.domanda}</summary>
-                  <div>{c.risposta}</div>
+                  <summary>{mdInline(c.domanda)}</summary>
+                  {md(c.risposta)}
                 </details>
               ))}
             </>
@@ -300,7 +328,7 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
                 {study.domandeEsame.map((q, i) => (
                   <li key={i}>
                     <details className="card">
-                      <summary>{q.domanda}</summary>
+                      <summary>{mdInline(q.domanda)}</summary>
                       {md(q.traccia)}
                     </details>
                   </li>
@@ -316,8 +344,8 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
                   .sort((a, b) => a.termine.localeCompare(b.termine, l))
                   .map((g, i) => (
                     <div key={i}>
-                      <dt>{g.termine}</dt>
-                      <dd>{g.definizione}</dd>
+                      <dt>{mdInline(g.termine)}</dt>
+                      <dd>{mdInline(g.definizione)}</dd>
                     </div>
                   ))}
               </dl>
@@ -370,7 +398,13 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
           {transcripts.map((s) => (
             <div key={s.id}>
               <h3>{s.originalName}</h3>
-              {md(outputs.extracts[s.id])}
+              {/* With the bookmarks chosen too: the paragraphs they are on stand out, as in the app. */}
+              {parts.bookmarks && outputs.bookmarks.some((b) => b.sourceId === s.id) ? (
+                // The minutes become links to find the paragraphs: kept visible, they are the transcript's own.
+                <Markdown text={outputs.extracts[s.id]} exported lang={l} source={s.id} marks={outputs.bookmarks.filter((b) => b.sourceId === s.id)} />
+              ) : (
+                md(outputs.extracts[s.id])
+              )}
             </div>
           ))}
         </section>
@@ -414,6 +448,53 @@ function LessonDoc({ lesson, outputs, photos, gallery, slides, parts, course, dr
   );
 }
 
+/** The course summary (built from the lessons' summaries) with its exam questions, before the lessons. */
+function CourseDoc({ course, summary, lessons, parts }: { course: Course; summary: CourseSummary; lessons: Lesson[]; parts: ExportParts }) {
+  const l = course.materialsLanguage ?? "it";
+  const refs = summary.info?.refs ?? {};
+  const title = (code: string) => lessons.find((x) => x.id === refs[code])?.title;
+  return (
+    <article className="lesson course-summary">
+      <header>
+        <p className="course">
+          {course.name}
+          {course.teacher ? ` · ${course.teacher}` : ""}
+        </p>
+        <h1>{tFor(l, "Sintesi del corso")}</h1>
+      </header>
+      {summary.summary && <Markdown text={summary.summary} exported lang={l} hideRefs={!parts.refs} />}
+      {summary.questions.length > 0 && (
+        <section>
+          <h2 className="part">{tFor(l, "Domande d'esame del corso")}</h2>
+          <ol>
+            {summary.questions.map((q, i) => (
+              <li key={i}>
+                <details className="card">
+                  <summary>
+                    <Markdown text={q.domanda} exported inline lang={l} />
+                  </summary>
+                  <Markdown text={q.traccia} exported lang={l} hideRefs={!parts.refs} />
+                  {q.lezioni.length > 0 && (
+                    <p className="review-lessons">
+                      {tFor(l, "Da ripassare:")}{" "}
+                      {q.lezioni.map((c, k) => (
+                        <span key={c}>
+                          {k ? " · " : ""}
+                          {parts.refs && <b>{c}</b>} {title(c) ?? (parts.refs ? "" : c)}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </details>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </article>
+  );
+}
+
 const PAGE_CSS = `
 :root { color-scheme: light; }
 body { margin: 0; background: #fafafa; color: #18181b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
@@ -425,11 +506,12 @@ header .date { margin: 0 0 24px; color: #71717a; }
 h2.part { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #0369a1; border: 0; margin: 36px 0 8px; }
 .ref { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: #e0f2fe; color: #075985; border-radius: 4px; padding: 0 4px; }
 .legend { font-size: 13px; color: #52525b; margin-top: 16px; }
-.outline, .outline ul { list-style: none; padding-left: 18px; border-left: 2px solid #bae6fd; margin: 4px 0; }
-.outline { border: 0; padding: 0; font-size: 15px; }
-.outline > li { font-weight: 700; }
-.outline li li { font-weight: 400; }
-.outline li { margin: 3px 0; }
+.review-lessons { font-size: 13px; color: #52525b; margin: 6px 0 0; }
+.map-drawn { overflow-x: auto; padding-bottom: 4px; }
+p[data-mark] { border-left: 4px solid; border-radius: 0 6px 6px 0; padding: 4px 10px; margin-left: -14px; }
+p[data-mark="importante"] { border-color: #fbbf24; background: #fffbeb; }
+p[data-mark="dubbio"] { border-color: #fb7185; background: #fff1f2; }
+p[data-mark="nota"] { border-color: #38bdf8; background: #f0f9ff; }
 .card { border: 1px solid #e4e4e7; border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
 .card summary { cursor: pointer; font-weight: 600; }
 .card > div, .card > .prose-lezioni { margin-top: 6px; color: #3f3f46; }
@@ -468,14 +550,16 @@ footer { margin-top: 48px; font-size: 11px; color: #a1a1aa; text-align: center; 
 }
 `;
 
-/** Full HTML document. `forPrint` opens every flashcard (the answers are inside <details>). */
-export function buildHtml(course: Course, lessons: ExportLesson[], parts: ExportParts, forPrint: boolean): string {
+/** Full HTML document. `forPrint` opens every flashcard (the answers are inside <details>).
+ *  `courseSummary`: a whole course exported, its summary goes before the lessons. */
+export function buildHtml(course: Course, lessons: ExportLesson[], parts: ExportParts, forPrint: boolean, courseSummary?: CourseSummary | null): string {
   const title = lessons.length === 1 ? `${lessons[0].lesson.title} · ${course.name}` : course.name;
   const l = course.materialsLanguage ?? "it";
   const body = renderToStaticMarkup(
     <main>
+      {parts.summary && (courseSummary?.summary || courseSummary?.questions.length) ? <CourseDoc course={course} summary={courseSummary} lessons={lessons.map((x) => x.lesson)} parts={parts} /> : null}
       {lessons.map((l) => (
-        <LessonDoc key={l.lesson.id} {...l} parts={parts} course={course} drawMap={forPrint} />
+        <LessonDoc key={l.lesson.id} {...l} parts={parts} course={course} />
       ))}
       <footer>{tFor(l, "Creato con Lezioni")} · {new Date().toLocaleDateString(localeOf(l))}</footer>
     </main>,

@@ -2,7 +2,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { FileDown, FileText, Globe, Layers, Package } from "lucide-react";
 import { useState } from "react";
 import { t, tn } from "../../i18n";
-import { ai, api, share, toAppError, type Course, type Lesson } from "../../lib/api";
+import { ai, api, courseAi, share, toAppError, type Course, type Lesson } from "../../lib/api";
 import { Modal } from "../../lib/Modal";
 import { toast } from "../../lib/toast";
 import { buildHtml, DEFAULT_PARTS, type ExportParts, lessonPhotos, slidePages, summaryPhotos } from "./html";
@@ -54,7 +54,8 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
   const [busy, setBusy] = useState(false);
   const name = lesson ? `${lesson.date} ${lesson.title}` : course.name;
 
-  const lessons = async () => (lesson ? [lesson] : (await api.lessons(course.id)).sort((a, b) => a.date.localeCompare(b.date)));
+  // Read again: the sources must be today's (an image added after the lesson was opened).
+  const lessons = async () => (lesson ? [await api.lesson(lesson.id)] : (await api.lessons(course.id)).sort((a, b) => a.date.localeCompare(b.date)));
 
   const run = async () => {
     setBusy(true);
@@ -68,32 +69,37 @@ export function ShareDialog({ course, lesson, onClose }: { course: Course; lesso
         await share.exportPackage(ids, { media, files, notes }, dest);
         toast(t("Pacchetto salvato: {lessons}. Mandalo come un normale file (WhatsApp, mail, Drive).", { lessons: tn(ls.length, "1 lezione", "{n} lezioni") }));
       } else if (format === "pdf" || format === "html") {
+        // Images that could not be read and embedded: told at the end, never dropped in silence.
+        const failed: string[] = [];
         const docs = await Promise.all(
           ls.map(async (l) => {
             const outputs = await ai.outputs(l.id);
             return {
               lesson: l,
               outputs,
-              photos: parts.summary && parts.summaryPhotos ? await summaryPhotos(l, outputs) : undefined,
-              gallery: parts.photos ? await lessonPhotos(l, outputs) : undefined,
-              slides: parts.slides ? await slidePages(l) : undefined,
+              photos: parts.summary && parts.summaryPhotos ? await summaryPhotos(l, outputs, failed) : undefined,
+              gallery: parts.photos ? await lessonPhotos(l, outputs, failed) : undefined,
+              slides: parts.slides ? await slidePages(l, failed) : undefined,
             };
           }),
         );
-        if (!docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length || d.gallery?.length || d.slides?.length || (parts.notes && d.lesson.notes.trim()))) throw { message: t("Niente da esportare: elabora prima la lezione con Gemini") };
+        const courseSummary = !lesson && parts.summary ? await courseAi.summary(course.id).catch(() => null) : null;
+        if (!courseSummary?.summary && !docs.some((d) => d.outputs.summary || d.outputs.study || Object.keys(d.outputs.extracts).length || d.gallery?.length || d.slides?.length || (parts.notes && d.lesson.notes.trim()))) throw { message: t("Niente da esportare: elabora prima la lezione con Gemini") };
         if (format === "pdf") {
-          await share.print(slug(name), buildHtml(course, docs, parts, true));
+          await share.print(slug(name), buildHtml(course, docs, parts, true, courseSummary));
           toast(t("Si è aperto il browser: nella finestra di stampa scegli «Salva come PDF»."));
         } else {
           const dest = await save({ title: t("Salva la pagina"), defaultPath: `${slug(name)}.html`, filters: [{ name: t("Pagina web"), extensions: ["html"] }] });
           if (!dest) return;
-          await share.writeText(dest, buildHtml(course, docs, parts, false));
+          await share.writeText(dest, buildHtml(course, docs, parts, false, courseSummary));
           toast(t("Pagina salvata."));
         }
+        const missing = [...new Set(failed)];
+        if (missing.length) toast(tn(missing.length, "Un'immagine non si è potuta leggere ed è rimasta fuori: {names}", "{n} immagini non si sono potute leggere e sono rimaste fuori: {names}", { names: missing.join(", ") }), "error");
       } else if (format === "markdown") {
         const dest = await open({ directory: true, title: t("Cartella in cui creare i file Markdown (ad esempio il vault di Obsidian)") });
         if (typeof dest !== "string") return;
-        const n = await share.markdown(ids, dest);
+        const n = await share.markdown(ids, dest, lesson ? null : course.id);
         toast(tn(n, "Creata 1 cartella di file Markdown.", "Create {n} cartelle di file Markdown."));
         api.reveal(dest);
       } else {

@@ -414,7 +414,16 @@ try {
   await p.getByRole("button", { name: T("Azioni sul corso {name}", { name: course }) }).click();
   await p.getByRole("button", { name: T("Rinomina e modifica") }).waitFor();
   await shot("corso-menu");
-  await p.keyboard.press("Escape");
+  if (!manual) {
+    // The whole course as a web page: its summary and exam questions first, then the lessons.
+    await p.getByRole("button", { name: T("Esporta il corso") }).click();
+    await p.getByText(T("Pagina web")).click();
+    await p.evaluate(() => (window.__written = null));
+    await p.getByRole("button", { name: T("Esporta…") }).click();
+    await p.waitForFunction(() => window.__written?.text);
+    const courseHtml = await p.evaluate(() => window.__written.text);
+    if (!courseHtml.includes('class="lesson course-summary"') || !courseHtml.includes(L("Illustra il metodo del simplesso e il caso degenere.", "Explain the simplex method and the degenerate case.")) || !courseHtml.includes(lessonTitle)) throw new Error("HTML del corso: sintesi del corso mancante");
+  } else await p.keyboard.press("Escape");
   // Lesson actions in its own "⋯" menu in the list.
   await p.getByRole("button", { name: T("Azioni sulla lezione {title}", { title: lessonTitle }) }).click();
   await p.getByRole("button", { name: T("Condividi…") }).click();
@@ -429,13 +438,25 @@ try {
   await p.getByRole("button", { name: T("Condividi") }).click();
   await p.getByText(T("Pagina web")).click();
   await shot("condividi");
+  await p.evaluate(() => (window.__written = null));
   await p.getByRole("button", { name: T("Esporta…") }).click();
-  await p.getByText(T("Pagina salvata.")).waitFor();
+  await p.waitForFunction(() => window.__written?.text);
   const html = await p.evaluate(() => window.__written.text);
+  // One lesson: the course summary stays out.
+  if (html.includes('class="lesson course-summary"')) throw new Error("HTML della lezione: c'è la sintesi del corso");
   if (!html.includes(L("base ammissibile", "basic feasible solution")) || !html.includes("data:font/woff2;base64") || !html.includes('class="katex"') || !html.includes(ratio)) throw new Error("HTML esportato incompleto");
   if (!manual) writeFileSync(`${out}/lezione.html`, html);
   // The image put in the summary by hand (img:<id>) is embedded, like the one the model placed.
   if (!/data-summary-photo="img:[\w-]+"><img src="data:image\//.test(html)) throw new Error("HTML: immagine messa a mano nella sintesi mancante");
+  // As in the app: formulas in the flashcards, the map drawn (not a list).
+  if (html.includes("$\\min_i") || !html.includes("mt-box")) throw new Error("HTML: flashcard o mappa diverse dall'app");
+  // An image the browser cannot read: left out, but the person is told which one.
+  await p.evaluate(() => (window.__badImages = true));
+  await p.getByRole("button", { name: T("Condividi") }).click();
+  await p.getByText(T("Pagina web")).click();
+  await p.getByRole("button", { name: T("Esporta…") }).click();
+  await p.getByText(L(/immagini? non si (?:è|sono) potut[ae] leggere/, /images? could not be read/)).first().waitFor();
+  await p.evaluate(() => (window.__badImages = false));
   // PDF: same page, opened for printing with the answers visible.
   await p.getByRole("button", { name: T("Condividi") }).click();
   await p.getByText("PDF", { exact: true }).click();

@@ -295,6 +295,8 @@
         }
         case "source_read":
           // A photo: a small real PNG (the export makes it smaller with createImageBitmap).
+          // `__badImages`: bytes no decoder reads (a HEIC on a system without HEIC), for the export's warning.
+          if (window.__badImages && find(a.lessonId).sources.find((x) => x.id === a.sourceId)?.kind === "image") return new Uint8Array([1, 2, 3, 4]).buffer;
           if (find(a.lessonId).sources.find((x) => x.id === a.sourceId)?.kind === "image") return Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0)).buffer;
           return slidesPdf.slice(0);
         case "source_set_role": {

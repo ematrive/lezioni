@@ -413,7 +413,8 @@ export const share = {
   exportPackage: (lessonIds: string[], include: { media: boolean; files: boolean; notes: boolean }, dest: string) => invoke<void>("export_package", { lessonIds, include, dest }),
   inspect: (path: string) => invoke<PackageInfo>("package_inspect", { path }),
   import: (path: string, courseId: string | null, onExisting: OnExisting) => invoke<{ courseId: string; imported: string[]; skipped: string[] }>("package_import", { path, courseId, onExisting }),
-  markdown: (lessonIds: string[], dest: string) => invoke<number>("export_markdown", { lessonIds, dest }),
+  /** With `courseId` (a whole course) the course summary is written too. */
+  markdown: (lessonIds: string[], dest: string, courseId: string | null = null) => invoke<number>("export_markdown", { lessonIds, dest, courseId }),
   anki: (lessonIds: string[], dest: string) => invoke<number>("export_anki", { lessonIds, dest }),
   writeText: (dest: string, text: string) => invoke<void>("export_write_text", { dest, text }),
   print: (name: string, html: string) => invoke<string>("export_print", { name, html }),

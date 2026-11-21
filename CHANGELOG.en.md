@@ -1,5 +1,14 @@
 # What's new
 
+## Next version
+
+- **Exports match the app**:
+  - images placed in the summary, iPhone HEIC photos included, now go into the PDF and the web page; before, on a Mac, they could be left out with only the caption. If an image can't be read, the app says which one;
+  - flashcards, exam questions and the glossary keep formulas and bold;
+  - the web page draws the map as in the app;
+  - with transcripts and bookmarks ticked, the paragraphs with a bookmark are highlighted.
+- **Course summary in the course export**: in PDF, web page and Markdown, before the lectures, with the course exam questions.
+
 ## 1.4.0
 
 - **Images in the summary by hand**: a photo added in Sources after processing can be put anywhere in the summary, without reprocessing. Hover over a paragraph and press **Image**, or use **Insert image** in Edit. Images in the summary, including those placed by the model, can be moved up or down and removed with the buttons that appear when you hover over them. They also appear in the HTML, PDF and Markdown exports.
