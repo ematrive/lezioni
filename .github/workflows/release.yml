@@ -39,12 +39,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      # A new runner image (new MSVC on Windows) must not reuse target/: the CMake cache of
+      # whisper.cpp keeps the old compiler's path ("not a full path to an existing compiler").
+      # ImageVersion is a variable of the machine, not of the `env` context: copied there first.
+      - name: Versione dell'immagine del runner
+        shell: bash
+        run: echo "RUNNER_IMAGE_VERSION=${ImageVersion:-none}" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          # A new runner image (new MSVC on Windows) must not reuse target/: the CMake cache of
-          # whisper.cpp keeps the old compiler's path ("not a full path to an existing compiler").
-          key: ${{ env.ImageVersion }}
+          key: ${{ env.RUNNER_IMAGE_VERSION }}
       - run: pnpm install --frozen-lockfile
       # src-tauri/.cargo/config.toml makes whisper-rs-sys use the bindings bundled in the crate
       # (made on Linux: fine for Linux and macOS, wrong struct sizes for MSVC, error E0080). On
